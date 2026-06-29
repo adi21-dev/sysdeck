@@ -16,18 +16,32 @@ async fn handle_socket(mut socket: WebSocket, tx: broadcast::Sender<Arc<Telemetr
     let mut rx = tx.subscribe();
 
     loop {
-        match rx.recv().await {
-            Ok(snapshot) => {
-                let json = serde_json::to_string(&*snapshot).unwrap();
-                if socket.send(Message::Text(json)).await.is_err() {
-                    break;
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(_)) => {} // ignore incoming messages
+                    Some(Err(e)) => {
+                        tracing::warn!("WebSocket recv error: {}", e);
+                        break;
+                    }
                 }
             }
-            Err(broadcast::error::RecvError::Lagged(n)) => {
-                tracing::warn!("WebSocket client lagged by {} messages", n);
-                continue;
+            snapshot = rx.recv() => {
+                match snapshot {
+                    Ok(snapshot) => {
+                        let json = serde_json::to_string(&*snapshot).unwrap();
+                        if socket.send(Message::Text(json)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!("WebSocket client lagged by {} messages", n);
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
             }
-            Err(broadcast::error::RecvError::Closed) => break,
         }
     }
 }
