@@ -1,12 +1,31 @@
-use axum::{response::Html, routing::get, Router};
-use rusqlite::Connection;
+mod db;
+mod telemetry;
+mod tunnel;
+mod ws;
+
+use std::collections::HashMap;
 use std::net::TcpListener;
 use std::path::PathBuf;
-use tokio::sync::oneshot;
+use std::sync::Arc;
+
+use axum::extract::{Query, State};
+use axum::response::{Html, IntoResponse, Json};
+use axum::routing::get;
+use axum::Router;
+use rusqlite::Connection;
+use tokio::sync::{broadcast, oneshot, Mutex};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::TrayIconBuilder;
+
+use db::TelemetrySnapshot;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
+    pub db: Arc<Mutex<Connection>>,
+}
 
 fn get_data_dir() -> PathBuf {
     let local_app_data =
@@ -52,6 +71,8 @@ fn init_db() -> Connection {
     )
     .expect("Failed to insert initial schema version");
 
+    db::init_telemetry_table(&conn).expect("Failed to initialize telemetry table");
+
     println!("Database initialized at: {}", db_path.display());
     conn
 }
@@ -75,8 +96,7 @@ fn find_available_port() -> (u16, TcpListener) {
 fn setup_tray(shutdown_tx: oneshot::Sender<()>) {
     std::thread::spawn(move || {
         let quit_item = MenuItem::new("Quit", true, None);
-        let menu =
-            Menu::with_items(&[&quit_item]).expect("Failed to create menu");
+        let menu = Menu::with_items(&[&quit_item]).expect("Failed to create menu");
 
         let _tray = TrayIconBuilder::new()
             .with_tooltip("NodeDesk Agent")
@@ -122,6 +142,48 @@ async fn root_handler() -> Html<&'static str> {
     )
 }
 
+async fn history_handler(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let range = params.get("range").map(|s| s.as_str()).unwrap_or("1h");
+    let seconds = match parse_range(range) {
+        Some(s) => s,
+        None => return (axum::http::StatusCode::BAD_REQUEST, "Invalid range format. Use e.g. 1h, 6h, 24h, 7d".to_string()).into_response(),
+    };
+
+    let since_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+        - (seconds as i64 * 1000);
+
+    let db = state.db.lock().await;
+    match db::query_telemetry_history(&db, since_ts) {
+        Ok(data) => Json(data).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to query telemetry history: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to query history".to_string(),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn parse_range(s: &str) -> Option<i64> {
+    let re = regex::Regex::new(r"^(\d+)([hdw])$").ok()?;
+    let caps = re.captures(s)?;
+    let num: i64 = caps.get(1)?.as_str().parse().ok()?;
+    match caps.get(2)?.as_str() {
+        "h" => Some(num * 3600),
+        "d" => Some(num * 86400),
+        "w" => Some(num * 604800),
+        _ => None,
+    }
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -134,26 +196,55 @@ async fn main() {
     println!("NodeDesk Agent v{} starting...", env!("CARGO_PKG_VERSION"));
 
     init_dirs();
-    let _conn = init_db();
-
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    setup_tray(shutdown_tx);
+    let conn = Arc::new(Mutex::new(init_db()));
 
     let (port, listener) = find_available_port();
-    let listener = tokio::net::TcpListener::from_std(listener)
-        .expect("Failed to convert std listener to tokio listener");
+
+    // Ensure cloudflared is downloaded
+    tunnel::ensure_cloudflared().await;
+
+    // Create broadcast channel for telemetry
+    let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
+
+    // Start telemetry engine
+    telemetry::start_engine(telemetry_tx.clone(), conn.clone());
+
+    // Setup tray and shutdown channels
+    let (tray_shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let (tunnel_shutdown_tx, tunnel_shutdown_rx) = oneshot::channel::<()>();
+    setup_tray(tray_shutdown_tx);
+
+    // Start tunnel in background
+    let tunnel_handle = tokio::spawn(tunnel::run_tunnel_loop(port, tunnel_shutdown_rx));
+
+    let app_state = AppState {
+        telemetry_tx,
+        db: conn,
+    };
 
     let app = Router::new()
         .route("/", get(root_handler))
+        .route("/ws", get(ws::ws_handler))
+        .route("/api/telemetry/history", get(history_handler))
+        .with_state(app_state)
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive());
+
+    let listener = tokio::net::TcpListener::from_std(listener)
+        .expect("Failed to convert std listener to tokio listener");
 
     println!("Server running at http://localhost:{}", port);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             shutdown_rx.await.ok();
+            tracing::info!("Shutdown signal received, stopping tunnel...");
+            let _ = tunnel_shutdown_tx.send(());
         })
         .await
         .expect("Server error");
+
+    // Wait for tunnel to clean up
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), tunnel_handle).await;
+    println!("NodeDesk Agent stopped.");
 }
