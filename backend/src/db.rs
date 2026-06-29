@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TelemetrySnapshot {
@@ -57,6 +57,79 @@ pub fn insert_telemetry(conn: &Connection, snap: &TelemetrySnapshot) -> Result<(
     Ok(())
 }
 
+pub fn init_auth_tables(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            password_hash TEXT NOT NULL,
+            totp_secret TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS recovery_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code_hash TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_jti TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event TEXT NOT NULL,
+            details TEXT,
+            ip_address TEXT,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS jwt_signing_key (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            encrypted_key BLOB NOT NULL
+        );",
+    )
+}
+
+pub fn is_setup_complete(conn: &Connection) -> Result<bool> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))?;
+    Ok(count > 0)
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub event: String,
+    pub details: Option<String>,
+    pub ip_address: Option<String>,
+    pub created_at: i64,
+}
+
+pub fn insert_audit_log(
+    conn: &Connection,
+    event: &str,
+    details: Option<&str>,
+    ip_address: Option<&str>,
+) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    conn.execute(
+        "INSERT INTO audit_logs (event, details, ip_address, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![event, details, ip_address, now],
+    )?;
+    Ok(())
+}
+
 pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<TelemetrySnapshot>> {
     let mut stmt = conn.prepare(
         "SELECT timestamp, cpu_usage, ram_used, ram_total, net_rx_bps, net_tx_bps, temperature, disk_used, disk_total, battery_percent, battery_charging
@@ -87,4 +160,141 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
         result.push(row?);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+        conn.execute_batch("PRAGMA synchronous=NORMAL;").ok();
+        conn
+    }
+
+    #[test]
+    fn test_init_telemetry_table_idempotent() {
+        let conn = test_conn();
+        init_telemetry_table(&conn).unwrap();
+        init_telemetry_table(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_init_auth_tables_idempotent() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        init_auth_tables(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_insert_and_query_telemetry() {
+        let conn = test_conn();
+        init_telemetry_table(&conn).unwrap();
+        let snap = TelemetrySnapshot {
+            timestamp: 1000,
+            cpu_usage: 45.5,
+            ram_used: 8000000000,
+            ram_total: 16000000000,
+            net_rx_bps: 1000000,
+            net_tx_bps: 500000,
+            temperature: Some(65.0),
+            disk_used: 200000000000,
+            disk_total: 500000000000,
+            battery_percent: Some(80.0),
+            battery_charging: Some(true),
+        };
+        insert_telemetry(&conn, &snap).unwrap();
+        let results = query_telemetry_history(&conn, 0).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].cpu_usage, 45.5);
+        assert!(results[0].battery_charging.unwrap());
+    }
+
+    #[test]
+    fn test_query_telemetry_empty() {
+        let conn = test_conn();
+        init_telemetry_table(&conn).unwrap();
+        let results = query_telemetry_history(&conn, 0).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_query_telemetry_by_timestamp() {
+        let conn = test_conn();
+        init_telemetry_table(&conn).unwrap();
+        let snap = TelemetrySnapshot {
+            timestamp: 5000,
+            cpu_usage: 10.0,
+            ram_used: 0,
+            ram_total: 0,
+            net_rx_bps: 0,
+            net_tx_bps: 0,
+            temperature: None,
+            disk_used: 0,
+            disk_total: 0,
+            battery_percent: None,
+            battery_charging: None,
+        };
+        insert_telemetry(&conn, &snap).unwrap();
+        let results = query_telemetry_history(&conn, 10000).unwrap();
+        assert!(results.is_empty());
+        let results = query_telemetry_history(&conn, 0).unwrap();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_is_setup_complete_empty() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        assert!(!is_setup_complete(&conn).unwrap());
+    }
+
+    #[test]
+    fn test_is_setup_complete_with_user() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            [],
+        ).unwrap();
+        assert!(is_setup_complete(&conn).unwrap());
+    }
+
+    #[test]
+    fn test_insert_audit_log() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        insert_audit_log(&conn, "test_event", Some("details"), Some("127.0.0.1")).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audit_logs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_duplicate_user_insert() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash1', 'secret1', 1000, 1000)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash2', 'secret2', 2000, 2000)",
+            [],
+        ).unwrap();
+        assert!(is_setup_complete(&conn).unwrap());
+    }
+
+    #[test]
+    fn test_audit_log_null_fields() {
+        let conn = test_conn();
+        init_auth_tables(&conn).unwrap();
+        insert_audit_log(&conn, "event", None, None).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audit_logs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

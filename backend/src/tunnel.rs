@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::Duration;
@@ -8,6 +9,10 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::oneshot;
 
 use crate::get_data_dir;
+
+const MAX_RETRIES: u32 = 3;
+const TIMEOUT_API_SECS: u64 = 30;
+const TIMEOUT_DOWNLOAD_SECS: u64 = 300;
 
 #[derive(serde::Deserialize)]
 struct GithubRelease {
@@ -25,15 +30,24 @@ pub async fn ensure_cloudflared() -> Result<(), String> {
         return Ok(());
     }
 
-    tracing::info!("Downloading cloudflared.exe...");
+    // Clean up any leftover temp file from a previous interrupted download
+    let tmp_path = path.with_extension("exe.tmp");
+    if tmp_path.exists() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(120))
+    let api_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(TIMEOUT_API_SECS))
         .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
+        .map_err(|e| format!("Failed to build API client: {}", e))?;
+
+    let download_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(TIMEOUT_DOWNLOAD_SECS))
+        .build()
+        .map_err(|e| format!("Failed to build download client: {}", e))?;
 
     // Fetch latest release info from GitHub API
-    let release: GithubRelease = client
+    let release: GithubRelease = api_client
         .get("https://api.github.com/repos/cloudflare/cloudflared/releases/latest")
         .header("User-Agent", "NodeDeskAgent/0.1")
         .header("Accept", "application/json")
@@ -60,31 +74,100 @@ pub async fn ensure_cloudflared() -> Result<(), String> {
 
     tracing::info!("Expected SHA256: {}", expected_hash);
 
-    // Download binary
     let exe_url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+
+    // Retry loop with exponential backoff
+    let mut last_err = String::new();
+    for attempt in 1..=MAX_RETRIES {
+        tracing::info!(
+            "Downloading cloudflared.exe (attempt {}/{})...",
+            attempt,
+            MAX_RETRIES
+        );
+
+        match download_cloudflared(&download_client, exe_url, &tmp_path).await {
+            Ok(actual_hash) => {
+                if actual_hash != expected_hash {
+                    let _ = std::fs::remove_file(&tmp_path);
+                    return Err(format!(
+                        "SHA256 mismatch for cloudflared.exe. Expected: {}, got: {}",
+                        expected_hash, actual_hash
+                    ));
+                }
+                tracing::info!("SHA256 verified");
+
+                // Atomically rename temp -> final
+                std::fs::rename(&tmp_path, &path)
+                    .map_err(|e| format!("Failed to rename temp file: {}", e))?;
+                tracing::info!("cloudflared.exe downloaded to {}", path.display());
+                return Ok(());
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                last_err = e;
+                tracing::warn!("Download attempt {} failed: {}", attempt, last_err);
+                if attempt < MAX_RETRIES {
+                    let backoff = Duration::from_secs(2u64.pow(attempt));
+                    tracing::info!("Retrying in {}s...", backoff.as_secs());
+                    tokio::time::sleep(backoff).await;
+                }
+            }
+        }
+    }
+
+    Err(format!(
+        "Failed to download cloudflared.exe after {} attempts: {}",
+        MAX_RETRIES, last_err
+    ))
+}
+
+/// Stream the binary download to disk while computing SHA256.
+async fn download_cloudflared(
+    client: &reqwest::Client,
+    url: &str,
+    path: &PathBuf,
+) -> Result<String, String> {
     let response = client
-        .get(exe_url)
+        .get(url)
         .send()
         .await
-        .map_err(|e| format!("Failed to download cloudflared: {}", e))?;
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read cloudflared response: {}", e))?;
+        .map_err(|e| format!("Download request failed: {}", e))?;
 
-    // Verify SHA256
-    let actual_hash = hex_encode(&Sha256::digest(&bytes));
-    if actual_hash != expected_hash {
-        return Err(format!(
-            "SHA256 mismatch for cloudflared.exe. Expected: {}, got: {}",
-            expected_hash, actual_hash
-        ));
+    let total = response.content_length().unwrap_or(0);
+    tracing::info!("Download size: {} MB", total / 1_000_000);
+
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut hasher = Sha256::new();
+    let mut downloaded: u64 = 0;
+    let mut last_log = std::time::Instant::now();
+
+    use futures_util::StreamExt;
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
+        hasher.update(&chunk);
+        file.write_all(&chunk)
+            .map_err(|e| format!("Failed to write to file: {}", e))?;
+        downloaded += chunk.len() as u64;
+
+        if last_log.elapsed() >= Duration::from_secs(10) {
+            let pct = if total > 0 {
+                (downloaded as f64 / total as f64 * 100.0) as u32
+            } else {
+                0
+            };
+            tracing::info!(
+                "Downloaded {:.1} MB / {} MB ({}%)",
+                downloaded as f64 / 1_000_000.0,
+                total as f64 / 1_000_000.0,
+                pct
+            );
+            last_log = std::time::Instant::now();
+        }
     }
-    tracing::info!("SHA256 verified");
 
-    std::fs::write(&path, &bytes).map_err(|e| format!("Failed to write cloudflared.exe: {}", e))?;
-    tracing::info!("cloudflared.exe downloaded to {}", path.display());
-    Ok(())
+    Ok(hex_encode(&hasher.finalize()))
 }
 
 pub async fn run_tunnel_loop(port: u16, mut shutdown_rx: oneshot::Receiver<()>) {
