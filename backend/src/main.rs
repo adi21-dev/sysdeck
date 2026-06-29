@@ -201,7 +201,10 @@ async fn main() {
     let (port, listener) = find_available_port();
 
     // Ensure cloudflared is downloaded
-    tunnel::ensure_cloudflared().await;
+    if let Err(e) = tunnel::ensure_cloudflared().await {
+        tracing::error!("Failed to setup cloudflared tunnel: {}", e);
+        tracing::warn!("Continuing without tunnel. Only local access available.");
+    }
 
     // Create broadcast channel for telemetry
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);

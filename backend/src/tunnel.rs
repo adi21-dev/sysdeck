@@ -9,68 +9,82 @@ use tokio::sync::oneshot;
 
 use crate::get_data_dir;
 
+#[derive(serde::Deserialize)]
+struct GithubRelease {
+    body: String,
+}
+
 fn get_cloudflared_path() -> PathBuf {
     get_data_dir().join("cloudflared.exe")
 }
 
-pub async fn ensure_cloudflared() {
+pub async fn ensure_cloudflared() -> Result<(), String> {
     let path = get_cloudflared_path();
     if path.exists() {
         tracing::info!("cloudflared.exe already present at {}", path.display());
-        return;
+        return Ok(());
     }
 
     tracing::info!("Downloading cloudflared.exe...");
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
-        .expect("Failed to build HTTP client");
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
 
-    let base_url =
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64";
-
-    // Download SHA256
-    let sha_url = format!("{}.exe.sha256", base_url);
-    let sha_text = client
-        .get(&sha_url)
+    // Fetch latest release info from GitHub API
+    let release: GithubRelease = client
+        .get("https://api.github.com/repos/cloudflare/cloudflared/releases/latest")
+        .header("User-Agent", "NodeDeskAgent/0.1")
+        .header("Accept", "application/json")
         .send()
         .await
-        .expect("Failed to fetch cloudflared SHA256")
-        .text()
+        .map_err(|e| format!("Failed to fetch latest release info: {}", e))?
+        .json()
         .await
-        .expect("Failed to read SHA256 response");
+        .map_err(|e| format!("Failed to parse release JSON: {}", e))?;
 
-    let expected_hash = sha_text
-        .split_whitespace()
-        .next()
-        .expect("SHA256 file format unexpected")
-        .to_string();
+    // Extract SHA256 hash for windows amd64 exe from release body
+    let hash_re = Regex::new(r"cloudflared-windows-amd64\.exe:\s*([a-fA-F0-9]{64})")
+        .expect("Invalid hash regex");
+    let expected_hash = hash_re
+        .captures(&release.body)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_lowercase())
+        .ok_or_else(|| {
+            tracing::error!(
+                "Could not find SHA256 hash in release body for cloudflared-windows-amd64.exe"
+            );
+            "SHA256 hash not found in release notes".to_string()
+        })?;
+
     tracing::info!("Expected SHA256: {}", expected_hash);
 
     // Download binary
-    let exe_url = format!("{}.exe", base_url);
+    let exe_url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
     let response = client
-        .get(&exe_url)
+        .get(exe_url)
         .send()
         .await
-        .expect("Failed to download cloudflared");
+        .map_err(|e| format!("Failed to download cloudflared: {}", e))?;
     let bytes = response
         .bytes()
         .await
-        .expect("Failed to read cloudflared response");
+        .map_err(|e| format!("Failed to read cloudflared response: {}", e))?;
 
     // Verify SHA256
     let actual_hash = hex_encode(&Sha256::digest(&bytes));
     if actual_hash != expected_hash {
-        panic!(
+        return Err(format!(
             "SHA256 mismatch for cloudflared.exe. Expected: {}, got: {}",
             expected_hash, actual_hash
-        );
+        ));
     }
     tracing::info!("SHA256 verified");
 
-    std::fs::write(&path, &bytes).expect("Failed to write cloudflared.exe");
+    std::fs::write(&path, &bytes).map_err(|e| format!("Failed to write cloudflared.exe: {}", e))?;
     tracing::info!("cloudflared.exe downloaded to {}", path.display());
+    Ok(())
 }
 
 pub async fn run_tunnel_loop(port: u16, mut shutdown_rx: oneshot::Receiver<()>) {
