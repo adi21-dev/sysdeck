@@ -4,7 +4,6 @@ mod tunnel;
 mod ws;
 
 use std::collections::HashMap;
-use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -44,7 +43,7 @@ fn get_db_path() -> PathBuf {
 fn init_dirs() {
     let data_dir = get_data_dir();
     std::fs::create_dir_all(&data_dir).expect("Failed to create data directory");
-    std::fs::create_dir_all(&get_logs_dir()).expect("Failed to create logs directory");
+    std::fs::create_dir_all(get_logs_dir()).expect("Failed to create logs directory");
     println!("Data directory: {}", data_dir.display());
 }
 
@@ -77,19 +76,18 @@ fn init_db() -> Connection {
     conn
 }
 
-fn find_available_port() -> (u16, TcpListener) {
-    if let Ok(listener) = TcpListener::bind("127.0.0.1:3939") {
-        println!("Bound to port 3939");
-        return (3939, listener);
+async fn find_available_port() -> (u16, tokio::net::TcpListener) {
+    if let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:3939").await {
+        let port = listener.local_addr().unwrap().port();
+        println!("Bound to port {}", port);
+        return (port, listener);
     }
 
-    let listener =
-        TcpListener::bind("127.0.0.1:0").expect("Failed to bind to any available port");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("Failed to bind to any available port");
     let port = listener.local_addr().unwrap().port();
-    println!(
-        "Port 3939 was occupied. Fallback to random port: {}",
-        port
-    );
+    println!("Port 3939 was occupied. Fallback to random port: {}", port);
     (port, listener)
 }
 
@@ -149,20 +147,39 @@ async fn history_handler(
     let range = params.get("range").map(|s| s.as_str()).unwrap_or("1h");
     let seconds = match parse_range(range) {
         Some(s) => s,
-        None => return (axum::http::StatusCode::BAD_REQUEST, "Invalid range format. Use e.g. 1h, 6h, 24h, 7d".to_string()).into_response(),
+        None => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid range format. Use e.g. 1h, 6h, 24h, 7d".to_string(),
+            )
+                .into_response()
+        }
     };
 
     let since_ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
-        - (seconds as i64 * 1000);
+        - (seconds * 1000);
 
-    let db = state.db.lock().await;
-    match db::query_telemetry_history(&db, since_ts) {
-        Ok(data) => Json(data).into_response(),
-        Err(e) => {
+    let db = state.db.clone();
+    match tokio::task::spawn_blocking(move || {
+        let conn = db.blocking_lock();
+        db::query_telemetry_history(&conn, since_ts)
+    })
+    .await
+    {
+        Ok(Ok(data)) => Json(data).into_response(),
+        Ok(Err(e)) => {
             tracing::error!("Failed to query telemetry history: {}", e);
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to query history".to_string(),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Telemetry history join error: {}", e);
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to query history".to_string(),
@@ -188,8 +205,7 @@ fn parse_range(s: &str) -> Option<i64> {
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -198,7 +214,7 @@ async fn main() {
     init_dirs();
     let conn = Arc::new(Mutex::new(init_db()));
 
-    let (port, listener) = find_available_port();
+    let (port, listener) = find_available_port().await;
 
     // Ensure cloudflared is downloaded
     if let Err(e) = tunnel::ensure_cloudflared().await {
@@ -232,9 +248,6 @@ async fn main() {
         .with_state(app_state)
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive());
-
-    let listener = tokio::net::TcpListener::from_std(listener)
-        .expect("Failed to convert std listener to tokio listener");
 
     println!("Server running at http://localhost:{}", port);
 
