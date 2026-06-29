@@ -8,10 +8,7 @@ use tokio::sync::broadcast;
 use crate::db::TelemetrySnapshot;
 use crate::AppState;
 
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state.telemetry_tx))
 }
 
@@ -22,11 +19,7 @@ async fn handle_socket(mut socket: WebSocket, tx: broadcast::Sender<Arc<Telemetr
         match rx.recv().await {
             Ok(snapshot) => {
                 let json = serde_json::to_string(&*snapshot).unwrap();
-                if socket
-                    .send(Message::Text(json.into()))
-                    .await
-                    .is_err()
-                {
+                if socket.send(Message::Text(json)).await.is_err() {
                     break;
                 }
             }

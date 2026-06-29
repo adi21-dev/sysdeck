@@ -112,7 +112,10 @@ pub async fn run_tunnel_loop(port: u16, mut shutdown_rx: oneshot::Receiver<()>) 
             }
         };
 
-        let stderr = child.stderr.take().expect("cloudflared stderr not captured");
+        let stderr = child
+            .stderr
+            .take()
+            .expect("cloudflared stderr not captured");
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         let mut found_url = false;
