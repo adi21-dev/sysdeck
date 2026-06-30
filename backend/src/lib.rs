@@ -1,5 +1,8 @@
 pub mod auth;
 pub mod db;
+pub mod file_manager;
+pub mod power;
+pub mod script;
 pub mod setup;
 pub mod telemetry;
 pub mod tunnel;
@@ -9,9 +12,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::response::{Html, IntoResponse, Json};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{middleware, Router};
 use rusqlite::Connection;
 use tokio::sync::{broadcast, oneshot, Mutex};
@@ -22,6 +25,8 @@ use tray_icon::TrayIconBuilder;
 
 pub use auth::{IpRateLimiter, LockoutState};
 pub use db::TelemetrySnapshot;
+pub use power::PowerState;
+pub use script::ScriptState;
 pub use setup::SetupManager;
 
 #[derive(Clone)]
@@ -32,6 +37,8 @@ pub struct AppState {
     pub lockout: Arc<LockoutState>,
     pub setup_manager: Arc<SetupManager>,
     pub rate_limiter: Arc<IpRateLimiter>,
+    pub power_state: Arc<PowerState>,
+    pub script_state: Arc<ScriptState>,
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -222,6 +229,25 @@ pub fn build_router(state: AppState) -> Router {
             get(setup::setup_get_handler).post(setup::setup_handler),
         )
         .route("/login", get(auth::login_page).post(auth::login_handler))
+        // File Manager
+        .route("/api/files/list", get(file_manager::list_handler))
+        .route(
+            "/api/files/upload",
+            post(file_manager::upload_handler)
+                .layer(DefaultBodyLimit::max(500 * 1024 * 1024)),
+        )
+        .route("/api/files/download", get(file_manager::download_handler))
+        .route("/api/files/delete", post(file_manager::delete_handler))
+        .route("/api/files/rename", post(file_manager::rename_handler))
+        // Script Engine
+        .route("/api/scripts/execute", post(script::execute_handler))
+        .route("/ws/script/{id}", get(script::ws_script_handler))
+        // Power Controls
+        .route("/api/power/shutdown", post(power::shutdown_handler))
+        .route("/api/power/restart", post(power::restart_handler))
+        .route("/api/power/sleep", post(power::sleep_handler))
+        .route("/api/power/cancel", post(power::cancel_power_handler))
+        .route("/api/power/status", get(power::power_status_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

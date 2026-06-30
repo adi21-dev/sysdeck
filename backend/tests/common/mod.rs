@@ -11,7 +11,7 @@ use tower::ServiceExt;
 use nodedesk_agent::auth::LockoutState;
 use nodedesk_agent::db::{self, TelemetrySnapshot};
 use nodedesk_agent::setup::SetupManager;
-use nodedesk_agent::AppState;
+use nodedesk_agent::{AppState, PowerState, ScriptState};
 
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
 
@@ -47,6 +47,8 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
             .allow_burst(std::num::NonZeroU32::new(5).unwrap()),
     ));
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
+    let power_state = Arc::new(PowerState::new());
+    let script_state = Arc::new(ScriptState::new());
 
     let app_state = AppState {
         telemetry_tx,
@@ -55,6 +57,8 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
         lockout,
         setup_manager,
         rate_limiter,
+        power_state,
+        script_state,
     };
 
     let router = nodedesk_agent::build_router(app_state.clone());

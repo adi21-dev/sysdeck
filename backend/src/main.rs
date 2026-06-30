@@ -6,7 +6,7 @@ use nodedesk_agent::auth;
 use nodedesk_agent::db::TelemetrySnapshot;
 use nodedesk_agent::{
     build_router, find_available_port, init_db, init_dirs, setup_tray, AppState, LockoutState,
-    SetupManager,
+    PowerState, ScriptState, SetupManager,
 };
 
 #[tokio::main]
@@ -53,6 +53,8 @@ async fn main() {
     let lockout = Arc::new(LockoutState::new());
     let setup_manager = Arc::new(SetupManager::new());
     let rate_limiter = auth::create_rate_limiter();
+    let power_state = Arc::new(PowerState::new());
+    let script_state = Arc::new(ScriptState::new());
 
     let app_state = AppState {
         telemetry_tx,
@@ -61,6 +63,8 @@ async fn main() {
         lockout,
         setup_manager,
         rate_limiter,
+        power_state,
+        script_state,
     };
 
     let app = build_router(app_state.clone());
