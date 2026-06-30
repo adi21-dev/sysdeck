@@ -137,16 +137,12 @@ async fn run_script(
 
     let stdout_task = stdout.map(|stdout| {
         let tx = output_tx.clone();
-        tokio::spawn(async move {
-            read_stream(stdout, "stdout", tx).await
-        })
+        tokio::spawn(async move { read_stream(stdout, "stdout", tx).await })
     });
 
     let stderr_task = stderr.map(|stderr| {
         let tx = output_tx.clone();
-        tokio::spawn(async move {
-            read_stream(stderr, "stderr", tx).await
-        })
+        tokio::spawn(async move { read_stream(stderr, "stderr", tx).await })
     });
 
     let status = tokio::time::timeout(SCRIPT_TIMEOUT, child.wait()).await;
@@ -260,7 +256,7 @@ async fn handle_script_ws(mut socket: WebSocket, state: crate::AppState, id: Str
         match rx.recv().await {
             Ok(output) => {
                 let msg = serde_json::to_string(&output).unwrap_or_default();
-                if socket.send(Message::Text(msg.into())).await.is_err() {
+                if socket.send(Message::Text(msg)).await.is_err() {
                     break;
                 }
             }

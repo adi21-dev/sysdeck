@@ -233,8 +233,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/files/list", get(file_manager::list_handler))
         .route(
             "/api/files/upload",
-            post(file_manager::upload_handler)
-                .layer(DefaultBodyLimit::max(500 * 1024 * 1024)),
+            post(file_manager::upload_handler).layer(DefaultBodyLimit::max(500 * 1024 * 1024)),
         )
         .route("/api/files/download", get(file_manager::download_handler))
         .route("/api/files/delete", post(file_manager::delete_handler))

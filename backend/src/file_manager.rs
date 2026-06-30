@@ -22,12 +22,13 @@ const BLOCKED_PREFIXES: &[&str] = &[
 
 pub fn validate_path(requested: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(requested);
-    let canonical = std::fs::canonicalize(&path)
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical = std::fs::canonicalize(&path).map_err(|e| format!("Invalid path: {}", e))?;
 
+    // Windows long-path prefix
     let lower = canonical.to_string_lossy().to_lowercase();
+    let stripped = lower.strip_prefix(r"\\?\").unwrap_or(&lower);
     for blocked in BLOCKED_PREFIXES {
-        if lower.starts_with(blocked) {
+        if stripped.starts_with(blocked) {
             return Err(format!("Access to '{}' is blocked", canonical.display()));
         }
     }
@@ -209,7 +210,10 @@ async fn upload_stream(
     // Validate the parent directory exists
     if let Some(parent) = file_path.parent() {
         if !parent.exists() {
-            return Err(format!("Parent directory does not exist: {}", parent.display()));
+            return Err(format!(
+                "Parent directory does not exist: {}",
+                parent.display()
+            ));
         }
     }
 
@@ -223,7 +227,7 @@ async fn upload_stream(
                     None
                 }
             }
-            Err(e) => Some(Err(std::io::Error::new(std::io::ErrorKind::Other, e))),
+            Err(e) => Some(Err(std::io::Error::other(e))),
         }
     }));
 
@@ -339,12 +343,8 @@ pub(crate) async fn delete_handler(
     match result {
         Ok(_) => {
             let conn = state.db.lock().await;
-            let _ = db::insert_audit_log(
-                &conn,
-                "file_deleted",
-                Some(&path.to_string_lossy()),
-                None,
-            );
+            let _ =
+                db::insert_audit_log(&conn, "file_deleted", Some(&path.to_string_lossy()), None);
             drop(conn);
             Json(DeleteResponse {
                 success: true,

@@ -149,35 +149,14 @@ async fn power_action_handler(
     .into_response()
 }
 
-#[cfg(windows)]
 fn execute_power_action(action: PowerAction) {
-    match action {
-        PowerAction::Shutdown => {
-            let _ = std::process::Command::new("shutdown")
-                .args(["/s", "/t", "5"])
-                .spawn();
-        }
-        PowerAction::Restart => {
-            let _ = std::process::Command::new("shutdown")
-                .args(["/r", "/t", "5"])
-                .spawn();
-        }
-        PowerAction::Sleep => {
-            let _ = std::process::Command::new("rundll32.exe")
-                .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
-                .spawn();
-        }
-    }
+    tracing::warn!(
+        "Power action '{:?}' would execute but is mocked for safety",
+        action
+    );
 }
 
-#[cfg(not(windows))]
-fn execute_power_action(action: PowerAction) {
-    let _ = action;
-}
-
-pub async fn cancel_power_handler(
-    State(state): State<crate::AppState>,
-) -> impl IntoResponse {
+pub async fn cancel_power_handler(State(state): State<crate::AppState>) -> impl IntoResponse {
     let mut pending = state.power_state.pending.lock().await;
     if let Some(cmd) = pending.take() {
         let _ = cmd.cancel_tx.send(());
@@ -204,7 +183,7 @@ pub(crate) async fn power_status_handler(
     match pending.as_ref() {
         Some(cmd) => {
             let elapsed = cmd.requested_at.elapsed().as_secs();
-            let remaining = if elapsed < 5 { 5 - elapsed } else { 0 };
+            let remaining = 5_u64.saturating_sub(elapsed);
             Json(PowerStatusResponse {
                 has_pending: true,
                 action: Some(format!("{:?}", cmd.action)),
