@@ -111,7 +111,7 @@ pub(crate) async fn execute_handler(
             data: serde_json::to_string(&result).unwrap_or_default(),
         });
 
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(15)).await;
 
         let mut running = state_clone.script_state.running.lock().await;
         running.remove(&id_clone);

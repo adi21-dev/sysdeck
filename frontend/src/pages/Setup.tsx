@@ -198,7 +198,9 @@ function StepTotp({
       {!fetched && !error && <p className="text-sm text-muted-foreground">Loading QR code...</p>}
       {error && !fetched && <p className="text-sm text-destructive">{error}</p>}
       {qrSvg && (
-        <div className="flex justify-center" dangerouslySetInnerHTML={{ __html: qrSvg }} />
+        <div className="flex justify-center">
+          <img src={qrSvg} alt="TOTP QR Code" className="h-48 w-48" />
+        </div>
       )}
       {secret && (
         <div className="text-center">

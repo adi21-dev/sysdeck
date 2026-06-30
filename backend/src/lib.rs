@@ -21,7 +21,7 @@ use axum::{middleware, Router};
 use rusqlite::Connection;
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tower_http::cors::CorsLayer;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem};
 use tray_icon::TrayIconBuilder;
 
 pub use auth::{IpRateLimiter, LockoutState};
@@ -125,8 +125,16 @@ pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
 
 pub fn setup_tray(shutdown_tx: oneshot::Sender<()>) {
     std::thread::spawn(move || {
+        let startup_item = CheckMenuItem::new("Run on startup", true, false, None);
         let quit_item = MenuItem::new("Quit", true, None);
-        let menu = Menu::with_items(&[&quit_item]).expect("Failed to create menu");
+        let menu = Menu::with_items(&[&startup_item, &quit_item]).expect("Failed to create menu");
+
+        let on = std::process::Command::new("reg")
+            .args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "NodeDesk Agent"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        startup_item.set_checked(on);
 
         let _tray = TrayIconBuilder::new()
             .with_tooltip("NodeDesk Agent")
@@ -136,10 +144,27 @@ pub fn setup_tray(shutdown_tx: oneshot::Sender<()>) {
 
         let menu_channel = MenuEvent::receiver();
 
-        if let Ok(event) = menu_channel.recv() {
-            if event.id == quit_item.id() {
-                println!("Quit selected from tray. Shutting down...");
-                let _ = shutdown_tx.send(());
+        loop {
+            if let Ok(event) = menu_channel.recv() {
+                if event.id == quit_item.id() {
+                    println!("Quit selected from tray. Shutting down...");
+                    let _ = shutdown_tx.send(());
+                    return;
+                }
+                if event.id == startup_item.id() {
+                    let on = !startup_item.is_checked();
+                    startup_item.set_checked(on);
+                    let exe = std::env::current_exe().unwrap_or_default();
+                    if on {
+                        let _ = std::process::Command::new("reg")
+                            .args(["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "NodeDesk Agent", "/t", "REG_SZ", "/d", &exe.to_string_lossy(), "/f"])
+                            .output();
+                    } else {
+                        let _ = std::process::Command::new("reg")
+                            .args(["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "NodeDesk Agent", "/f"])
+                            .output();
+                    }
+                }
             }
         }
     });

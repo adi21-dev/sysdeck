@@ -47,7 +47,7 @@ export function DashboardPage() {
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* Metric Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xs text-muted-foreground">CPU</CardTitle>
@@ -80,6 +80,29 @@ export function DashboardPage() {
           <CardContent>
             <p className="text-2xl font-bold">{diskPct != null ? `${diskPct}%` : "—"}</p>
             <p className="text-xs text-muted-foreground">{diskUsed ?? "—"} / {diskTotal ?? "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground">Network</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm space-y-1">
+            <p>↓ {rx ?? "—"}</p>
+            <p>↑ {tx ?? "—"}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground">Battery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {batteryPct != null ? (
+              <p className={`text-2xl font-bold ${batteryCharging ? "text-yellow-500" : batteryPct < 20 ? "text-red-500" : "text-green-500"}`}>
+                {batteryCharging ? "⚡ " : ""}{batteryPct.toFixed(0)}%
+              </p>
+            ) : (
+              <p className="text-2xl font-bold">—</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -170,32 +193,6 @@ export function DashboardPage() {
         </Card>
       </div>
 
-        {/* Bottom Row */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Network</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-1">
-            <p>↓ {rx ?? "—"}</p>
-            <p>↑ {tx ?? "—"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Battery</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {batteryPct != null ? (
-              <p className={`text-2xl font-bold ${batteryCharging ? "text-yellow-500" : batteryPct < 20 ? "text-red-500" : "text-green-500"}`}>
-                {batteryCharging ? "⚡ " : ""}{batteryPct.toFixed(0)}%
-              </p>
-            ) : (
-              <p className="text-2xl font-bold">—</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   )
 }

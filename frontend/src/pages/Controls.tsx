@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Power, RefreshCw, Moon, AlertTriangle } from "lucide-react"
+import { Power, RefreshCw, Moon, LogOut, AlertTriangle, PowerOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -124,6 +124,8 @@ export function ControlsPage() {
     { action: "shutdown", label: "Shutdown", icon: Power, color: "text-red-500", bg: "bg-red-500/10" },
     { action: "restart", label: "Restart", icon: RefreshCw, color: "text-amber-500", bg: "bg-amber-500/10" },
     { action: "sleep", label: "Sleep", icon: Moon, color: "text-blue-500", bg: "bg-blue-500/10" },
+    { action: "hibernate", label: "Hibernate", icon: PowerOff, color: "text-purple-500", bg: "bg-purple-500/10" },
+    { action: "signout", label: "Sign Out", icon: LogOut, color: "text-orange-500", bg: "bg-orange-500/10" },
   ]
 
   return (
@@ -151,7 +153,7 @@ export function ControlsPage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         {cards.map((card) => (
           <Card
             key={card.action}
@@ -177,7 +179,10 @@ export function ControlsPage() {
             <AlertDialogTitle>Active file transfer in progress</AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDialog?.transfers} file transfer(s) are in progress.
-              {confirmDialog?.action === "shutdown" ? " Shutdown" : confirmDialog?.action === "restart" ? " Restart" : " Sleep"}
+              {confirmDialog?.action === "shutdown" ? " Shutdown" : 
+               confirmDialog?.action === "restart" ? " Restart" : 
+               confirmDialog?.action === "sleep" ? " Sleep" :
+               confirmDialog?.action === "hibernate" ? " Hibernate" : " Sign Out"}
               {" "}will cancel them. Continue?
             </AlertDialogDescription>
           </AlertDialogHeader>

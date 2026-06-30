@@ -47,6 +47,7 @@ export function ScriptsPage() {
       setScriptType(script.type as "powershell" | "cmd")
       setContent(script.content)
     } else {
+      setScriptType("cmd")
       setContent("")
     }
   }
@@ -98,9 +99,9 @@ export function ScriptsPage() {
 
       if (mode === "wait" && data.result) {
         const r = data.result
-        if (r.stdout) addOutput({ stream: "stdout", data: r.stdout })
-        if (r.stderr) addOutput({ stream: "stderr", data: r.stderr })
-        addOutput({ stream: "system", data: `[Process exited with code ${r.exit_code}]` })
+        if (r.stdout) addOutput({ stream: "stdout", data: r.stdout.trimEnd() })
+        if (r.stderr) addOutput({ stream: "stderr", data: r.stderr.trimEnd() })
+        addOutput({ stream: "system", data: `Process exited with code ${r.exit_code}` })
         if (r.truncated) addOutput({ stream: "system", data: "[Output truncated at 1MB]" })
         setStatus("completed")
         setRunning(false)
@@ -285,7 +286,13 @@ export function ScriptsPage() {
                   line.stream === "stderr" && "text-destructive",
                   line.stream === "system" && "text-muted-foreground",
                 )}>
-                  <span className="text-xs text-muted-foreground">[{line.stream}]</span> {line.data}
+                  {line.stream === "system" ? (
+                    <>▸ {line.data}</>
+                  ) : line.stream === "stderr" ? (
+                    <><span className="text-xs text-destructive">[stderr]</span> {line.data}</>
+                  ) : (
+                    line.data
+                  )}
                 </div>
               ))}
             </div>
