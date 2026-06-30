@@ -36,3 +36,6 @@ logs/
 # Test artifacts
 test_*.db
 *.sqlite
+frontend/test-results/
+frontend/.auth/
+frontend/e2e/*.png
