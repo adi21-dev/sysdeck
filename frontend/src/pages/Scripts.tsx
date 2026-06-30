@@ -11,12 +11,6 @@ import {
 import { cn } from "@/lib/utils"
 import { useScriptsStore, type ScriptOutput } from "@/lib/scripts-store"
 
-interface ExecuteResponse {
-  success: boolean
-  id: string
-  message: string
-}
-
 const PREDEFINED = [
   { label: "Custom", type: "", content: "" },
   { label: "System Info", type: "powershell", content: "Get-ComputerInfo | Format-List" },
@@ -26,7 +20,7 @@ const PREDEFINED = [
 
 export function ScriptsPage() {
   const {
-    mode, scriptType, content, predefined, running, runId,
+    mode, scriptType, content, predefined, running,
     output, status, consoleOpen, errorCount,
     setMode, setScriptType, setContent, setPredefined,
     setRunning, setRunId, addOutput, clearOutput,
@@ -88,9 +82,10 @@ export function ScriptsPage() {
         body: JSON.stringify({
           script_type: scriptType,
           content: scriptContent,
+          mode,
         }),
       })
-      const data: ExecuteResponse = await res.json()
+      const data = await res.json()
 
       if (!data.success) {
         setStatus("failed")
@@ -101,7 +96,16 @@ export function ScriptsPage() {
 
       setRunId(data.id)
 
-      if (mode === "live" && data.id) {
+      if (mode === "wait" && data.result) {
+        const r = data.result
+        if (r.stdout) addOutput({ stream: "stdout", data: r.stdout })
+        if (r.stderr) addOutput({ stream: "stderr", data: r.stderr })
+        addOutput({ stream: "system", data: `[Process exited with code ${r.exit_code}]` })
+        if (r.truncated) addOutput({ stream: "system", data: "[Output truncated at 1MB]" })
+        setStatus("completed")
+        setRunning(false)
+        scrollToBottom()
+      } else if (mode === "live" && data.id) {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
         const ws = new WebSocket(`${protocol}//${window.location.host}/ws/script/${data.id}`)
 
@@ -109,6 +113,7 @@ export function ScriptsPage() {
           try {
             const msg: ScriptOutput & { event?: string } = JSON.parse(event.data)
             if (msg.event === "done") {
+              addOutput({ stream: "system", data: "Process completed" })
               setStatus("completed")
               setRunning(false)
               ws.close()
@@ -126,18 +131,13 @@ export function ScriptsPage() {
           setRunning(false)
         }
         ws.onclose = () => {
-          if (status === "running") {
+          if (useScriptsStore.getState().status === "running") {
             addOutput({ stream: "system", data: "Connection lost" })
             setStatus("failed")
             setRunning(false)
           }
         }
         wsRef.current = ws
-      } else {
-        setStatus("completed")
-        setRunning(false)
-        addOutput({ stream: "system", data: "Script completed" })
-        scrollToBottom()
       }
     } catch {
       setLocalError("Network error")

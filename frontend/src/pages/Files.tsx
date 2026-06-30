@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from "react"
 import {
-  Upload, Download, Trash2, Pencil, RefreshCw,
+  Download, Trash2, Pencil, RefreshCw,
   Table, Grid3X3, Folder, File, ChevronRight, Plus, X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,10 +11,6 @@ import { useFilesStore, type FileEntry } from "@/lib/files-store"
 
 function toApiPath(p: string): string {
   return p.replace(/\//g, "\\")
-}
-
-function toInternalPath(p: string): string {
-  return p.replace(/\\/g, "/")
 }
 
 function listPath(path: string): Promise<{ success: boolean; entries: FileEntry[]; path: string; error?: string }> {

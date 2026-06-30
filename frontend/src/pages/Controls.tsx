@@ -27,10 +27,10 @@ interface PowerStatus {
 }
 
 async function powerAction(action: string, confirmed: boolean): Promise<PowerResponse> {
-  const res = await fetch(`/api/power/${action}`, {
+  const res = await fetch("/api/power/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ confirmed }),
+    body: JSON.stringify({ action, confirmed }),
   })
   return res.json()
 }

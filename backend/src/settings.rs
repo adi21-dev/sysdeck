@@ -12,6 +12,14 @@ use crate::auth;
 use crate::db;
 use crate::AppState;
 
+fn ok_json(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (StatusCode::OK, Json(json!({"success": true, "message": msg})))
+}
+
+fn err_json(code: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::Value>) {
+    (code, Json(json!({"success": false, "message": msg})))
+}
+
 #[derive(Deserialize)]
 pub struct PasswordChange {
     current_password: String,
@@ -23,28 +31,27 @@ pub async fn change_password_handler(
     Json(body): Json<PasswordChange>,
 ) -> Response {
     let db_lock = state.db.lock().await;
-    let result: Result<String, _> = db_lock.query_row(
-        "SELECT password_hash FROM users WHERE id = 1",
-        [],
-        |row| row.get::<_, String>(0),
-    );
+    let result: Result<String, _> =
+        db_lock.query_row("SELECT password_hash FROM users WHERE id = 1", [], |row| {
+            row.get::<_, String>(0)
+        });
     let current_hash = match result {
         Ok(r) => r,
-        Err(_) => return (StatusCode::NOT_FOUND, Json(json!({"success": false, "message": "User not found"}))).into_response(),
+        Err(_) => return err_json(StatusCode::NOT_FOUND, "User not found").into_response(),
     };
     drop(db_lock);
 
     if !auth::verify_password(&body.current_password, &current_hash).unwrap_or(false) {
-        return (StatusCode::UNAUTHORIZED, Json(json!({"success": false, "message": "Current password is incorrect"}))).into_response();
+        return err_json(StatusCode::UNAUTHORIZED, "Current password is incorrect").into_response();
     }
 
     if let Err(e) = auth::check_password_strength(&body.new_password) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": e}))).into_response();
+        return err_json(StatusCode::BAD_REQUEST, &e).into_response();
     }
 
     let new_hash = match auth::hash_password(&body.new_password) {
         Ok(h) => h,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": e}))).into_response(),
+        Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response(),
     };
 
     let now = std::time::SystemTime::now()
@@ -57,11 +64,11 @@ pub async fn change_password_handler(
         "UPDATE users SET password_hash = ?1, updated_at = ?2 WHERE id = 1",
         rusqlite::params![new_hash, now],
     ) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": format!("DB error: {}", e)}))).into_response();
+        return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("DB error: {}", e)).into_response();
     }
     let _ = db::insert_audit_log(&db_lock, "password_changed", None, None);
     drop(db_lock);
-    Json(json!({"success": true, "message": "Password updated"})).into_response()
+    ok_json("Password updated").into_response()
 }
 
 #[derive(Serialize)]
@@ -72,9 +79,7 @@ pub struct TotpResetResponse {
     message: Option<String>,
 }
 
-pub async fn reset_totp_handler(
-    State(state): State<AppState>,
-) -> Json<TotpResetResponse> {
+pub async fn reset_totp_handler(State(state): State<AppState>) -> Json<TotpResetResponse> {
     let secret = auth::generate_totp_secret();
     let qr_svg = auth::generate_totp_qr_data_uri(&secret);
     let b32 = auth::totp_secret_to_b32(&secret);
@@ -103,11 +108,11 @@ pub async fn verify_totp_handler(
 ) -> Response {
     let secret_bytes = match auth::totp_secret_from_b32(&body.secret) {
         Ok(b) => b,
-        Err(_) => return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "Invalid secret format"}))).into_response(),
+        Err(_) => return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response(),
     };
 
     if !auth::verify_totp_code(&secret_bytes, &body.code) {
-        return (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": "Invalid TOTP code"}))).into_response();
+        return err_json(StatusCode::BAD_REQUEST, "Invalid TOTP code").into_response();
     }
 
     let now = std::time::SystemTime::now()
@@ -120,38 +125,33 @@ pub async fn verify_totp_handler(
         "UPDATE users SET totp_secret = ?1, updated_at = ?2 WHERE id = 1",
         rusqlite::params![body.secret, now],
     ) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": format!("DB error: {}", e)}))).into_response();
+        return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("DB error: {}", e)).into_response();
     }
     let _ = db::insert_audit_log(&db_lock, "totp_reset_completed", None, None);
     drop(db_lock);
-    Json(json!({"success": true, "message": "TOTP updated"})).into_response()
+    ok_json("TOTP updated").into_response()
 }
 
-pub async fn list_recovery_codes_handler(
-    State(state): State<AppState>,
-) -> Response {
+pub async fn list_recovery_codes_handler(State(state): State<AppState>) -> Response {
     let db_lock = state.db.lock().await;
-    let codes: Vec<String> = match db_lock
-        .prepare("SELECT code_hash FROM recovery_codes WHERE used = 0 ORDER BY id")
-    {
-        Ok(mut stmt) => stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .filter_map(|r| r.ok())
-            .collect(),
-        Err(_) => vec![],
-    };
+    let codes: Vec<String> =
+        match db_lock.prepare("SELECT code_hash FROM recovery_codes WHERE used = 0 ORDER BY id") {
+            Ok(mut stmt) => stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect(),
+            Err(_) => vec![],
+        };
     drop(db_lock);
     Json(json!({"success": true, "codes": codes})).into_response()
 }
 
-pub async fn regenerate_recovery_codes_handler(
-    State(state): State<AppState>,
-) -> Response {
+pub async fn regenerate_recovery_codes_handler(State(state): State<AppState>) -> Response {
     let plain_codes = auth::generate_recovery_codes();
     let hashes = match auth::hash_recovery_codes(&plain_codes) {
         Ok(h) => h,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": e}))).into_response(),
+        Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response(),
     };
 
     let now = std::time::SystemTime::now()
@@ -172,50 +172,47 @@ pub async fn regenerate_recovery_codes_handler(
     Json(json!({"success": true, "codes": plain_codes})).into_response()
 }
 
-pub async fn revoke_all_handler(
-    State(state): State<AppState>,
-) -> Response {
+pub async fn revoke_all_handler(State(state): State<AppState>) -> Response {
     let db_lock = state.db.lock().await;
     match auth::revoke_all_sessions(&db_lock) {
         Ok(_) => {
             let _ = db::insert_audit_log(&db_lock, "all_sessions_revoked", None, None);
             drop(db_lock);
-            Json(json!({"success": true, "message": "All sessions revoked"})).into_response()
+            ok_json("All sessions revoked").into_response()
         }
         Err(e) => {
             drop(db_lock);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": e}))).into_response()
+            err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response()
         }
     }
 }
 
-pub async fn export_db_handler(
-    State(state): State<AppState>,
-) -> Response {
+pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
     let db_path = crate::get_db_path();
     let data = match std::fs::read(&db_path) {
         Ok(d) => d,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"success": false, "message": format!("Failed to read DB: {}", e)}))).into_response(),
+        Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("Failed to read DB: {}", e)).into_response(),
     };
 
     let filename = db_path.file_name().unwrap().to_str().unwrap_or("data.db");
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/octet-stream")
-        .header(header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", filename))
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", filename),
+        )
         .body(axum::body::Body::from(data))
         .unwrap()
 }
 
-pub async fn download_logs_handler(
-    State(_state): State<AppState>,
-) -> Response {
+pub async fn download_logs_handler(State(_state): State<AppState>) -> Response {
     let logs_dir = crate::get_logs_dir();
     let mut buffer = Vec::new();
     {
         let mut zip_writer = zip::ZipWriter::new(std::io::Cursor::new(&mut buffer));
-        let options: FileOptions<'_, ()> = FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options: FileOptions<'_, ()> =
+            FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         if let Ok(entries) = std::fs::read_dir(&logs_dir) {
             for entry in entries.flatten() {
@@ -238,14 +235,15 @@ pub async fn download_logs_handler(
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/zip")
-        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"logs.zip\"")
+        .header(
+            header::CONTENT_DISPOSITION,
+            "attachment; filename=\"logs.zip\"",
+        )
         .body(axum::body::Body::from(buffer))
         .unwrap()
 }
 
-pub async fn get_paths_handler(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+pub async fn get_paths_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let db_lock = state.db.lock().await;
     let allowed = db::get_setting(&db_lock, "allowed_paths")
         .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
@@ -277,9 +275,7 @@ pub async fn set_paths_handler(
     Json(json!({"success": true, "message": "Paths updated"}))
 }
 
-pub async fn get_port_handler(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
+pub async fn get_port_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let db_lock = state.db.lock().await;
     let port = db::get_setting(&db_lock, "port")
         .and_then(|v| v.parse::<u16>().ok())
@@ -302,40 +298,16 @@ pub async fn set_port_handler(
     }
     let db_lock = state.db.lock().await;
     let _ = db::set_setting(&db_lock, "port", &body.port.to_string());
-    let _ = db::insert_audit_log(&db_lock, "port_changed", Some(&format!("Port changed to {}", body.port)), None);
+    let _ = db::insert_audit_log(
+        &db_lock,
+        "port_changed",
+        Some(&format!("Port changed to {}", body.port)),
+        None,
+    );
     drop(db_lock);
-    Json(json!({"success": true, "new_port": body.port, "message": "Port will change on next restart"}))
+    Json(
+        json!({"success": true, "new_port": body.port, "message": "Port will change on next restart"}),
+    )
 }
 
-pub async fn get_relay_handler(
-    State(state): State<AppState>,
-) -> Json<serde_json::Value> {
-    let db_lock = state.db.lock().await;
-    let enabled = db::get_setting(&db_lock, "relay_enabled")
-        .map(|v| v == "true")
-        .unwrap_or(false);
-    let url = db::get_setting(&db_lock, "relay_url");
-    drop(db_lock);
-    Json(json!({"success": true, "enabled": enabled, "url": url}))
-}
 
-#[derive(Deserialize)]
-pub struct RelayBody {
-    enabled: bool,
-}
-
-pub async fn set_relay_handler(
-    State(state): State<AppState>,
-    Json(body): Json<RelayBody>,
-) -> Json<serde_json::Value> {
-    let db_lock = state.db.lock().await;
-    let _ = db::set_setting(&db_lock, "relay_enabled", if body.enabled { "true" } else { "false" });
-    if body.enabled {
-        let _ = db::set_setting(&db_lock, "relay_url", "https://placeholder.trycloudflare.com");
-    } else {
-        let _ = db::set_setting(&db_lock, "relay_url", "");
-    }
-    let _ = db::insert_audit_log(&db_lock, "relay_toggled", Some(&format!("Relay {}", if body.enabled { "enabled" } else { "disabled" })), None);
-    drop(db_lock);
-    Json(json!({"success": true, "enabled": body.enabled, "url": if body.enabled { Some("https://placeholder.trycloudflare.com") } else { None }}))
-}

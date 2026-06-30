@@ -2,7 +2,6 @@ import { useEffect, useCallback } from "react"
 import { ScrollText, LogIn, LogOut, FolderUp, FolderX, Pencil, Settings, AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
 import { useAuditStore, type AuditEntry } from "@/lib/audit-store"
 
 const EVENT_ICONS: Record<string, { icon: typeof LogIn; label: string }> = {
@@ -60,7 +59,7 @@ async function fetchLogs(
 export function AuditPage() {
   const {
     entries, nextCursor, hasMore, filters, loading, error,
-    setEntries, appendEntries, setFilters, setLoading, setError, reset,
+    setEntries, appendEntries, setFilters, setLoading, setError,
   } = useAuditStore()
 
   const loadLogs = useCallback(async () => {

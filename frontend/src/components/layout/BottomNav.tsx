@@ -1,22 +1,6 @@
 import { NavLink } from "react-router-dom"
-import {
-  LayoutDashboard,
-  FolderOpen,
-  Terminal,
-  Power,
-  ScrollText,
-  Settings,
-} from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const navItems = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/files", icon: FolderOpen, label: "Files" },
-  { to: "/scripts", icon: Terminal, label: "Scripts" },
-  { to: "/controls", icon: Power, label: "Controls" },
-  { to: "/audit", icon: ScrollText, label: "Audit" },
-  { to: "/settings", icon: Settings, label: "Settings" },
-]
+import { navItems } from "@/lib/navigation"
 
 export function BottomNav() {
   return (

@@ -10,7 +10,7 @@ use axum::extract::Request;
 use axum::extract::State;
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware;
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Form, Json};
 use data_encoding::{BASE32_NOPAD, BASE64};
 use governor::clock::DefaultClock;
@@ -315,7 +315,6 @@ pub fn verify_session(conn: &rusqlite::Connection, jti: &str) -> Result<bool, St
     Ok(count > 0)
 }
 
-#[allow(dead_code)]
 pub fn revoke_all_sessions(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute("DELETE FROM sessions", [])
         .map_err(|e| format!("Failed to revoke sessions: {}", e))?;
@@ -334,13 +333,8 @@ pub struct LockoutState {
     inner: std::sync::Mutex<HashMap<i64, LockoutInfo>>,
 }
 
-impl Default for LockoutState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl LockoutState {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             inner: std::sync::Mutex::new(HashMap::new()),
@@ -404,7 +398,7 @@ pub struct LoginResponse {
     pub message: String,
 }
 
-fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> String {
+pub(crate) fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> String {
     if let Some(val) = headers.get("X-Forwarded-For") {
         if let Ok(s) = val.to_str() {
             if let Some(ip) = s.split(',').next() {
@@ -415,8 +409,8 @@ fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> String {
     "127.0.0.1".to_string()
 }
 
-pub async fn login_page() -> impl IntoResponse {
-    Html(LOGIN_PAGE)
+fn login_err(code: StatusCode, msg: &str) -> Response {
+    (code, Json(LoginResponse { success: false, message: msg.to_string() })).into_response()
 }
 
 pub async fn login_handler(
@@ -429,21 +423,9 @@ pub async fn login_handler(
 
     if state.lockout.check_locked(user_id) {
         let conn = state.db.lock().await;
-        let _ = db::insert_audit_log(
-            &conn,
-            "login_locked",
-            Some("Account locked due to too many failed attempts"),
-            Some(&ip),
-        );
+        let _ = db::insert_audit_log(&conn, "login_locked", Some("Account locked"), Some(&ip));
         drop(conn);
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(LoginResponse {
-                success: false,
-                message: "Account locked. Try again in 15 minutes.".to_string(),
-            }),
-        )
-            .into_response();
+        return login_err(StatusCode::TOO_MANY_REQUESTS, "Account locked. Try again in 15 minutes.");
     }
 
     let (password_valid, totp_secret) = {
@@ -460,16 +442,7 @@ pub async fn login_handler(
                 let pw_ok = verify_password(&form.password, &hash).unwrap_or(false);
                 (pw_ok, secret_b32)
             }
-            Err(_) => {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    Json(LoginResponse {
-                        success: false,
-                        message: "Invalid credentials".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
+            Err(_) => return login_err(StatusCode::UNAUTHORIZED, "Invalid credentials"),
         }
     };
 
@@ -483,28 +456,12 @@ pub async fn login_handler(
         } else {
             "Invalid credentials"
         };
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(LoginResponse {
-                success: false,
-                message: msg.to_string(),
-            }),
-        )
-            .into_response();
+        return login_err(StatusCode::UNAUTHORIZED, msg);
     }
 
     let secret_bytes = match totp_secret_from_b32(&totp_secret) {
         Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
-                    success: false,
-                    message: "Server configuration error".to_string(),
-                }),
-            )
-                .into_response();
-        }
+        Err(_) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error"),
     };
 
     if !verify_totp_code(&secret_bytes, &form.totp_code) {
@@ -517,14 +474,7 @@ pub async fn login_handler(
         } else {
             "Invalid credentials"
         };
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(LoginResponse {
-                success: false,
-                message: msg.to_string(),
-            }),
-        )
-            .into_response();
+        return login_err(StatusCode::UNAUTHORIZED, msg);
     }
 
     state.lockout.clear_failures(user_id);
@@ -534,31 +484,13 @@ pub async fn login_handler(
         drop(conn);
         match result {
             Ok(j) => j,
-            Err(e) => {
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(LoginResponse {
-                        success: false,
-                        message: format!("Session creation failed: {}", e),
-                    }),
-                )
-                    .into_response();
-            }
+            Err(e) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, &format!("Session creation failed: {}", e)),
         }
     };
 
     let token = match create_jwt(&jti, &state.jwt_key) {
         Ok(t) => t,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(LoginResponse {
-                    success: false,
-                    message: format!("Token creation failed: {}", e),
-                }),
-            )
-                .into_response();
-        }
+        Err(e) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, &format!("Token creation failed: {}", e)),
     };
 
     {
@@ -635,13 +567,13 @@ pub async fn auth_middleware(
     };
 
     if needs_setup {
-        if path.starts_with("/setup") {
+        if path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/api/auth/check" {
             return next.run(req).await;
         }
         return Redirect::to("/setup").into_response();
     }
 
-    if path == "/login" || path.starts_with("/setup") || path == "/" || path == "/api/auth/check" {
+    if path == "/login" || path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/" || path == "/api/auth/check" {
         return next.run(req).await;
     }
 
@@ -688,7 +620,7 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     let path = req.uri().path().to_string();
 
-    if path == "/login" || path.starts_with("/setup") || path == "/api/auth/check" {
+    if path == "/login" || path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/api/auth/check" {
         return next.run(req).await;
     }
 
@@ -720,41 +652,6 @@ pub async fn csp_middleware(req: Request, next: middleware::Next) -> Response {
     );
     response
 }
-
-const LOGIN_PAGE: &str = r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - NodeDesk</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0f0f0f; color: #e0e0e0; }
-        .card { padding: 2.5rem 3rem; border-radius: 12px; background: #1a1a1a; box-shadow: 0 4px 24px rgba(0,0,0,0.4); border: 1px solid #2a2a2a; max-width: 420px; width: 100%; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-        .desc { color: #888; margin-bottom: 1.5rem; font-size: 0.9rem; line-height: 1.5; }
-        label { display: block; margin-bottom: 0.5rem; color: #ccc; font-size: 0.85rem; font-weight: 500; }
-        input[type="password"], input[type="text"] { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #333; background: #252525; color: #e0e0e0; font-size: 1rem; margin-bottom: 1rem; }
-        input[type="password"]:focus, input[type="text"]:focus { outline: none; border-color: #22c55e; }
-        .btn { width: 100%; padding: 0.75rem; border-radius: 8px; background: #22c55e; color: #000; font-weight: 600; border: none; cursor: pointer; font-size: 1rem; }
-        .btn:hover { background: #1da34b; }
-        .error { display: none; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1>Login</h1>
-        <p class="desc">Enter your password and TOTP code to access the dashboard.</p>
-        <form method="post" action="/login">
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" placeholder="Enter your password" required>
-            <label for="totp_code">Authenticator Code</label>
-            <input type="text" id="totp_code" name="totp_code" placeholder="000000" required maxlength="6" pattern="[0-9]{6}">
-            <button type="submit" class="btn">Log In</button>
-        </form>
-    </div>
-</body>
-</html>"#;
 
 #[cfg(test)]
 mod tests {
@@ -896,7 +793,6 @@ mod tests {
 
     // --- DPAPI ---
 
-    #[cfg(windows)]
     #[ignore]
     #[test]
     fn test_dpapi_encrypt_decrypt_roundtrip() {

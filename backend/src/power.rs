@@ -25,17 +25,12 @@ pub struct PowerState {
 }
 
 impl PowerState {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             pending: Mutex::new(None),
             active_uploads: AtomicU32::new(0),
         }
-    }
-}
-
-impl Default for PowerState {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -49,6 +44,7 @@ struct PowerResponse {
 
 #[derive(Deserialize)]
 pub(crate) struct PowerRequest {
+    action: String,
     #[serde(default)]
     confirmed: bool,
 }
@@ -60,32 +56,24 @@ struct PowerStatusResponse {
     remaining_secs: Option<u64>,
 }
 
-pub(crate) async fn shutdown_handler(
+pub(crate) async fn execute_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<PowerRequest>,
 ) -> impl IntoResponse {
-    power_action_handler(state, PowerAction::Shutdown, req.confirmed).await
-}
-
-pub(crate) async fn restart_handler(
-    State(state): State<crate::AppState>,
-    Json(req): Json<PowerRequest>,
-) -> impl IntoResponse {
-    power_action_handler(state, PowerAction::Restart, req.confirmed).await
-}
-
-pub(crate) async fn sleep_handler(
-    State(state): State<crate::AppState>,
-    Json(req): Json<PowerRequest>,
-) -> impl IntoResponse {
-    power_action_handler(state, PowerAction::Sleep, req.confirmed).await
-}
-
-async fn power_action_handler(
-    state: crate::AppState,
-    action: PowerAction,
-    confirmed: bool,
-) -> impl IntoResponse {
+    let action = match req.action.as_str() {
+        "shutdown" => PowerAction::Shutdown,
+        "restart" => PowerAction::Restart,
+        "sleep" => PowerAction::Sleep,
+        _ => {
+            return Json(PowerResponse {
+                success: false,
+                message: format!("Unknown action: {}", req.action),
+                active_transfers: None,
+            })
+            .into_response()
+        }
+    };
+    let confirmed = req.confirmed;
     let active = state.power_state.active_uploads.load(Ordering::Relaxed);
 
     if active > 0 && !confirmed {
