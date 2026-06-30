@@ -19,7 +19,6 @@ interface AuthState {
   setupComplete: boolean
   setAuthenticated: (val: boolean) => void
   setSetupComplete: (val: boolean) => void
-  logout: () => void
 }
 
 interface TelemetryState {
@@ -34,7 +33,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   setupComplete: false,
   setAuthenticated: (val) => set({ isAuthenticated: val }),
   setSetupComplete: (val) => set({ setupComplete: val }),
-  logout: () => set({ isAuthenticated: false }),
 }))
 
 export const useTelemetryStore = create<TelemetryState>((set, get) => ({
@@ -60,4 +58,18 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
   setStatus: (status) => set({ status }),
   retryConnection: null,
   setRetryConnection: (fn) => set({ retryConnection: fn }),
+}))
+
+interface TunnelState {
+  status: string
+  url: string | null
+  error: string | null
+  setTunnel: (t: { status: string; url: string | null; error: string | null }) => void
+}
+
+export const useTunnelStore = create<TunnelState>((set) => ({
+  status: "idle",
+  url: null,
+  error: null,
+  setTunnel: (t) => set(t),
 }))

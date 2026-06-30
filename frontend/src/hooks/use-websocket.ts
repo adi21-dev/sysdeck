@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
-import { useAuthStore, useTelemetryStore, useConnectionStore } from "@/lib/store"
+import { useAuthStore, useTelemetryStore, useConnectionStore, useTunnelStore } from "@/lib/store"
 
 export function useWebSocket() {
   const navigate = useNavigate()
@@ -11,6 +11,7 @@ export function useWebSocket() {
   const addToHistory = useTelemetryStore((s) => s.addToHistory)
   const setStatus = useConnectionStore((s) => s.setStatus)
   const setRetryConnection = useConnectionStore((s) => s.setRetryConnection)
+  const setTunnel = useTunnelStore((s) => s.setTunnel)
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
@@ -36,8 +37,15 @@ export function useWebSocket() {
           navigate("/login")
           return
         }
-        setCurrent(data)
-        addToHistory(data)
+        if (data.event === "telemetry") {
+          setCurrent(data.data)
+          addToHistory(data.data)
+          return
+        }
+        if (data.event === "tunnel_status") {
+          setTunnel({ status: data.status, url: data.url ?? null, error: data.error ?? null })
+          return
+        }
       } catch {
         // ignore non-json messages
       }
@@ -54,7 +62,7 @@ export function useWebSocket() {
 
     wsRef.current = ws
     setRetryConnection(() => connect)
-  }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection])
+  }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel])
 
   useEffect(() => {
     connect()

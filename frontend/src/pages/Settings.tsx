@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import {
-  Key, Shield, Eye, EyeOff, Download, ToggleLeft, FolderKanban, Server, Radio, AlertTriangle, Check, Copy, RefreshCw,
+  Key, Shield, Eye, EyeOff, Download, FolderKanban, Server, Globe, AlertTriangle, Check, Copy, RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useTunnelStore } from "@/lib/store"
 
 export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
@@ -46,24 +47,17 @@ export function SettingsPage() {
   // Port
   const [port, setPort] = useState("3939")
 
-  // Relay
-  const [relayEnabled, setRelayEnabled] = useState(false)
-  const [relayUrl, setRelayUrl] = useState<string | null>(null)
-  const [relayLoading, setRelayLoading] = useState(false)
-
   // Revoke dialog
   const [showRevokeDialog, setShowRevokeDialog] = useState(false)
+
+  // Tunnel
+  const tunnel = useTunnelStore()
+  const [tunnelLoading, setTunnelLoading] = useState(false)
 
   // Load initial data
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
       if (d.success) setPort(String(d.port))
-    }).catch(() => {})
-    fetch("/api/settings/relay").then((r) => r.json()).then((d) => {
-      if (d.success) {
-        setRelayEnabled(d.enabled)
-        setRelayUrl(d.url || null)
-      }
     }).catch(() => {})
     fetch("/api/settings/paths").then((r) => r.json()).then((d) => {
       if (d.success) {
@@ -195,24 +189,26 @@ export function SettingsPage() {
     } catch { showError("Network error") }
   }
 
-  const handleToggleRelay = async () => {
-    setRelayLoading(true)
+  const handleTunnelStart = async () => {
+    setTunnelLoading(true)
     try {
-      const res = await fetch("/api/settings/relay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: !relayEnabled }),
-      })
+      const res = await fetch("/api/tunnel/start", { method: "POST" })
       const data = await res.json()
-      if (data.success) {
-        setRelayEnabled(data.enabled)
-        setRelayUrl(data.url || null)
-        showSuccess(data.enabled ? "Relay enabled" : "Relay disabled")
-      } else {
-        showError(data.message || "Failed")
-      }
+      if (data.success) showSuccess("Tunnel starting...")
+      else showError(data.error || "Failed")
     } catch { showError("Network error") }
-    setRelayLoading(false)
+    setTunnelLoading(false)
+  }
+
+  const handleTunnelStop = async () => {
+    setTunnelLoading(true)
+    try {
+      const res = await fetch("/api/tunnel/stop", { method: "POST" })
+      const data = await res.json()
+      if (data.success) showSuccess("Tunnel stopped")
+      else showError(data.error || "Failed")
+    } catch { showError("Network error") }
+    setTunnelLoading(false)
   }
 
   const addPath = (list: string[], setter: (v: string[]) => void, val: string) => {
@@ -334,6 +330,43 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Tunnel */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Cloudflare Tunnel</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Status: </span>
+            <span className={`text-sm ${tunnel.status === "running" ? "text-green-500" : tunnel.status === "failed" ? "text-red-500" : tunnel.status === "downloading" || tunnel.status === "starting" ? "text-yellow-500" : "text-muted-foreground"}`}>
+              {tunnel.status.charAt(0).toUpperCase() + tunnel.status.slice(1)}
+            </span>
+          </div>
+          {tunnel.url && (
+            <div className="text-sm">
+              <span className="text-muted-foreground">URL: </span>
+              <a href={tunnel.url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                {tunnel.url}
+              </a>
+            </div>
+          )}
+          {tunnel.error && (
+            <p className="text-sm text-red-500">Error: {tunnel.error}</p>
+          )}
+          <div className="flex gap-2">
+            {tunnel.status === "running" ? (
+              <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>
+                Stop Tunnel
+              </Button>
+            ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
+              <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>
+                Start Tunnel
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Configuration */}
       <Card>
         <CardHeader>
@@ -386,23 +419,6 @@ export function SettingsPage() {
             <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
           </div>
 
-          <div className="space-y-3">
-            <h3 className="font-medium text-sm flex items-center gap-2"><Radio className="h-4 w-4" /> Cloudflare Relay</h3>
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleToggleRelay}
-                disabled={relayLoading}
-                size="sm"
-                variant={relayEnabled ? "destructive" : "default"}
-              >
-                {relayLoading ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : <ToggleLeft className="h-4 w-4 mr-1" />}
-                {relayEnabled ? "Disable" : "Enable"}
-              </Button>
-              <span className="text-sm">
-                {relayLoading ? "Working..." : relayEnabled ? `Active ${relayUrl ? `(${relayUrl})` : ""}` : "Off"}
-              </span>
-            </div>
-          </div>
         </CardContent>
       </Card>
 

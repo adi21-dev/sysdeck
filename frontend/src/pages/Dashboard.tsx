@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
 } from "recharts"
 import { useTelemetryStore } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,6 +25,7 @@ export function DashboardPage() {
       ram: +((t.ram_used / t.ram_total) * 100).toFixed(1),
       rx: +(t.net_rx_bps / 1024 / 1024).toFixed(2),
       tx: +(t.net_tx_bps / 1024 / 1024).toFixed(2),
+      battery: t.battery_percent ?? null,
     }))
   }, [history])
 
@@ -38,6 +39,8 @@ export function DashboardPage() {
   const diskPct = current ? +((current.disk_used / current.disk_total) * 100).toFixed(0) : null
   const rx = current ? formatBytes(current.net_rx_bps) + "/s" : null
   const tx = current ? formatBytes(current.net_tx_bps) + "/s" : null
+  const batteryPct = current?.battery_percent ?? null
+  const batteryCharging = current?.battery_charging ?? null
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -141,9 +144,33 @@ export function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Battery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="batGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#eab308" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#eab308" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="time" className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[0, 100]} className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ fontSize: 12 }} />
+                  <Area type="monotone" dataKey="battery" stroke="#eab308" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Bottom Row */}
+        {/* Bottom Row */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
@@ -154,19 +181,20 @@ export function DashboardPage() {
             <p>↑ {tx ?? "—"}</p>
           </CardContent>
         </Card>
-        {current?.battery_percent != null && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs text-muted-foreground">Battery</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{current.battery_percent.toFixed(0)}%</p>
-              <p className="text-xs text-muted-foreground">
-                {current.battery_charging ? "Charging" : "Discharging"}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs text-muted-foreground">Battery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {batteryPct != null ? (
+              <p className={`text-2xl font-bold ${batteryCharging ? "text-yellow-500" : batteryPct < 20 ? "text-red-500" : "text-green-500"}`}>
+                {batteryCharging ? "⚡ " : ""}{batteryPct.toFixed(0)}%
               </p>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <p className="text-2xl font-bold">—</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
