@@ -228,6 +228,7 @@ pub fn build_router(state: AppState) -> Router {
             "/setup",
             get(setup::setup_get_handler).post(setup::setup_handler),
         )
+        .route("/api/setup/status", get(setup::setup_status_handler))
         .route("/login", get(auth::login_page).post(auth::login_handler))
         // File Manager
         .route("/api/files/list", get(file_manager::list_handler))

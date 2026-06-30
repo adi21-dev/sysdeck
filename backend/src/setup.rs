@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::response::{Html, IntoResponse, Json, Redirect, Response};
 use axum::Form;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth;
@@ -81,6 +81,19 @@ pub struct SetupForm {
 }
 
 // --- Handlers ---
+
+#[derive(Serialize)]
+pub(crate) struct SetupStatus {
+    is_setup_complete: bool,
+}
+
+pub(crate) async fn setup_status_handler(State(state): State<AppState>) -> Json<SetupStatus> {
+    let is_setup_complete = {
+        let conn = state.db.lock().await;
+        db::is_setup_complete(&conn).unwrap_or(false)
+    };
+    Json(SetupStatus { is_setup_complete })
+}
 
 pub async fn setup_get_handler(State(state): State<AppState>) -> Response {
     // Check if setup is already complete
