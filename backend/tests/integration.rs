@@ -369,10 +369,22 @@ async fn test_login_page_returns_form() {
     let resp = get(&mut router, "/login").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("<h1>Login</h1>"), "Expected login heading, got: {html}");
-    assert!(html.contains("name=\"password\""), "Expected password field, got: {html}");
-    assert!(html.contains("name=\"totp_code\""), "Expected TOTP field, got: {html}");
-    assert!(html.contains("action=\"/login\""), "Expected form action, got: {html}");
+    assert!(
+        html.contains("<h1>Login</h1>"),
+        "Expected login heading, got: {html}"
+    );
+    assert!(
+        html.contains("name=\"password\""),
+        "Expected password field, got: {html}"
+    );
+    assert!(
+        html.contains("name=\"totp_code\""),
+        "Expected TOTP field, got: {html}"
+    );
+    assert!(
+        html.contains("action=\"/login\""),
+        "Expected form action, got: {html}"
+    );
 }
 
 #[tokio::test]

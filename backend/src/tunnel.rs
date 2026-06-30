@@ -136,8 +136,8 @@ async fn download_cloudflared(
     let total = response.content_length().unwrap_or(0);
     tracing::info!("Download size: {} MB", total / 1_000_000);
 
-    let mut file = std::fs::File::create(path)
-        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut file =
+        std::fs::File::create(path).map_err(|e| format!("Failed to create temp file: {}", e))?;
     let mut hasher = Sha256::new();
     let mut downloaded: u64 = 0;
     let mut last_log = std::time::Instant::now();
@@ -152,9 +152,7 @@ async fn download_cloudflared(
             Ok(Some(Err(e))) => return Err(format!("Download stream error: {}", e)),
             Ok(None) => break,
             Err(_) => {
-                return Err(
-                    "Download stalled - no data received for 60s. Retrying...".to_string(),
-                )
+                return Err("Download stalled - no data received for 60s. Retrying...".to_string())
             }
         };
         hasher.update(&chunk);

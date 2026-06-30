@@ -328,13 +328,20 @@ fn show_step1_with_error(error: &str) -> Html<String> {
 }
 
 fn show_step2(qr_data_uri: &str, secret_b32: &str, token: &str) -> Html<String> {
-    Html(TOTP_FORM
-        .replace("{QR_DATA_URI}", qr_data_uri)
-        .replace("{SECRET_B32}", secret_b32)
-        .replace("{STATE_TOKEN}", token))
+    Html(
+        TOTP_FORM
+            .replace("{QR_DATA_URI}", qr_data_uri)
+            .replace("{SECRET_B32}", secret_b32)
+            .replace("{STATE_TOKEN}", token),
+    )
 }
 
-fn show_step2_with_error(qr_data_uri: &str, secret_b32: &str, token: &str, error: &str) -> Html<String> {
+fn show_step2_with_error(
+    qr_data_uri: &str,
+    secret_b32: &str,
+    token: &str,
+    error: &str,
+) -> Html<String> {
     Html(TOTP_FORM
         .replace("{QR_DATA_URI}", qr_data_uri)
         .replace("{SECRET_B32}", secret_b32)
@@ -351,9 +358,11 @@ fn show_step3(codes: &[String], token: &str) -> Html<String> {
         .map(|c| format!("<code>{}</code>", c))
         .collect::<Vec<_>>()
         .join("\n            ");
-    Html(RECOVERY_CODES_FORM
-        .replace("{RECOVERY_CODES}", &codes_html)
-        .replace("{STATE_TOKEN}", token))
+    Html(
+        RECOVERY_CODES_FORM
+            .replace("{RECOVERY_CODES}", &codes_html)
+            .replace("{STATE_TOKEN}", token),
+    )
 }
 
 fn show_step4(token: &str) -> Html<String> {
