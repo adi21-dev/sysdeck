@@ -47,3 +47,17 @@ export const useTelemetryStore = create<TelemetryState>((set, get) => ({
     set({ history: next })
   },
 }))
+
+interface ConnectionState {
+  status: "connected" | "disconnected" | "offline"
+  setStatus: (s: "connected" | "disconnected" | "offline") => void
+  retryConnection: (() => void) | null
+  setRetryConnection: (fn: (() => void) | null) => void
+}
+
+export const useConnectionStore = create<ConnectionState>((set) => ({
+  status: "disconnected",
+  setStatus: (status) => set({ status }),
+  retryConnection: null,
+  setRetryConnection: (fn) => set({ retryConnection: fn }),
+}))
