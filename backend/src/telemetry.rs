@@ -35,18 +35,13 @@ pub fn start_engine(
             let net_rx_bps: u64 = networks.values().map(|n| n.received()).sum();
             let net_tx_bps: u64 = networks.values().map(|n| n.transmitted()).sum();
 
-            let temperature = if tick_1s.is_multiple_of(5) {
+            if tick_1s.is_multiple_of(5) {
                 components.refresh();
-                components
-                    .iter()
-                    .find(|c| !c.label().to_lowercase().contains("fan"))
-                    .map(|c| c.temperature())
-            } else {
-                components
-                    .iter()
-                    .find(|c| !c.label().to_lowercase().contains("fan"))
-                    .map(|c| c.temperature())
-            };
+            }
+            let temperature = components
+                .iter()
+                .find(|c| !c.label().to_lowercase().contains("fan"))
+                .map(|c| c.temperature());
 
             if tick_1s.is_multiple_of(10) {
                 disks.refresh();
@@ -55,8 +50,7 @@ pub fn start_engine(
             let disk_available: u64 = disks.iter().map(|d| d.available_space()).sum();
             let disk_used = disk_total.saturating_sub(disk_available);
 
-            let battery_percent: Option<f32> = None;
-            let battery_charging: Option<bool> = None;
+            let (battery_percent, battery_charging) = get_battery_status();
 
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -104,4 +98,46 @@ pub fn start_engine(
             }
         }
     });
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct SYSTEM_POWER_STATUS {
+    ac_line_status: u8,
+    battery_flag: u8,
+    battery_life_percent: u8,
+    system_status_flag: u8,
+    battery_life_time: u32,
+    battery_full_life_time: u32,
+}
+
+#[cfg(windows)]
+extern "system" {
+    fn GetSystemPowerStatus(lpSystemPowerStatus: *mut SYSTEM_POWER_STATUS) -> i32;
+}
+
+fn get_battery_status() -> (Option<f32>, Option<bool>) {
+    #[cfg(windows)]
+    {
+        let mut status = SYSTEM_POWER_STATUS {
+            ac_line_status: 0,
+            battery_flag: 0,
+            battery_life_percent: 0,
+            system_status_flag: 0,
+            battery_life_time: 0,
+            battery_full_life_time: 0,
+        };
+        unsafe {
+            if GetSystemPowerStatus(&mut status) != 0 {
+                let percent = if status.battery_life_percent <= 100 {
+                    Some(status.battery_life_percent as f32)
+                } else {
+                    None
+                };
+                let charging = Some(status.ac_line_status == 1);
+                return (percent, charging);
+            }
+        }
+    }
+    (None, None)
 }

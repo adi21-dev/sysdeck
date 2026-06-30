@@ -1,260 +1,313 @@
-use std::io::Write;
 use std::path::PathBuf;
-use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 
+use axum::extract::State;
+use axum::response::Json;
 use regex::Regex;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::oneshot;
+use tokio::process::Command;
+use tokio::sync::{broadcast, Mutex, RwLock};
 
-use crate::get_data_dir;
+use crate::AppState;
 
-const MAX_RETRIES: u32 = 3;
-const TIMEOUT_API_SECS: u64 = 30;
-const TIMEOUT_DOWNLOAD_SECS: u64 = 300;
+const SHA256_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe.sha256";
+const DOWNLOAD_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+const MAX_RETRIES: u32 = 5;
 
-#[derive(serde::Deserialize)]
-struct GithubRelease {
-    body: String,
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub enum TunnelStatus {
+    Idle,
+    Downloading,
+    Starting,
+    Running { url: String },
+    Failed(String),
 }
 
-fn get_cloudflared_path() -> PathBuf {
-    get_data_dir().join("cloudflared.exe")
-}
-
-pub async fn ensure_cloudflared() -> Result<(), String> {
-    let path = get_cloudflared_path();
-    if path.exists() {
-        tracing::info!("cloudflared.exe already present at {}", path.display());
-        return Ok(());
-    }
-
-    // Clean up any leftover temp file from a previous interrupted download
-    let tmp_path = path.with_extension("exe.tmp");
-    if tmp_path.exists() {
-        let _ = std::fs::remove_file(&tmp_path);
-    }
-
-    let api_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(TIMEOUT_API_SECS))
-        .build()
-        .map_err(|e| format!("Failed to build API client: {}", e))?;
-
-    let download_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(TIMEOUT_DOWNLOAD_SECS))
-        .build()
-        .map_err(|e| format!("Failed to build download client: {}", e))?;
-
-    // Fetch latest release info from GitHub API
-    let release: GithubRelease = api_client
-        .get("https://api.github.com/repos/cloudflare/cloudflared/releases/latest")
-        .header("User-Agent", "NodeDeskAgent/0.1")
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch latest release info: {}", e))?
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse release JSON: {}", e))?;
-
-    // Extract SHA256 hash for windows amd64 exe from release body
-    let hash_re = Regex::new(r"cloudflared-windows-amd64\.exe:\s*([a-fA-F0-9]{64})")
-        .expect("Invalid hash regex");
-    let expected_hash = hash_re
-        .captures(&release.body)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_lowercase())
-        .ok_or_else(|| {
-            tracing::error!(
-                "Could not find SHA256 hash in release body for cloudflared-windows-amd64.exe"
-            );
-            "SHA256 hash not found in release notes".to_string()
-        })?;
-
-    tracing::info!("Expected SHA256: {}", expected_hash);
-
-    let exe_url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
-
-    // Retry loop with exponential backoff
-    let mut last_err = String::new();
-    for attempt in 1..=MAX_RETRIES {
-        tracing::info!(
-            "Downloading cloudflared.exe (attempt {}/{})...",
-            attempt,
-            MAX_RETRIES
-        );
-
-        match download_cloudflared(&download_client, exe_url, &tmp_path).await {
-            Ok(actual_hash) => {
-                if actual_hash != expected_hash {
-                    let _ = std::fs::remove_file(&tmp_path);
-                    return Err(format!(
-                        "SHA256 mismatch for cloudflared.exe. Expected: {}, got: {}",
-                        expected_hash, actual_hash
-                    ));
-                }
-                tracing::info!("SHA256 verified");
-
-                // Atomically rename temp -> final
-                std::fs::rename(&tmp_path, &path)
-                    .map_err(|e| format!("Failed to rename temp file: {}", e))?;
-                tracing::info!("cloudflared.exe downloaded to {}", path.display());
-                return Ok(());
-            }
-            Err(e) => {
-                let _ = std::fs::remove_file(&tmp_path);
-                last_err = e;
-                tracing::warn!("Download attempt {} failed: {}", attempt, last_err);
-                if attempt < MAX_RETRIES {
-                    let backoff = Duration::from_secs(2u64.pow(attempt));
-                    tracing::info!("Retrying in {}s...", backoff.as_secs());
-                    tokio::time::sleep(backoff).await;
-                }
-            }
+impl std::fmt::Display for TunnelStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TunnelStatus::Idle => write!(f, "idle"),
+            TunnelStatus::Downloading => write!(f, "downloading"),
+            TunnelStatus::Starting => write!(f, "starting"),
+            TunnelStatus::Running { .. } => write!(f, "running"),
+            TunnelStatus::Failed(_) => write!(f, "failed"),
         }
     }
-
-    Err(format!(
-        "Failed to download cloudflared.exe after {} attempts: {}",
-        MAX_RETRIES, last_err
-    ))
 }
 
-/// Stream the binary download to disk while computing SHA256.
-async fn download_cloudflared(
-    client: &reqwest::Client,
-    url: &str,
-    path: &PathBuf,
-) -> Result<String, String> {
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Download request failed: {}", e))?;
+#[derive(Debug, Clone, Serialize)]
+pub struct TunnelEvent {
+    pub event: String,
+    pub status: String,
+    pub url: Option<String>,
+    pub error: Option<String>,
+}
 
-    let total = response.content_length().unwrap_or(0);
-    tracing::info!("Download size: {} MB", total / 1_000_000);
+pub struct TunnelState {
+    pub status: RwLock<TunnelStatus>,
+    pub url: RwLock<Option<String>>,
+    pub exe_path: PathBuf,
+    pub port: u16,
+    kill_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    pub tx: broadcast::Sender<Arc<TunnelEvent>>,
+}
 
-    let mut file =
-        std::fs::File::create(path).map_err(|e| format!("Failed to create temp file: {}", e))?;
-    let mut hasher = Sha256::new();
-    let mut downloaded: u64 = 0;
-    let mut last_log = std::time::Instant::now();
+impl TunnelState {
+    pub fn new(data_dir: &std::path::Path, port: u16) -> (Self, broadcast::Receiver<Arc<TunnelEvent>>) {
+        let (tx, rx) = broadcast::channel(100);
+        (
+            Self {
+                status: RwLock::new(TunnelStatus::Idle),
+                url: RwLock::new(None),
+                exe_path: data_dir.join("cloudflared.exe"),
+                port,
+                kill_tx: Mutex::new(None),
+                tx,
+            },
+            rx,
+        )
+    }
 
-    const CHUNK_TIMEOUT: Duration = Duration::from_secs(60);
-
-    use futures_util::StreamExt;
-    let mut stream = response.bytes_stream();
-    loop {
-        let chunk = match tokio::time::timeout(CHUNK_TIMEOUT, stream.next()).await {
-            Ok(Some(Ok(c))) => c,
-            Ok(Some(Err(e))) => return Err(format!("Download stream error: {}", e)),
-            Ok(None) => break,
-            Err(_) => {
-                return Err("Download stalled - no data received for 60s. Retrying...".to_string())
+    pub async fn start(this: Arc<Self>) -> Result<(), String> {
+        {
+            let status = this.status.read().await;
+            if *status != TunnelStatus::Idle {
+                return Err(format!("Tunnel is {}", status));
             }
+        }
+
+        if !this.exe_path.exists() {
+            this.set_status(TunnelStatus::Downloading).await;
+            download_cloudflared(&this.exe_path).await?;
+        }
+
+        this.set_status(TunnelStatus::Starting).await;
+
+        let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+        {
+            let mut k = this.kill_tx.lock().await;
+            *k = Some(kill_tx);
+        }
+
+        let weak = Arc::downgrade(&this);
+        tokio::spawn(async move {
+            run_tunnel_loop(weak, kill_rx).await;
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<(), String> {
+        let mut k = self.kill_tx.lock().await;
+        if let Some(tx) = k.take() {
+            let _ = tx.send(());
+        }
+        self.set_status(TunnelStatus::Idle).await;
+        self.url.write().await.take();
+        Ok(())
+    }
+
+    pub async fn set_status(&self, status: TunnelStatus) {
+        let url = match &status {
+            TunnelStatus::Running { url } => Some(url.clone()),
+            _ => None,
         };
-        hasher.update(&chunk);
-        file.write_all(&chunk)
-            .map_err(|e| format!("Failed to write to file: {}", e))?;
-        downloaded += chunk.len() as u64;
-
-        if last_log.elapsed() >= Duration::from_secs(10) {
-            let pct = if total > 0 {
-                (downloaded as f64 / total as f64 * 100.0) as u32
-            } else {
-                0
-            };
-            tracing::info!(
-                "Downloaded {:.1} MB / {} MB ({}%)",
-                downloaded as f64 / 1_000_000.0,
-                total as f64 / 1_000_000.0,
-                pct
-            );
-            last_log = std::time::Instant::now();
-        }
+        let error = match &status {
+            TunnelStatus::Failed(e) => Some(e.clone()),
+            _ => None,
+        };
+        *self.status.write().await = status;
+        *self.url.write().await = url.clone();
+        let _ = self.tx.send(Arc::new(TunnelEvent {
+            event: "tunnel_status".to_string(),
+            status: self.status.read().await.to_string(),
+            url,
+            error,
+        }));
     }
-
-    Ok(hex_encode(&hasher.finalize()))
 }
 
-pub async fn run_tunnel_loop(port: u16, mut shutdown_rx: oneshot::Receiver<()>) {
-    let path = get_cloudflared_path();
-    let url_re = Regex::new(r"https://[\w-]+\.trycloudflare\.com").unwrap();
+async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .user_agent("nodedesk-agent/0.1")
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+    let checksum = download_with_retry(&client, SHA256_URL).await?;
+    let checksum_text = std::str::from_utf8(&checksum).map_err(|e| format!("Invalid checksum UTF-8: {}", e))?;
+    let expected_hash = checksum_text
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().next())
+        .ok_or_else(|| "Failed to parse SHA256 checksum".to_string())?
+        .to_string();
+
+    let binary_data = download_with_retry(&client, DOWNLOAD_URL).await?;
+
+    let actual_hash = data_encoding::HEXLOWER.encode(&Sha256::digest(&binary_data));
+    if actual_hash != expected_hash {
+        return Err(format!(
+            "SHA256 mismatch: expected {}, got {}",
+            expected_hash, actual_hash
+        ));
+    }
+
+    let tmp = exe_path.with_extension("tmp");
+    fs::write(&tmp, &binary_data)
+        .await
+        .map_err(|e| format!("Write failed: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).await.ok();
+    }
+
+    fs::rename(&tmp, exe_path)
+        .await
+        .map_err(|e| format!("Rename failed: {}", e))?;
+
+    Ok(())
+}
+
+async fn download_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, String> {
+    let mut backoff = Duration::from_secs(1);
+    for attempt in 1..=MAX_RETRIES {
+        let resp = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("Attempt {} failed: {}", attempt, e))?;
+
+        if resp.status().is_success() {
+            return resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("Read: {}", e));
+        }
+
+        if attempt < MAX_RETRIES {
+            tracing::warn!("Attempt {} returned {}, retry in {:?}", attempt, resp.status(), backoff);
+            tokio::time::sleep(backoff).await;
+            backoff *= 2;
+        }
+    }
+    Err(format!("All {} attempts failed", MAX_RETRIES))
+}
+
+async fn run_tunnel_loop(
+    weak: std::sync::Weak<TunnelState>,
+    mut kill_rx: tokio::sync::oneshot::Receiver<()>,
+) {
+    let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
     loop {
-        let mut child = match tokio::process::Command::new(&path)
-            .args([
-                "tunnel",
-                "--url",
-                &format!("http://localhost:{}", port),
-                "--no-autoupdate",
-            ])
-            .stderr(Stdio::piped())
-            .stdout(Stdio::null())
-            .stdin(Stdio::null())
+        let state = match weak.upgrade() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let mut child = match Command::new(&state.exe_path)
+            .args(["tunnel", "--url", &format!("http://localhost:{}", state.port)])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
         {
             Ok(c) => c,
             Err(e) => {
-                tracing::error!("Failed to spawn cloudflared: {}", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                continue;
+                state
+                    .set_status(TunnelStatus::Failed(format!("Spawn failed: {}", e)))
+                    .await;
+                return;
             }
         };
 
-        let stderr = child
-            .stderr
-            .take()
-            .expect("cloudflared stderr not captured");
+        let stderr = child.stderr.take().unwrap();
         let reader = BufReader::new(stderr);
         let mut lines = reader.lines();
         let mut found_url = false;
 
-        tracing::info!("cloudflared tunnel started");
-
+        // Wait for URL in stderr
         loop {
             tokio::select! {
                 line = lines.next_line() => {
                     match line {
-                        Ok(Some(line)) => {
-                            tracing::debug!("[cloudflared] {}", line);
-                            if !found_url {
-                                if let Some(mat) = url_re.find(&line) {
-                                    let url = mat.as_str().to_string();
-                                    tracing::info!(">>> Tunnel URL: {}", url);
-                                    println!(">>> Tunnel URL: {}", url);
-                                    found_url = true;
-                                }
+                        Ok(Some(l)) => {
+                            tracing::debug!("cloudflared: {}", l);
+                            if let Some(m) = url_re.find(&l) {
+                                found_url = true;
+                                state.set_status(TunnelStatus::Running { url: m.as_str().to_string() }).await;
                             }
                         }
-                        Ok(None) => {
-                            tracing::warn!("cloudflared stderr closed");
-                            break;
-                        }
+                        Ok(None) => break,
                         Err(e) => {
-                            tracing::error!("Error reading cloudflared stderr: {}", e);
+                            tracing::error!("cloudflared stderr: {}", e);
                             break;
                         }
                     }
                 }
-                _ = &mut shutdown_rx => {
-                    tracing::info!("Tunnel shutdown signal received");
+                _ = &mut kill_rx => {
                     let _ = child.kill().await;
                     let _ = child.wait().await;
-                    tracing::info!("cloudflared terminated");
                     return;
                 }
             }
         }
 
-        let status = child.wait().await;
-        tracing::warn!("cloudflared exited with: {:?}. Restarting in 2s...", status);
+        if !found_url {
+            state
+                .set_status(TunnelStatus::Failed("No tunnel URL received".to_string()))
+                .await;
+            return;
+        }
+
+        // Monitor process — restart on exit
+        match child.wait().await {
+            Ok(status) => tracing::warn!("cloudflared exited with {:?}, restarting in 2s", status.code()),
+            Err(e) => tracing::error!("cloudflared wait error: {}", e),
+        }
+
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+// API handlers
+
+#[derive(Serialize)]
+pub struct TunnelStatusResponse {
+    pub success: bool,
+    pub status: String,
+    pub url: Option<String>,
+    pub error: Option<String>,
+}
+
+pub(crate) async fn status_handler(State(state): State<AppState>) -> Json<TunnelStatusResponse> {
+    let status = state.tunnel_state.status.read().await;
+    let url = state.tunnel_state.url.read().await.clone();
+    let error = match &*status {
+        TunnelStatus::Failed(e) => Some(e.clone()),
+        _ => None,
+    };
+    Json(TunnelStatusResponse {
+        success: true,
+        status: status.to_string(),
+        url,
+        error,
+    })
+}
+
+pub(crate) async fn start_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    match TunnelState::start(state.tunnel_state.clone()).await {
+        Ok(()) => Json(serde_json::json!({"success": true, "message": "Tunnel started"})),
+        Err(e) => Json(serde_json::json!({"success": false, "error": e})),
+    }
+}
+
+pub(crate) async fn stop_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    match state.tunnel_state.stop().await {
+        Ok(()) => Json(serde_json::json!({"success": true, "message": "Tunnel stopped"})),
+        Err(e) => Json(serde_json::json!({"success": false, "error": e})),
+    }
 }

@@ -5,26 +5,35 @@ use axum::http::Request;
 use axum::Router;
 use governor::{Quota, RateLimiter};
 use rusqlite::Connection;
+
 use tokio::sync::{broadcast, Mutex};
 use tower::ServiceExt;
 
 use nodedesk_agent::auth::LockoutState;
 use nodedesk_agent::db::{self, TelemetrySnapshot};
+use nodedesk_agent::get_data_dir;
 use nodedesk_agent::setup::SetupManager;
-use nodedesk_agent::{AppState, PowerState, ScriptState};
+use nodedesk_agent::{AppState, PowerState, ScriptState, TunnelState};
 
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
 
 /// Build a Router + AppState with in-memory SQLite.
-/// The seed closure receives a plain `&Connection` before it's wrapped in Mutex,
-/// so it can safely use sync rusqlite methods.
 pub fn test_app() -> (Router, AppState) {
     test_app_with_seeded(|_| {})
 }
 
+/// Build a Router seeded with a user for authenticated tests.
+/// Returns (router, user_totp_secret) so tests can generate TOTP codes.
+pub fn test_app_with_user() -> (Router, Vec<u8>) {
+    let secret = nodedesk_agent::auth::generate_totp_secret();
+    let password = "TestP@ss123";
+    let router = test_app_with_seeded(|conn| {
+        seed_user(conn, password, &secret);
+    });
+    (router.0, secret)
+}
+
 /// Like `test_app` but seeds the DB with a closure before wrapping in Arc<Mutex>.
-/// The closure runs synchronously (no tokio runtime needed), so it can use
-/// blocking DB operations safely.
 pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState) {
     let conn = Connection::open_in_memory().unwrap();
     db::init_telemetry_table(&conn).unwrap();
@@ -50,6 +59,7 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
     let power_state = Arc::new(PowerState::new());
     let script_state = Arc::new(ScriptState::new());
 
+    let (tunnel_state, _) = TunnelState::new(&get_data_dir(), 3939);
     let app_state = AppState {
         telemetry_tx,
         db,
@@ -59,6 +69,8 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
         rate_limiter,
         power_state,
         script_state,
+        tunnel_state: Arc::new(tunnel_state),
+        port: 3939,
     };
 
     let router = nodedesk_agent::build_router(app_state.clone());
@@ -72,21 +84,24 @@ pub async fn body_string(resp: axum::response::Response) -> String {
     String::from_utf8(bytes.to_vec()).unwrap()
 }
 
-/// Extract a hidden form field from HTML: name="{name}" value="{value}"
-pub fn extract_field(html: &str, name: &str) -> Option<String> {
-    let pattern = format!(r#"name="{}" value="([^"]*)""#, name);
-    let re = regex::Regex::new(&pattern).ok()?;
-    re.captures(html)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
+/// Collect the response body into a serde_json::Value
+pub async fn body_json(resp: axum::response::Response) -> serde_json::Value {
+    let s = body_string(resp).await;
+    serde_json::from_str(&s).unwrap()
 }
 
-/// Extract the base32 TOTP secret from step 2 HTML: <code>ABCD1234</code>
-pub fn extract_totp_secret(html: &str) -> Option<String> {
-    let re = regex::Regex::new(r"<code>([A-Z2-7]+)</code>").ok()?;
-    re.captures(html)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
+/// Seed a user into the DB. Exported for reuse by other test modules.
+pub fn seed_user(conn: &rusqlite::Connection, password: &str, totp_secret: &[u8]) {
+    let hash = nodedesk_agent::auth::hash_password(password).unwrap();
+    let b32 = nodedesk_agent::auth::totp_secret_to_b32(totp_secret);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    conn.execute(
+        "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![hash, b32, now, now],
+    ).unwrap();
 }
 
 /// Perform a login request and return the HTTP response
@@ -103,17 +118,66 @@ pub async fn login_request(
     router.clone().oneshot(req).await.unwrap()
 }
 
+/// Login and extract the Set-Cookie value
+pub async fn login_and_cookie(router: &mut Router, secret: &[u8]) -> String {
+    let code = nodedesk_agent::auth::create_totp(secret.to_vec())
+        .generate_current()
+        .unwrap();
+    let resp = login_request(router, "TestP@ss123", &code).await;
+    assert_eq!(resp.status(), 200);
+    resp.headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
 /// Helper: send a GET request and return the response
 pub async fn get(router: &mut Router, path: &str) -> axum::response::Response {
     let req = Request::get(path).body(Body::empty()).unwrap();
     router.clone().oneshot(req).await.unwrap()
 }
 
-/// Helper: send a POST request with form body and return the response
-pub async fn post(router: &mut Router, path: &str, form_body: &str) -> axum::response::Response {
+/// Helper: send a POST request with JSON body
+pub async fn post_json(
+    router: &mut Router,
+    path: &str,
+    body: serde_json::Value,
+) -> axum::response::Response {
+    let body = serde_json::to_string(&body).unwrap();
     let req = Request::post(path)
-        .header("content-type", "application/x-www-form-urlencoded")
-        .body(Body::from(form_body.to_string()))
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .unwrap();
+    router.clone().oneshot(req).await.unwrap()
+}
+
+/// Helper: send an authenticated GET request with a cookie
+pub async fn authed_get(
+    router: &mut Router,
+    path: &str,
+    cookie: &str,
+) -> axum::response::Response {
+    let req = Request::get(path)
+        .header("cookie", cookie)
+        .body(Body::empty())
+        .unwrap();
+    router.clone().oneshot(req).await.unwrap()
+}
+
+/// Helper: send an authenticated POST request with JSON body
+pub async fn authed_post_json(
+    router: &mut Router,
+    path: &str,
+    cookie: &str,
+    body: serde_json::Value,
+) -> axum::response::Response {
+    let body = serde_json::to_string(&body).unwrap();
+    let req = Request::post(path)
+        .header("cookie", cookie)
+        .header("content-type", "application/json")
+        .body(Body::from(body))
         .unwrap();
     router.clone().oneshot(req).await.unwrap()
 }

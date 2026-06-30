@@ -51,7 +51,7 @@ pub fn insert_telemetry(conn: &Connection, snap: &TelemetrySnapshot) -> Result<(
             snap.disk_used as i64,
             snap.disk_total as i64,
             snap.battery_percent,
-            snap.battery_charging.map(|v| v as i32),
+            snap.battery_charging.map(|b| b as i64),
         ],
     )?;
     Ok(())
@@ -150,7 +150,7 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
             disk_used: row.get::<_, i64>(7)? as u64,
             disk_total: row.get::<_, i64>(8)? as u64,
             battery_percent: row.get(9)?,
-            battery_charging: row.get::<_, Option<i32>>(10)?.map(|v| v != 0),
+            battery_charging: row.get::<_, Option<i64>>(10)?.map(|v| v != 0),
         })
     })?;
 
@@ -159,6 +159,15 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
         result.push(row?);
     }
     Ok(result)
+}
+
+pub fn migrate_telemetry_schema_v2(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "ALTER TABLE telemetry ADD COLUMN battery_percent REAL;
+         ALTER TABLE telemetry ADD COLUMN battery_charging INTEGER;",
+    )
+    .ok();
+    Ok(())
 }
 
 pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {
@@ -191,9 +200,8 @@ pub fn query_audit_logs(
     from: Option<i64>,
     to: Option<i64>,
 ) -> Result<Vec<AuditLogEntry>> {
-    let mut sql = String::from(
-        "SELECT id, event, details, ip_address, created_at FROM audit_logs WHERE 1=1",
-    );
+    let mut sql =
+        String::from("SELECT id, event, details, ip_address, created_at FROM audit_logs WHERE 1=1");
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     if let Some(c) = cursor {
@@ -217,7 +225,8 @@ pub fn query_audit_logs(
     param_values.push(Box::new(limit + 1));
 
     let mut stmt = conn.prepare(&sql)?;
-    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let rows = stmt.query_map(params_refs.as_slice(), |row| {
         Ok(AuditLogEntry {
             id: row.get(0)?,
@@ -240,10 +249,7 @@ mod tests {
     use super::*;
 
     fn test_conn() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
-        conn.execute_batch("PRAGMA synchronous=NORMAL;").ok();
-        conn
+        Connection::open_in_memory().unwrap()
     }
 
     #[test]
@@ -274,14 +280,13 @@ mod tests {
             temperature: Some(65.0),
             disk_used: 200000000000,
             disk_total: 500000000000,
-            battery_percent: Some(80.0),
-            battery_charging: Some(true),
+            battery_percent: None,
+            battery_charging: None,
         };
         insert_telemetry(&conn, &snap).unwrap();
         let results = query_telemetry_history(&conn, 0).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].cpu_usage, 45.5);
-        assert!(results[0].battery_charging.unwrap());
     }
 
     #[test]

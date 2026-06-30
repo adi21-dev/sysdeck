@@ -1,19 +1,36 @@
+use std::io;
 use std::sync::Arc;
 
 use tokio::sync::{broadcast, oneshot, Mutex};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::Layer;
 
 use nodedesk_agent::auth;
-use nodedesk_agent::db::TelemetrySnapshot;
+use nodedesk_agent::db::{self, TelemetrySnapshot};
 use nodedesk_agent::{
-    build_router, find_available_port, init_db, init_dirs, setup_tray, AppState, LockoutState,
-    PowerState, ScriptState, SetupManager,
+    build_router, find_available_port, get_data_dir, init_db, init_dirs, setup_tray, AppState,
+    LockoutState, PowerState, ScriptState, SetupManager, TunnelState,
 };
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info".into());
+    let logs_dir = nodedesk_agent::get_logs_dir();
+    let file_appender = tracing_appender::rolling::never(&logs_dir, "nodedesk.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(io::stdout)
+                .with_filter(filter.clone()),
+        )
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_filter(filter),
         )
         .init();
 
@@ -30,14 +47,6 @@ async fn main() {
 
     let (port, listener) = find_available_port().await;
 
-    // Ensure cloudflared is downloaded
-    let mut cloudflared_available = true;
-    if let Err(e) = nodedesk_agent::tunnel::ensure_cloudflared().await {
-        tracing::error!("Failed to setup cloudflared tunnel: {}", e);
-        tracing::warn!("Continuing without tunnel. Only local access available.");
-        cloudflared_available = false;
-    }
-
     // Create broadcast channel for telemetry
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
 
@@ -46,7 +55,6 @@ async fn main() {
 
     // Setup tray and shutdown channels
     let (tray_shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    let (tunnel_shutdown_tx, tunnel_shutdown_rx) = oneshot::channel::<()>();
     setup_tray(tray_shutdown_tx);
 
     // Auth state
@@ -55,6 +63,23 @@ async fn main() {
     let rate_limiter = auth::create_rate_limiter();
     let power_state = Arc::new(PowerState::new());
     let script_state = Arc::new(ScriptState::new());
+    let (tunnel_state, _tunnel_rx) = TunnelState::new(&get_data_dir(), port);
+    let tunnel_state = Arc::new(tunnel_state);
+
+    // Auto-start tunnel if relay was opted in during setup
+    {
+        let conn = conn.lock().await;
+        if let Some(val) = db::get_setting(&conn, "relay_opt_in") {
+            if val == "true" {
+                let ts = tunnel_state.clone();
+                tokio::spawn(async move {
+                    // Small delay to let server start first
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    let _ = TunnelState::start(ts).await;
+                });
+            }
+        }
+    }
 
     let app_state = AppState {
         telemetry_tx,
@@ -65,6 +90,8 @@ async fn main() {
         rate_limiter,
         power_state,
         script_state,
+        tunnel_state: tunnel_state.clone(),
+        port,
     };
 
     let app = build_router(app_state.clone());
@@ -73,38 +100,24 @@ async fn main() {
     let (server_ready_tx, server_ready_rx) = oneshot::channel::<()>();
 
     // Start server in a background task, signal when it begins accepting connections
+    let shutdown_tunnel = tunnel_state.clone();
     let server_handle = tokio::spawn(async move {
         let _ = server_ready_tx.send(());
 
         axum::serve(listener, app)
-            .with_graceful_shutdown(async {
+            .with_graceful_shutdown(async move {
                 shutdown_rx.await.ok();
-                tracing::info!("Shutdown signal received, stopping tunnel...");
-                let _ = tunnel_shutdown_tx.send(());
+                tracing::info!("Shutdown signal received");
+                let _ = shutdown_tunnel.stop().await;
             })
             .await
             .expect("Server error");
     });
 
-    // Wait for the server to be ready before starting the tunnel
     server_ready_rx.await.ok();
     println!("Server running at http://localhost:{}", port);
 
-    if cloudflared_available {
-        println!("Starting tunnel... (URL may take a moment to propagate on Cloudflare edge)");
-        let tunnel_handle = tokio::spawn(nodedesk_agent::tunnel::run_tunnel_loop(
-            port,
-            tunnel_shutdown_rx,
-        ));
-
-        // Wait for server to finish (triggers graceful shutdown)
-        server_handle.await.expect("Server task panicked");
-
-        // Give tunnel a moment to clean up
-        let _ = tokio::time::timeout(std::time::Duration::from_secs(5), tunnel_handle).await;
-    } else {
-        server_handle.await.expect("Server task panicked");
-    }
+    server_handle.await.expect("Server task panicked");
 
     println!("NodeDesk Agent stopped.");
 }

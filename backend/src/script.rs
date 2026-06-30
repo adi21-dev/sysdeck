@@ -3,13 +3,18 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
+use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+use crate::auth;
+use crate::db;
 
 const MAX_OUTPUT_SIZE: usize = 1_000_000;
 const SCRIPT_TIMEOUT: Duration = Duration::from_secs(300);
@@ -37,6 +42,7 @@ pub struct ScriptState {
 }
 
 impl ScriptState {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             running: Mutex::new(HashMap::new()),
@@ -44,31 +50,46 @@ impl ScriptState {
     }
 }
 
-impl Default for ScriptState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Deserialize)]
 pub struct ExecuteRequest {
     pub script_type: String,
     pub content: String,
-}
-
-#[derive(Serialize)]
-pub struct ExecuteResponse {
-    pub success: bool,
-    pub id: String,
-    pub message: String,
+    #[serde(default)]
+    pub mode: String,
 }
 
 pub(crate) async fn execute_handler(
     State(state): State<crate::AppState>,
+    headers: HeaderMap,
     Json(req): Json<ExecuteRequest>,
-) -> impl IntoResponse {
+) -> Json<serde_json::Value> {
     let id = Uuid::new_v4().to_string();
-    let (output_tx, _) = broadcast::channel::<ScriptOutput>(1024);
+    let (output_tx, _) = broadcast::channel::<ScriptOutput>(10000);
+    let ip = auth::client_ip_from_headers(&headers);
+
+    {
+        let conn = state.db.lock().await;
+        let _ = db::insert_audit_log(
+            &conn,
+            "script_executed",
+            Some(&format!("{} script started", req.script_type)),
+            Some(&ip),
+        );
+    }
+
+    if req.mode == "wait" {
+        let result = run_script(&req.script_type, &req.content, output_tx).await;
+        return Json(json!({
+            "success": true,
+            "id": id,
+            "result": {
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "truncated": result.truncated,
+            }
+        }));
+    }
 
     {
         let mut running = state.script_state.running.lock().await;
@@ -90,15 +111,13 @@ pub(crate) async fn execute_handler(
             data: serde_json::to_string(&result).unwrap_or_default(),
         });
 
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
         let mut running = state_clone.script_state.running.lock().await;
         running.remove(&id_clone);
     });
 
-    Json(ExecuteResponse {
-        success: true,
-        id,
-        message: "Script started".to_string(),
-    })
+    Json(json!({"success": true, "id": id, "message": "Script started"}))
 }
 
 async fn run_script(

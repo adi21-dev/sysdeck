@@ -15,12 +15,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
-use axum::response::{Html, IntoResponse, Json};
+use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::{middleware, Router};
 use rusqlite::Connection;
 use tokio::sync::{broadcast, oneshot, Mutex};
-use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem};
 use tray_icon::TrayIconBuilder;
@@ -30,6 +29,7 @@ pub use db::TelemetrySnapshot;
 pub use power::PowerState;
 pub use script::ScriptState;
 pub use setup::SetupManager;
+pub use tunnel::TunnelState;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -41,6 +41,8 @@ pub struct AppState {
     pub rate_limiter: Arc<IpRateLimiter>,
     pub power_state: Arc<PowerState>,
     pub script_state: Arc<ScriptState>,
+    pub tunnel_state: Arc<TunnelState>,
+    pub port: u16,
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -90,6 +92,16 @@ pub fn init_db() -> Connection {
     db::init_telemetry_table(&conn).expect("Failed to initialize telemetry table");
     db::init_auth_tables(&conn).expect("Failed to initialize auth tables");
 
+    // Migration v2: battery columns
+    let schema_ver: i64 = conn
+        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |row| row.get(0))
+        .unwrap_or(0);
+    if schema_ver < 2 {
+        let _ = db::migrate_telemetry_schema_v2(&conn);
+        conn.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (2)", [])
+            .ok();
+    }
+
     let _ = db::wal_checkpoint(&conn);
 
     println!("Database initialized at: {}", db_path.display());
@@ -133,31 +145,8 @@ pub fn setup_tray(shutdown_tx: oneshot::Sender<()>) {
     });
 }
 
-pub async fn root_handler() -> Html<&'static str> {
-    Html(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NodeDesk Agent</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0f0f0f; color: #e0e0e0; }
-        .card { text-align: center; padding: 2.5rem 3rem; border-radius: 12px; background: #1a1a1a; box-shadow: 0 4px 24px rgba(0,0,0,0.4); border: 1px solid #2a2a2a; }
-        .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; margin-right: 10px; box-shadow: 0 0 8px rgba(34,197,94,0.4); vertical-align: middle; }
-        h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: center; }
-        p { color: #888; font-size: 0.95rem; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1><span class="status-dot"></span>NodeDesk Agent</h1>
-        <p>NodeDesk Agent is running and ready.</p>
-    </div>
-</body>
-</html>"#,
-    )
+pub async fn root_handler() -> &'static str {
+    "NodeDesk Agent running"
 }
 
 pub async fn history_handler(
@@ -183,23 +172,19 @@ pub async fn history_handler(
         - (seconds * 1000);
 
     let db = state.db.clone();
-    match tokio::task::spawn_blocking(move || {
+    let result = tokio::task::spawn_blocking(move || {
         let conn = db.blocking_lock();
         db::query_telemetry_history(&conn, since_ts)
     })
-    .await
-    {
-        Ok(Ok(data)) => Json(data).into_response(),
-        Ok(Err(e)) => {
-            tracing::error!("Failed to query telemetry history: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to query history".to_string(),
-            )
-                .into_response()
-        }
+    .await;
+
+    match result.unwrap_or_else(|e| {
+        tracing::error!("Telemetry history join error: {}", e);
+        Ok(vec![])
+    }) {
+        Ok(data) => Json(data).into_response(),
         Err(e) => {
-            tracing::error!("Telemetry history join error: {}", e);
+            tracing::error!("Failed to query telemetry history: {}", e);
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to query history".to_string(),
@@ -210,10 +195,9 @@ pub async fn history_handler(
 }
 
 pub fn parse_range(s: &str) -> Option<i64> {
-    let re = regex::Regex::new(r"^(\d+)([hdw])$").ok()?;
-    let caps = re.captures(s)?;
-    let num: i64 = caps.get(1)?.as_str().parse().ok()?;
-    match caps.get(2)?.as_str() {
+    let (num_str, unit) = s.split_at(s.len() - 1);
+    let num: i64 = num_str.parse().ok()?;
+    match unit {
         "h" => Some(num * 3600),
         "d" => Some(num * 86400),
         "w" => Some(num * 604800),
@@ -226,13 +210,22 @@ pub fn build_router(state: AppState) -> Router {
         .route("/", get(root_handler))
         .route("/ws", get(ws::ws_handler))
         .route("/api/telemetry/history", get(history_handler))
-        .route(
-            "/setup",
-            get(setup::setup_get_handler).post(setup::setup_handler),
-        )
         .route("/api/setup/status", get(setup::setup_status_handler))
+        .route("/api/setup/password", post(setup::api_password_handler))
+        .route("/api/setup/totp", post(setup::api_totp_handler))
+        .route(
+            "/api/setup/verify-totp",
+            post(setup::api_verify_totp_handler),
+        )
+        .route(
+            "/api/setup/recovery-codes",
+            post(setup::api_recovery_codes_handler),
+        )
+        .route("/api/setup/finish", post(setup::api_finish_handler))
+        .route("/api/setup/relay", post(setup::api_relay_handler))
+        .route("/api/setup/progress", get(setup::api_progress_handler))
         .route("/api/auth/check", get(auth::auth_check_handler))
-        .route("/login", get(auth::login_page).post(auth::login_handler))
+        .route("/login", post(auth::login_handler))
         // File Manager
         .route("/api/files/list", get(file_manager::list_handler))
         .route(
@@ -248,23 +241,51 @@ pub fn build_router(state: AppState) -> Router {
         // Audit Log
         .route("/api/audit/logs", get(audit::logs_handler))
         // Settings
-        .route("/api/settings/change-password", post(settings::change_password_handler))
-        .route("/api/settings/reset-totp", post(settings::reset_totp_handler))
-        .route("/api/settings/verify-totp", post(settings::verify_totp_handler))
-        .route("/api/settings/recovery-codes", get(settings::list_recovery_codes_handler))
-        .route("/api/settings/recovery-codes/regenerate", post(settings::regenerate_recovery_codes_handler))
-        .route("/api/settings/revoke-all", post(settings::revoke_all_handler))
+        .route(
+            "/api/settings/change-password",
+            post(settings::change_password_handler),
+        )
+        .route(
+            "/api/settings/reset-totp",
+            post(settings::reset_totp_handler),
+        )
+        .route(
+            "/api/settings/verify-totp",
+            post(settings::verify_totp_handler),
+        )
+        .route(
+            "/api/settings/recovery-codes",
+            get(settings::list_recovery_codes_handler),
+        )
+        .route(
+            "/api/settings/recovery-codes/regenerate",
+            post(settings::regenerate_recovery_codes_handler),
+        )
+        .route(
+            "/api/settings/revoke-all",
+            post(settings::revoke_all_handler),
+        )
         .route("/api/settings/export-db", get(settings::export_db_handler))
-        .route("/api/settings/download-logs", get(settings::download_logs_handler))
-        .route("/api/settings/paths", get(settings::get_paths_handler).post(settings::set_paths_handler))
-        .route("/api/settings/port", get(settings::get_port_handler).post(settings::set_port_handler))
-        .route("/api/settings/relay", get(settings::get_relay_handler).post(settings::set_relay_handler))
+        .route(
+            "/api/settings/download-logs",
+            get(settings::download_logs_handler),
+        )
+        .route(
+            "/api/settings/paths",
+            get(settings::get_paths_handler).post(settings::set_paths_handler),
+        )
+        .route(
+            "/api/settings/port",
+            get(settings::get_port_handler).post(settings::set_port_handler),
+        )
         // Power Controls
-        .route("/api/power/shutdown", post(power::shutdown_handler))
-        .route("/api/power/restart", post(power::restart_handler))
-        .route("/api/power/sleep", post(power::sleep_handler))
+        .route("/api/power/execute", post(power::execute_handler))
         .route("/api/power/cancel", post(power::cancel_power_handler))
         .route("/api/power/status", get(power::power_status_handler))
+        // Tunnel
+        .route("/api/tunnel/status", get(tunnel::status_handler))
+        .route("/api/tunnel/start", post(tunnel::start_handler))
+        .route("/api/tunnel/stop", post(tunnel::stop_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -275,6 +296,5 @@ pub fn build_router(state: AppState) -> Router {
             auth::auth_middleware,
         ))
         .layer(middleware::from_fn(auth::csp_middleware))
-        .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
 }
