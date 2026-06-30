@@ -583,6 +583,43 @@ pub async fn login_handler(
         .into_response()
 }
 
+// --- Auth Check Handler ---
+
+#[derive(Serialize)]
+pub struct AuthCheckResponse {
+    authenticated: bool,
+}
+
+pub async fn auth_check_handler(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+) -> impl IntoResponse {
+    let cookie_str = req
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let authenticated = match cookie_str {
+        Some(c) => {
+            let token = parse_cookie(&c, "token");
+            match token {
+                Some(t) => match verify_jwt(t, &state.jwt_key) {
+                    Ok(claims) => {
+                        let conn = state.db.lock().await;
+                        verify_session(&conn, &claims.jti).unwrap_or(false)
+                    }
+                    Err(_) => false,
+                },
+                None => false,
+            }
+        }
+        None => false,
+    };
+
+    Json(AuthCheckResponse { authenticated })
+}
+
 // --- Auth Middleware ---
 
 pub async fn auth_middleware(
@@ -604,7 +641,7 @@ pub async fn auth_middleware(
         return Redirect::to("/setup").into_response();
     }
 
-    if path == "/login" || path.starts_with("/setup") || path == "/" {
+    if path == "/login" || path.starts_with("/setup") || path == "/" || path == "/api/auth/check" {
         return next.run(req).await;
     }
 
@@ -651,7 +688,7 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     let path = req.uri().path().to_string();
 
-    if path == "/login" || path.starts_with("/setup") {
+    if path == "/login" || path.starts_with("/setup") || path == "/api/auth/check" {
         return next.run(req).await;
     }
 

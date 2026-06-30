@@ -15,7 +15,6 @@ import { SettingsPage } from "@/pages/Settings"
 
 function RootRedirect() {
   const [status, setStatus] = useState<"loading" | "setup" | "login" | "dashboard">("loading")
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   useEffect(() => {
     fetch("/api/setup/status")
@@ -24,19 +23,16 @@ function RootRedirect() {
         useAuthStore.getState().setSetupComplete(data.is_setup_complete)
         if (!data.is_setup_complete) {
           setStatus("setup")
-        } else if (!isAuthenticated) {
-          setStatus("login")
         } else {
-          setStatus("dashboard")
+          setStatus("login")
         }
       })
       .catch(() => setStatus("setup"))
-  }, [isAuthenticated])
+  }, [])
 
   if (status === "loading") return null
   if (status === "setup") return <Navigate to="/setup" replace />
-  if (status === "login") return <Navigate to="/login" replace />
-  return <Navigate to="/dashboard" replace />
+  return <Navigate to="/login" replace />
 }
 
 function App() {
