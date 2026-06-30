@@ -1,21 +1,38 @@
 # Rust
 backend/target/
+backend/*.rs.bk
 
 # Node
 frontend/node_modules/
 frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
 
-# OS
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
+# Generated CSS from Tailwind
+frontend/src/index.css
+
+# Local environment files
+.env
+.env.local
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
 *.iml
+*.swp
+*.swo
+*~
 
-# Environment
-.env
-.env.local
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+test_*.db
+*.sqlite
