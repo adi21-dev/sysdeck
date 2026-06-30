@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod auth;
 pub mod db;
 pub mod file_manager;
@@ -243,6 +244,8 @@ pub fn build_router(state: AppState) -> Router {
         // Script Engine
         .route("/api/scripts/execute", post(script::execute_handler))
         .route("/ws/script/{id}", get(script::ws_script_handler))
+        // Audit Log
+        .route("/api/audit/logs", get(audit::logs_handler))
         // Power Controls
         .route("/api/power/shutdown", post(power::shutdown_handler))
         .route("/api/power/restart", post(power::restart_handler))

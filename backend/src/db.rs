@@ -103,7 +103,6 @@ pub fn is_setup_complete(conn: &Connection) -> Result<bool> {
     Ok(count > 0)
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLogEntry {
     pub id: i64,
@@ -165,6 +164,58 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
 pub fn wal_checkpoint(conn: &Connection) -> Result<()> {
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
     Ok(())
+}
+
+pub fn query_audit_logs(
+    conn: &Connection,
+    cursor: Option<i64>,
+    limit: i64,
+    event: Option<&str>,
+    from: Option<i64>,
+    to: Option<i64>,
+) -> Result<Vec<AuditLogEntry>> {
+    let mut sql = String::from(
+        "SELECT id, event, details, ip_address, created_at FROM audit_logs WHERE 1=1",
+    );
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(c) = cursor {
+        sql.push_str(" AND id < ?");
+        param_values.push(Box::new(c));
+    }
+    if let Some(e) = event {
+        sql.push_str(" AND event = ?");
+        param_values.push(Box::new(e.to_string()));
+    }
+    if let Some(f) = from {
+        sql.push_str(" AND created_at >= ?");
+        param_values.push(Box::new(f));
+    }
+    if let Some(t) = to {
+        sql.push_str(" AND created_at <= ?");
+        param_values.push(Box::new(t));
+    }
+
+    sql.push_str(" ORDER BY id DESC LIMIT ?");
+    param_values.push(Box::new(limit + 1));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let rows = stmt.query_map(params_refs.as_slice(), |row| {
+        Ok(AuditLogEntry {
+            id: row.get(0)?,
+            event: row.get(1)?,
+            details: row.get(2)?,
+            ip_address: row.get(3)?,
+            created_at: row.get(4)?,
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row?);
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
