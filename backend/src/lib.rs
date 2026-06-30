@@ -81,6 +81,8 @@ pub fn init_db() -> Connection {
     db::init_telemetry_table(&conn).expect("Failed to initialize telemetry table");
     db::init_auth_tables(&conn).expect("Failed to initialize auth tables");
 
+    let _ = db::wal_checkpoint(&conn);
+
     println!("Database initialized at: {}", db_path.display());
     conn
 }

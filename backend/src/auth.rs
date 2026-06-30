@@ -564,6 +564,7 @@ pub async fn login_handler(
     {
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_success", Some("Login successful"), Some(&ip));
+        let _ = db::wal_checkpoint(&conn);
     }
 
     let cookie = format!(

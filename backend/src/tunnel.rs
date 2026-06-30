@@ -142,10 +142,21 @@ async fn download_cloudflared(
     let mut downloaded: u64 = 0;
     let mut last_log = std::time::Instant::now();
 
+    const CHUNK_TIMEOUT: Duration = Duration::from_secs(60);
+
     use futures_util::StreamExt;
     let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("Download stream error: {}", e))?;
+    loop {
+        let chunk = match tokio::time::timeout(CHUNK_TIMEOUT, stream.next()).await {
+            Ok(Some(Ok(c))) => c,
+            Ok(Some(Err(e))) => return Err(format!("Download stream error: {}", e)),
+            Ok(None) => break,
+            Err(_) => {
+                return Err(
+                    "Download stalled - no data received for 60s. Retrying...".to_string(),
+                )
+            }
+        };
         hasher.update(&chunk);
         file.write_all(&chunk)
             .map_err(|e| format!("Failed to write to file: {}", e))?;

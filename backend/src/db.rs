@@ -162,6 +162,11 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
     Ok(result)
 }
 
+pub fn wal_checkpoint(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

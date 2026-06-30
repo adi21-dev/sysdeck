@@ -283,6 +283,7 @@ async fn handle_finish_step(state: AppState, form: SetupForm) -> Response {
         None,
     );
 
+    let _ = db::wal_checkpoint(&conn);
     drop(conn);
 
     Html(
