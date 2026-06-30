@@ -4,6 +4,7 @@ pub mod db;
 pub mod file_manager;
 pub mod power;
 pub mod script;
+pub mod settings;
 pub mod setup;
 pub mod telemetry;
 pub mod tunnel;
@@ -246,6 +247,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/ws/script/{id}", get(script::ws_script_handler))
         // Audit Log
         .route("/api/audit/logs", get(audit::logs_handler))
+        // Settings
+        .route("/api/settings/change-password", post(settings::change_password_handler))
+        .route("/api/settings/reset-totp", post(settings::reset_totp_handler))
+        .route("/api/settings/verify-totp", post(settings::verify_totp_handler))
+        .route("/api/settings/recovery-codes", get(settings::list_recovery_codes_handler))
+        .route("/api/settings/recovery-codes/regenerate", post(settings::regenerate_recovery_codes_handler))
+        .route("/api/settings/revoke-all", post(settings::revoke_all_handler))
+        .route("/api/settings/export-db", get(settings::export_db_handler))
+        .route("/api/settings/download-logs", get(settings::download_logs_handler))
+        .route("/api/settings/paths", get(settings::get_paths_handler).post(settings::set_paths_handler))
+        .route("/api/settings/port", get(settings::get_port_handler).post(settings::set_port_handler))
+        .route("/api/settings/relay", get(settings::get_relay_handler).post(settings::set_relay_handler))
         // Power Controls
         .route("/api/power/shutdown", post(power::shutdown_handler))
         .route("/api/power/restart", post(power::restart_handler))

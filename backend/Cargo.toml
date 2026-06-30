@@ -38,6 +38,7 @@ uuid = { version = "1", features = ["v4"] }
 rand = "0.8"
 data-encoding = "2"
 zxcvbn = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tower = "0.5"
