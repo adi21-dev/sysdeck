@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Power, RefreshCw, Moon, LogOut, AlertTriangle, PowerOff } from "lucide-react"
+import { Power, RefreshCw, Moon, LogOut, AlertTriangle, PowerOff, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -126,6 +126,7 @@ export function ControlsPage() {
     { action: "sleep", label: "Sleep", icon: Moon, color: "text-blue-500", bg: "bg-blue-500/10" },
     { action: "hibernate", label: "Hibernate", icon: PowerOff, color: "text-purple-500", bg: "bg-purple-500/10" },
     { action: "signout", label: "Sign Out", icon: LogOut, color: "text-orange-500", bg: "bg-orange-500/10" },
+    { action: "lock", label: "Lock", icon: Lock, color: "text-gray-500", bg: "bg-gray-500/10" },
   ]
 
   return (

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import { Play, X, Copy, Check, AlertTriangle } from "lucide-react"
+import { Play, Copy, Check, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -13,7 +13,7 @@ import { useScriptsStore, type ScriptOutput } from "@/lib/scripts-store"
 
 const PREDEFINED = [
   { label: "Custom", type: "", content: "" },
-  { label: "System Info", type: "powershell", content: "Get-ComputerInfo | Format-List" },
+  { label: "System Info", type: "powershell", content: "Get-ComputerInfo | Format-List | Out-String -Width 4096" },
   { label: "IP Config", type: "cmd", content: "ipconfig /all" },
   { label: "Ping Test", type: "cmd", content: "ping 8.8.8.8 -n 10" },
 ]
@@ -259,15 +259,10 @@ export function ScriptsPage() {
                 <SheetTitle>Console</SheetTitle>
                 {statusBadge()}
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleCopyAll}>
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {copied ? "Copied" : "Copy All"}
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => setConsoleOpen(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
+              <Button variant="ghost" size="sm" onClick={handleCopyAll}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? "Copied" : "Copy All"}
+              </Button>
             </div>
           </SheetHeader>
           <div className="flex-1 overflow-hidden flex flex-col">

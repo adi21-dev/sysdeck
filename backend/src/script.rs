@@ -219,18 +219,36 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     output_tx: broadcast::Sender<ScriptOutput>,
 ) -> (String, bool) {
     let mut reader = tokio::io::BufReader::new(stream);
-    let mut line = String::new();
+    let mut buf = Vec::new();
     let mut total = 0usize;
     let mut truncated = false;
     let mut output = String::new();
 
-    while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+    while reader.read_until(b'\n', &mut buf).await.unwrap_or(0) > 0 {
+        // strip trailing \r\n
+        while buf.last().map(|&b| b == b'\n' || b == b'\r').unwrap_or(false) {
+            buf.pop();
+        }
+
+        let mut line = String::from_utf8(buf.clone()).unwrap_or_else(|_| {
+            // PowerShell pipes UTF-16LE when stdout is redirected; decode it
+            let u16: Vec<u16> = buf
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            String::from_utf16_lossy(&u16)
+        });
+
+        // strip trailing null chars from partial UTF-16 decode
+        line.truncate(line.trim_end_matches('\0').len());
+
         total += line.len();
         if total <= MAX_OUTPUT_SIZE {
             output.push_str(&line);
+            output.push('\n');
             let _ = output_tx.send(ScriptOutput {
                 stream: stream_name.to_string(),
-                data: line.clone(),
+                data: line,
             });
         } else if !truncated {
             truncated = true;
@@ -239,7 +257,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
                 data: "\n[Output truncated at 1MB]\n".to_string(),
             });
         }
-        line.clear();
+        buf.clear();
     }
 
     (output, truncated)

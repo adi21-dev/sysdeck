@@ -13,6 +13,7 @@ pub enum PowerAction {
     Sleep,
     Hibernate,
     SignOut,
+    Lock,
 }
 
 pub struct PendingCommand {
@@ -68,6 +69,7 @@ pub(crate) async fn execute_handler(
         "sleep" => PowerAction::Sleep,
         "hibernate" => PowerAction::Hibernate,
         "signout" => PowerAction::SignOut,
+        "lock" => PowerAction::Lock,
         _ => {
             return Json(PowerResponse {
                 success: false,
@@ -166,6 +168,11 @@ fn execute_power_action(action: PowerAction) {
         PowerAction::SignOut => {
             let _ = std::process::Command::new("shutdown")
                 .args(["/l"])
+                .spawn();
+        }
+        PowerAction::Lock => {
+            let _ = std::process::Command::new("rundll32.exe")
+                .args(["user32.dll,LockWorkStation"])
                 .spawn();
         }
     }

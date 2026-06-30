@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
-  Key, Shield, Eye, EyeOff, Download, FolderKanban, Server, Globe, AlertTriangle, Check, Copy, RefreshCw,
+  Key, Shield, Eye, EyeOff, Download, FolderKanban, Server, Globe, AlertTriangle, Check, Copy, RefreshCw, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,6 +43,10 @@ export function SettingsPage() {
   const [blockedPaths, setBlockedPaths] = useState<string[]>([])
   const [newAllowed, setNewAllowed] = useState("")
   const [newBlocked, setNewBlocked] = useState("")
+
+  // Browse folder
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const [browseTarget, setBrowseTarget] = useState<"allowed" | "blocked">("allowed")
 
   // Port
   const [port, setPort] = useState("3939")
@@ -151,6 +155,27 @@ export function SettingsPage() {
       }
     } catch { showError("Network error") }
     setShowRevokeDialog(false)
+  }
+
+  const handleBrowseFolder = () => {
+    folderInputRef.current?.setAttribute("webkitdirectory", "")
+    folderInputRef.current?.click()
+  }
+
+  const handleFolderSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      const abs = (file as any).path as string | undefined
+      const rel = file.webkitRelativePath
+      if (abs && rel) {
+        const dir = abs.slice(0, -rel.length)
+        if (browseTarget === "allowed") setNewAllowed(dir)
+        else setNewBlocked(dir)
+      }
+    }
+    e.target.value = ""
+    folderInputRef.current?.removeAttribute("webkitdirectory")
   }
 
   const handleExportDb = () => {
@@ -380,6 +405,9 @@ export function SettingsPage() {
                 <label className="text-xs text-muted-foreground mb-1 block">Allowed Paths</label>
                 <div className="flex gap-2 mb-2">
                   <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
+                  <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => { addPath(allowedPaths, setAllowedPaths, newAllowed); setNewAllowed("") }}>Add</Button>
                 </div>
                 <div className="space-y-1">
@@ -395,6 +423,9 @@ export function SettingsPage() {
                 <label className="text-xs text-muted-foreground mb-1 block">Blocked Paths</label>
                 <div className="flex gap-2 mb-2">
                   <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
+                  <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => { addPath(blockedPaths, setBlockedPaths, newBlocked); setNewBlocked("") }}>Add</Button>
                 </div>
                 <div className="space-y-1">
@@ -421,6 +452,8 @@ export function SettingsPage() {
 
         </CardContent>
       </Card>
+
+      <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 
       <AlertDialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
         <AlertDialogContent>

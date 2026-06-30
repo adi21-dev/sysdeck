@@ -10,7 +10,12 @@ import { cn } from "@/lib/utils"
 import { useFilesStore, type FileEntry } from "@/lib/files-store"
 
 function toApiPath(p: string): string {
-  return p.replace(/\//g, "\\")
+  return p.replace(/^\/([A-Za-z]:)/, "$1\\").replace(/\//g, "\\")
+}
+
+function fromApiPath(p: string): string {
+  const clean = p.replace(/^\\\\\?\\/, "")
+  return clean.replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")
 }
 
 function listPath(path: string): Promise<{ success: boolean; entries: FileEntry[]; path: string; error?: string }> {
@@ -117,11 +122,11 @@ export function FilesPage() {
       setLoading(true)
       setError(null)
       try {
-        const data = await listPath(path)
-        if (data.success) {
-          setCurrentPath(path)
-          setEntries(data.entries || [])
-        } else {
+      const data = await listPath(path)
+      if (data.success) {
+        setCurrentPath(fromApiPath(data.path))
+        setEntries((data.entries || []).map((e: FileEntry) => ({ ...e, path: fromApiPath(e.path) })))
+      } else {
           setError(data.error || "Failed to list directory")
         }
       } catch {
