@@ -150,10 +150,23 @@ async fn power_action_handler(
 }
 
 fn execute_power_action(action: PowerAction) {
-    tracing::warn!(
-        "Power action '{:?}' would execute but is mocked for safety",
-        action
-    );
+    match action {
+        PowerAction::Shutdown => {
+            let _ = std::process::Command::new("shutdown")
+                .args(["/s", "/t", "5"])
+                .spawn();
+        }
+        PowerAction::Restart => {
+            let _ = std::process::Command::new("shutdown")
+                .args(["/r", "/t", "5"])
+                .spawn();
+        }
+        PowerAction::Sleep => {
+            let _ = std::process::Command::new("rundll32.exe")
+                .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
+                .spawn();
+        }
+    }
 }
 
 pub async fn cancel_power_handler(State(state): State<crate::AppState>) -> impl IntoResponse {
