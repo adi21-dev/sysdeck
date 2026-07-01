@@ -102,6 +102,7 @@ async fn main() {
 
     init_dirs();
     let conn = Arc::new(Mutex::new(init_db()));
+    let db_for_shutdown = conn.clone();
 
     // Load or create JWT signing key (OS Keychain via keyring)
     let jwt_key = Arc::new(auth::load_or_create_jwt_key().expect("Failed to load JWT signing key"));
@@ -266,6 +267,11 @@ async fn main() {
                 let _ = system_tx_clone2.send(r#"{"action":"shutting_down"}"#.to_string());
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 let _ = shutdown_tunnel.stop().await;
+                tracing::info!("Finalizing database...");
+                if let Ok(db_lock) = db_for_shutdown.try_lock() {
+                    let _ = nodedesk_agent::db::wal_checkpoint(&db_lock);
+                    drop(db_lock);
+                }
             })
             .await
             .expect("Server error");

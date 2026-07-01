@@ -12,7 +12,7 @@ pub mod tunnel;
 pub mod ws;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
@@ -81,11 +81,39 @@ pub fn get_db_path() -> PathBuf {
     get_data_dir().join("data.db")
 }
 
+const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024;
+const MAX_LOG_FILES: usize = 3;
+
+pub fn rotate_logs(logs_dir: &Path) {
+    // Shift old logs: remove beyond limit, shift .2→.3, .1→.2, current→.1
+    let _ = std::fs::remove_file(logs_dir.join(format!("nodedesk.{}.log", MAX_LOG_FILES)));
+    for i in (2..=MAX_LOG_FILES).rev() {
+        let _ = std::fs::rename(
+            logs_dir.join(format!("nodedesk.{}.log", i - 1)),
+            logs_dir.join(format!("nodedesk.{}.log", i)),
+        );
+    }
+    let current = logs_dir.join("nodedesk.log");
+    if current.exists() {
+        let _ = std::fs::rename(&current, logs_dir.join("nodedesk.1.log"));
+    }
+}
+
 pub fn init_dirs() {
     let data_dir = get_data_dir();
     std::fs::create_dir_all(&data_dir).expect("Failed to create data directory");
     std::fs::create_dir_all(get_logs_dir()).expect("Failed to create logs directory");
     println!("Data directory: {}", data_dir.display());
+    // Rotate logs if current file exceeds 10 MB
+    let log_path = get_logs_dir().join("nodedesk.log");
+    if log_path.exists() {
+        if let Ok(meta) = std::fs::metadata(&log_path) {
+            if meta.len() > MAX_LOG_SIZE {
+                rotate_logs(&get_logs_dir());
+                println!("Log rotated (exceeded {} MB)", MAX_LOG_SIZE / 1024 / 1024);
+            }
+        }
+    }
 }
 
 pub fn init_db() -> Connection {

@@ -34,25 +34,14 @@ fn main() {
         frontend_dir.join("tsconfig.json").display()
     );
 
-    let dist_dir = frontend_dir.join("dist");
-    if !dist_dir.exists() || is_stale(&frontend_dir, &dist_dir) {
-        let node_modules = frontend_dir.join("node_modules");
-        if !node_modules.exists() {
-            println!("cargo:info=Running npm install...");
-            run_npm("install", &frontend_dir);
-        }
-
-        println!("cargo:info=Building frontend...");
-        run_npm("run build", &frontend_dir);
+    let node_modules = frontend_dir.join("node_modules");
+    if !node_modules.exists() {
+        println!("cargo:info=Running npm install...");
+        run_npm("install", &frontend_dir);
     }
-}
 
-fn npm_cmd() -> (&'static str, &'static str) {
-    if cfg!(windows) {
-        ("cmd.exe", "/C")
-    } else {
-        ("npm", "")
-    }
+    println!("cargo:info=Building frontend...");
+    run_npm("run build", &frontend_dir);
 }
 
 fn run_npm(args: &str, dir: &Path) {
@@ -73,13 +62,10 @@ fn run_npm(args: &str, dir: &Path) {
     }
 }
 
-fn is_stale(src: &Path, dist: &Path) -> bool {
-    let dist_modified = std::fs::metadata(dist).and_then(|m| m.modified()).ok();
-    let src_modified = std::fs::metadata(src.join("index.html"))
-        .and_then(|m| m.modified())
-        .ok();
-    match (dist_modified, src_modified) {
-        (Some(d), Some(s)) => s > d,
-        _ => true,
+fn npm_cmd() -> (&'static str, &'static str) {
+    if cfg!(windows) {
+        ("cmd.exe", "/C")
+    } else {
+        ("npm", "")
     }
 }

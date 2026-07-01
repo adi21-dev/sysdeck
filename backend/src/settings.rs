@@ -1,11 +1,15 @@
 use std::io::{Read, Write};
 
+use axum::body::Body;
 use axum::extract::State;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use bytes::Bytes;
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::AsyncReadExt;
 use zip::write::FileOptions;
 
 use crate::auth;
@@ -202,8 +206,8 @@ pub async fn revoke_all_handler(State(state): State<AppState>) -> Response {
 
 pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
     let db_path = crate::get_db_path();
-    let data = match std::fs::read(&db_path) {
-        Ok(d) => d,
+    let file = match tokio::fs::File::open(&db_path).await {
+        Ok(f) => f,
         Err(e) => {
             return err_json(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -213,6 +217,18 @@ pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
         }
     };
 
+    let stream = stream::unfold(file, |mut file| async {
+        let mut buf = vec![0u8; 65536];
+        match file.read(&mut buf).await {
+            Ok(0) => None,
+            Ok(n) => {
+                buf.truncate(n);
+                Some((Ok::<_, std::io::Error>(Bytes::from(buf)), file))
+            }
+            Err(e) => Some((Err(e), file)),
+        }
+    });
+
     let filename = db_path.file_name().unwrap().to_str().unwrap_or("data.db");
     Response::builder()
         .status(StatusCode::OK)
@@ -221,7 +237,7 @@ pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", filename),
         )
-        .body(axum::body::Body::from(data))
+        .body(Body::from_stream(stream))
         .unwrap()
 }
 
