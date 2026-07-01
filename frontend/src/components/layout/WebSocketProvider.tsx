@@ -1,3 +1,4 @@
+import { useEffect, useState, useRef } from "react"
 import type { ReactNode } from "react"
 import { useWebSocket } from "@/hooks/use-websocket"
 import { useConnectionStore } from "@/lib/store"
@@ -7,8 +8,21 @@ import { MonitorDown, RefreshCw } from "lucide-react"
 function OfflineOverlay() {
   const status = useConnectionStore((s) => s.status)
   const retry = useConnectionStore((s) => s.retryConnection)
+  const [show, setShow] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  if (status !== "disconnected") return null
+  useEffect(() => {
+    if (status === "disconnected") {
+      timer.current = setTimeout(() => setShow(true), 1000)
+    } else {
+      setShow(false)
+    }
+    return () => {
+      if (timer.current) clearTimeout(timer.current)
+    }
+  }, [status])
+
+  if (!show) return null
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/95 backdrop-blur-sm">
