@@ -226,7 +226,11 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
 
     while reader.read_until(b'\n', &mut buf).await.unwrap_or(0) > 0 {
         // strip trailing \r\n
-        while buf.last().map(|&b| b == b'\n' || b == b'\r').unwrap_or(false) {
+        while buf
+            .last()
+            .map(|&b| b == b'\n' || b == b'\r')
+            .unwrap_or(false)
+        {
             buf.pop();
         }
 

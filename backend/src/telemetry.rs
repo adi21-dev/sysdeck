@@ -12,7 +12,6 @@ pub fn start_engine(
 ) {
     let (internal_tx, mut internal_rx) = mpsc::channel::<TelemetrySnapshot>(8);
 
-    // Dedicated OS thread for synchronous sysinfo polling (off the tokio runtime)
     std::thread::spawn(move || {
         let mut system = System::new();
         let mut networks = Networks::new_with_refreshed_list();
@@ -50,7 +49,11 @@ pub fn start_engine(
             let disk_available: u64 = disks.iter().map(|d| d.available_space()).sum();
             let disk_used = disk_total.saturating_sub(disk_available);
 
-            let (battery_percent, battery_charging) = get_battery_status();
+            let (battery_percent, battery_charging) = if tick_1s.is_multiple_of(30) {
+                get_battery_status()
+            } else {
+                (None, None)
+            };
 
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -77,7 +80,6 @@ pub fn start_engine(
         }
     });
 
-    // Lightweight tokio task: broadcasts to WS clients, persists to DB via spawn_blocking
     tokio::spawn(async move {
         let mut tick = 0u64;
         while let Some(snapshot) = internal_rx.recv().await {
@@ -99,6 +101,8 @@ pub fn start_engine(
         }
     });
 }
+
+// --- Battery ---
 
 #[cfg(windows)]
 #[repr(C)]
@@ -139,5 +143,72 @@ fn get_battery_status() -> (Option<f32>, Option<bool>) {
             }
         }
     }
+
+    #[cfg(target_os = "linux")]
+    {
+        return get_battery_status_linux();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some((p, c)) = get_battery_status_macos() {
+            return (p, c);
+        }
+    }
+
     (None, None)
+}
+
+#[cfg(target_os = "linux")]
+fn get_battery_status_linux() -> (Option<f32>, Option<bool>) {
+    for i in 0..4 {
+        let dir = format!("/sys/class/power_supply/BAT{i}");
+        if !std::path::Path::new(&dir).exists() {
+            continue;
+        }
+
+        let capacity = std::fs::read_to_string(format!("{dir}/capacity"))
+            .ok()
+            .and_then(|s| s.trim().parse::<f32>().ok());
+
+        let charging = std::fs::read_to_string(format!("{dir}/status"))
+            .ok()
+            .map(|s| matches!(s.trim(), "Charging" | "Full"));
+
+        return (capacity, charging);
+    }
+    (None, None)
+}
+
+#[cfg(target_os = "macos")]
+fn get_battery_status_macos() -> Option<(Option<f32>, Option<bool>)> {
+    let out = std::process::Command::new("pmset")
+        .args(["-g", "batt"])
+        .output()
+        .ok()?;
+    let text = std::str::from_utf8(&out.stdout).ok()?;
+
+    // pmset -g batt output lines:
+    //   -InternalBattery-0 (id=...)  72%; discharging; 3:42 remaining  present: true
+    //   -InternalBattery-0 (id=...)  100%; charged; 0:00  present: true
+
+    let line = text.lines().find(|l| l.contains("InternalBattery"))?;
+
+    let percent = line
+        .split(';')
+        .next()?
+        .trim()
+        .trim_end_matches('%')
+        .parse::<f32>()
+        .ok();
+
+    let charging = if line.contains("charged") || line.contains("charg") {
+        Some(true)
+    } else if line.contains("discharg") {
+        Some(false)
+    } else {
+        None
+    };
+
+    Some((percent, charging))
 }

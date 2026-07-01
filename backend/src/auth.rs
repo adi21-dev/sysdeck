@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use axum::extract::Request;
@@ -19,6 +22,7 @@ use governor::{Quota, RateLimiter};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use totp_rs::{Algorithm, Secret, TOTP};
 use uuid::Uuid;
 
@@ -32,121 +36,125 @@ const LOCKOUT_THRESHOLD: u32 = 5;
 const LOCKOUT_DURATION: Duration = Duration::from_secs(15 * 60);
 const RATE_LIMIT_REQUESTS: u32 = 60;
 
-// --- DPAPI (raw FFI) ---
+// --- JWT Key Management (OS Keychain via keyring crate, with file fallback) ---
 
-#[repr(C)]
-struct Blob {
-    cb_data: u32,
-    pb_data: *mut u8,
+const KEYRING_SERVICE: &str = "NodeDesk";
+const KEYRING_USER: &str = "jwt-signing-key";
+const SECRETS_FILE: &str = ".secrets";
+const FALLBACK_DIR_ENV: &str = "NODEDESK_DATA_DIR";
+
+/// Determine where to store secrets for the fallback file.
+fn fallback_secrets_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var(FALLBACK_DIR_ENV) {
+        return PathBuf::from(dir);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+        base.join("NodeDesk")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        crate::get_data_dir()
+    }
 }
 
-extern "system" {
-    fn CryptProtectData(
-        p_data_in: *const Blob,
-        sz_data_descr: *const u16,
-        p_optional_entropy: *const Blob,
-        pv_reserved: *const std::ffi::c_void,
-        p_prompt_struct: *const std::ffi::c_void,
-        dw_flags: u32,
-        p_data_out: *mut Blob,
-    ) -> i32;
-
-    fn CryptUnprotectData(
-        p_data_in: *const Blob,
-        ppsz_data_descr: *mut *mut u16,
-        p_optional_entropy: *const Blob,
-        pv_reserved: *const std::ffi::c_void,
-        p_prompt_struct: *const std::ffi::c_void,
-        dw_flags: u32,
-        p_data_out: *mut Blob,
-    ) -> i32;
-
-    fn LocalFree(ptr: *mut u8) -> *mut u8;
+fn secrets_file_path() -> PathBuf {
+    fallback_secrets_dir().join(SECRETS_FILE)
 }
 
-fn dpapi_encrypt(plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    unsafe {
-        let data_in = Blob {
-            cb_data: plaintext.len() as u32,
-            pb_data: plaintext.as_ptr() as *mut u8,
-        };
-        let mut data_out = Blob {
-            cb_data: 0,
-            pb_data: std::ptr::null_mut(),
-        };
-
-        if CryptProtectData(
-            &data_in as *const Blob,
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            0,
-            &mut data_out as *mut Blob,
-        ) != 0
-        {
-            let result =
-                std::slice::from_raw_parts(data_out.pb_data, data_out.cb_data as usize).to_vec();
-            LocalFree(data_out.pb_data);
-            Ok(result)
-        } else {
-            Err("DPAPI encryption failed".to_string())
+/// Derive a 32-byte key from the Linux machine-id. Returns None on non-Linux
+/// (fallback should only be used when keyring is unavailable, which happens
+/// on headless Linux without D-Bus).
+fn derive_machine_id_key() -> Result<[u8; 32], String> {
+    for path in &["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+        if let Ok(id) = std::fs::read_to_string(path) {
+            let hash = Sha256::digest(id.trim().as_bytes());
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&hash);
+            return Ok(key);
         }
     }
+    Err("No machine-id found at /etc/machine-id or /var/lib/dbus/machine-id".to_string())
 }
 
-fn dpapi_decrypt(ciphertext: &[u8]) -> Result<Vec<u8>, String> {
-    unsafe {
-        let data_in = Blob {
-            cb_data: ciphertext.len() as u32,
-            pb_data: ciphertext.as_ptr() as *mut u8,
-        };
-        let mut data_out = Blob {
-            cb_data: 0,
-            pb_data: std::ptr::null_mut(),
-        };
+/// AES-256-GCM encrypt plaintext, returning `[12-byte nonce][ciphertext]`.
+fn encrypt_aes_gcm(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
+    let mut nonce_bytes = [0u8; 12];
+    rand::thread_rng().fill(&mut nonce_bytes);
+    let nonce = Nonce::from_slice(&nonce_bytes);
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| format!("Encryption failed: {}", e))?;
+    let mut out = Vec::with_capacity(12 + ciphertext.len());
+    out.extend_from_slice(&nonce_bytes);
+    out.extend_from_slice(&ciphertext);
+    Ok(out)
+}
 
-        if CryptUnprotectData(
-            &data_in as *const Blob,
-            std::ptr::null_mut(),
-            std::ptr::null(),
-            std::ptr::null(),
-            std::ptr::null(),
-            0,
-            &mut data_out as *mut Blob,
-        ) != 0
-        {
-            let result =
-                std::slice::from_raw_parts(data_out.pb_data, data_out.cb_data as usize).to_vec();
-            LocalFree(data_out.pb_data);
-            Ok(result)
-        } else {
-            Err("DPAPI decryption failed".to_string())
+/// Decrypt data produced by `encrypt_aes_gcm`.
+fn decrypt_aes_gcm(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
+    if data.len() < 12 {
+        return Err("Invalid encrypted data: too short".to_string());
+    }
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
+    let (nonce_bytes, ciphertext) = data.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|e| format!("Decryption failed: {}", e))
+}
+
+/// Load or create the JWT signing key.
+///
+/// 1. Try OS keychain via `keyring` crate.
+/// 2. If keyring is unavailable (headless Linux), fall back to machine-id derived
+///    AES-256-GCM key stored in `~/.local/share/NodeDesk/.secrets`.
+pub fn load_or_create_jwt_key() -> Result<Vec<u8>, String> {
+    // --- Attempt 1: keyring ---
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        match entry.get_password() {
+            Ok(b64) => {
+                return BASE64
+                    .decode(b64.as_bytes())
+                    .map_err(|e| format!("Failed to decode JWT key: {}", e));
+            }
+            Err(keyring::Error::NoEntry) => {
+                let key: [u8; 32] = rand::thread_rng().gen();
+                let b64 = BASE64.encode(&key);
+                if entry.set_password(&b64).is_ok() {
+                    return Ok(key.to_vec());
+                }
+                // keyring exists but can't write — fall through
+            }
+            Err(_) => {} // keyring unavailable — fall through
         }
     }
-}
 
-// --- JWT Key Management ---
+    // --- Attempt 2: machine-id encrypted file (headless Linux fallback) ---
+    let enc_key = derive_machine_id_key()?;
+    let path = secrets_file_path();
 
-pub fn load_or_create_jwt_key(conn: &rusqlite::Connection) -> Result<Vec<u8>, String> {
-    let mut stmt = conn
-        .prepare("SELECT encrypted_key FROM jwt_signing_key WHERE id = 1")
-        .map_err(|e| format!("Failed to query jwt_signing_key: {}", e))?;
-
-    let existing: Option<Vec<u8>> = stmt.query_row([], |row| row.get(0)).ok();
-
-    if let Some(encrypted) = existing {
-        dpapi_decrypt(&encrypted)
-    } else {
-        let key: [u8; 32] = rand::thread_rng().gen();
-        let encrypted = dpapi_encrypt(&key)?;
-        conn.execute(
-            "INSERT INTO jwt_signing_key (id, encrypted_key) VALUES (1, ?1)",
-            rusqlite::params![encrypted],
-        )
-        .map_err(|e| format!("Failed to store JWT signing key: {}", e))?;
-        Ok(key.to_vec())
+    if path.exists() {
+        let data =
+            std::fs::read(&path).map_err(|e| format!("Failed to read secrets file: {}", e))?;
+        return decrypt_aes_gcm(&enc_key, &data);
     }
+
+    let jwt_key: [u8; 32] = rand::thread_rng().gen();
+    let encrypted = encrypt_aes_gcm(&enc_key, &jwt_key)?;
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create secrets directory: {}", e))?;
+    }
+    std::fs::write(&path, &encrypted)
+        .map_err(|e| format!("Failed to write secrets file: {}", e))?;
+
+    Ok(jwt_key.to_vec())
 }
 
 // --- Password Hashing ---
@@ -410,7 +418,14 @@ pub(crate) fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> String 
 }
 
 fn login_err(code: StatusCode, msg: &str) -> Response {
-    (code, Json(LoginResponse { success: false, message: msg.to_string() })).into_response()
+    (
+        code,
+        Json(LoginResponse {
+            success: false,
+            message: msg.to_string(),
+        }),
+    )
+        .into_response()
 }
 
 pub async fn login_handler(
@@ -425,7 +440,10 @@ pub async fn login_handler(
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_locked", Some("Account locked"), Some(&ip));
         drop(conn);
-        return login_err(StatusCode::TOO_MANY_REQUESTS, "Account locked. Try again in 15 minutes.");
+        return login_err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Account locked. Try again in 15 minutes.",
+        );
     }
 
     let (password_valid, totp_secret) = {
@@ -461,7 +479,12 @@ pub async fn login_handler(
 
     let secret_bytes = match totp_secret_from_b32(&totp_secret) {
         Ok(b) => b,
-        Err(_) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, "Server configuration error"),
+        Err(_) => {
+            return login_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Server configuration error",
+            )
+        }
     };
 
     if !verify_totp_code(&secret_bytes, &form.totp_code) {
@@ -484,13 +507,23 @@ pub async fn login_handler(
         drop(conn);
         match result {
             Ok(j) => j,
-            Err(e) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, &format!("Session creation failed: {}", e)),
+            Err(e) => {
+                return login_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    &format!("Session creation failed: {}", e),
+                )
+            }
         }
     };
 
     let token = match create_jwt(&jti, &state.jwt_key) {
         Ok(t) => t,
-        Err(e) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, &format!("Token creation failed: {}", e)),
+        Err(e) => {
+            return login_err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Token creation failed: {}", e),
+            )
+        }
     };
 
     {
@@ -567,13 +600,23 @@ pub async fn auth_middleware(
     };
 
     if needs_setup {
-        if path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/api/auth/check" {
+        if path.starts_with("/setup")
+            || path.starts_with("/api/setup")
+            || path == "/api/auth/check"
+            || path == "/api/admin/check"
+        {
             return next.run(req).await;
         }
         return Redirect::to("/setup").into_response();
     }
 
-    if path == "/login" || path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/" || path == "/api/auth/check" {
+    if path == "/login"
+        || path.starts_with("/setup")
+        || path.starts_with("/api/setup")
+        || path == "/"
+        || path == "/api/auth/check"
+        || path == "/api/admin/check"
+    {
         return next.run(req).await;
     }
 
@@ -620,7 +663,11 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     let path = req.uri().path().to_string();
 
-    if path == "/login" || path.starts_with("/setup") || path.starts_with("/api/setup") || path == "/api/auth/check" {
+    if path == "/login"
+        || path.starts_with("/setup")
+        || path.starts_with("/api/setup")
+        || path == "/api/auth/check"
+    {
         return next.run(req).await;
     }
 
@@ -638,6 +685,37 @@ pub async fn rate_limit_middleware(
         )
             .into_response(),
     }
+}
+
+// --- Admin / Localhost Middleware ---
+
+pub fn is_local_request(headers: &axum::http::HeaderMap) -> bool {
+    // Cloudflare Quick Tunnels inject cf-connecting-ip and cf-ray headers.
+    // Localhost browsers do not have these headers.
+    !headers.contains_key("cf-connecting-ip") && !headers.contains_key("cf-ray")
+}
+
+pub async fn admin_middleware(req: Request, next: middleware::Next) -> Response {
+    if is_local_request(req.headers()) {
+        next.run(req).await
+    } else {
+        (
+            StatusCode::FORBIDDEN,
+            "Forbidden: admin routes require localhost access",
+        )
+            .into_response()
+    }
+}
+
+#[derive(Serialize)]
+pub struct AdminCheckResponse {
+    is_local: bool,
+}
+
+pub async fn admin_check_handler(headers: axum::http::HeaderMap) -> Json<AdminCheckResponse> {
+    Json(AdminCheckResponse {
+        is_local: is_local_request(&headers),
+    })
 }
 
 // --- CSP Middleware ---
@@ -789,17 +867,6 @@ mod tests {
         )
         .unwrap();
         assert!(verify_jwt(&token, JWT_KEY).is_err());
-    }
-
-    // --- DPAPI ---
-
-    #[ignore]
-    #[test]
-    fn test_dpapi_encrypt_decrypt_roundtrip() {
-        let data = b"Hello, NodeDesk!";
-        let encrypted = dpapi_encrypt(data).unwrap();
-        let decrypted = dpapi_decrypt(&encrypted).unwrap();
-        assert_eq!(data.to_vec(), decrypted);
     }
 
     // --- Sessions ---
@@ -965,5 +1032,84 @@ mod tests {
     fn test_client_ip_from_headers_missing() {
         let headers = axum::http::HeaderMap::new();
         assert_eq!(client_ip_from_headers(&headers), "127.0.0.1");
+    }
+
+    // --- is_local_request ---
+
+    #[test]
+    fn test_is_local_request_no_header() {
+        let headers = axum::http::HeaderMap::new();
+        assert!(is_local_request(&headers));
+    }
+
+    #[test]
+    fn test_is_local_request_cf_connecting_ip() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("cf-connecting-ip", "203.0.113.1".parse().unwrap());
+        assert!(!is_local_request(&headers));
+    }
+
+    #[test]
+    fn test_is_local_request_cf_ray() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("cf-ray", "abc123".parse().unwrap());
+        assert!(!is_local_request(&headers));
+    }
+
+    #[test]
+    fn test_is_local_request_both_cf_headers() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("cf-connecting-ip", "203.0.113.1".parse().unwrap());
+        headers.insert("cf-ray", "abc123".parse().unwrap());
+        assert!(!is_local_request(&headers));
+    }
+
+    // --- load_or_create_jwt_key ---
+
+    #[test]
+    fn test_load_or_create_jwt_key_roundtrip() {
+        // Delete any prior key to start fresh
+        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).unwrap();
+        // Ignore error if no prior key exists
+        let _ = entry.delete_password();
+
+        let key = load_or_create_jwt_key().expect("Should create a new key");
+        assert_eq!(key.len(), 32);
+
+        // Loading again should return the same key
+        let key2 = load_or_create_jwt_key().expect("Should load existing key");
+        assert_eq!(key, key2);
+
+        // Cleanup
+        let _ = entry.delete_password();
+    }
+
+    // --- Fallback encrypt/decrypt ---
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill(&mut key);
+        let plaintext = b"hello world";
+        let encrypted = encrypt_aes_gcm(&key, plaintext).unwrap();
+        let decrypted = decrypt_aes_gcm(&key, &encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_decrypt_too_short() {
+        let mut key = [0u8; 32];
+        rand::thread_rng().fill(&mut key);
+        assert!(decrypt_aes_gcm(&key, b"too short").is_err());
+    }
+
+    #[test]
+    fn test_decrypt_wrong_key() {
+        let mut key1 = [0u8; 32];
+        rand::thread_rng().fill(&mut key1);
+        let mut key2 = [0u8; 32];
+        rand::thread_rng().fill(&mut key2);
+        let encrypted = encrypt_aes_gcm(&key1, b"secret").unwrap();
+        assert!(decrypt_aes_gcm(&key2, &encrypted).is_err());
     }
 }

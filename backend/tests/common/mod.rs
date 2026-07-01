@@ -39,12 +39,6 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
     db::init_telemetry_table(&conn).unwrap();
     db::init_auth_tables(&conn).unwrap();
 
-    conn.execute(
-        "INSERT INTO jwt_signing_key (id, encrypted_key) VALUES (1, ?1)",
-        rusqlite::params![TEST_JWT_KEY.to_vec()],
-    )
-    .unwrap();
-
     seed(&conn);
 
     let db = Arc::new(Mutex::new(conn));
@@ -56,12 +50,14 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
             .allow_burst(std::num::NonZeroU32::new(5).unwrap()),
     ));
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
+    let (system_tx, _) = broadcast::channel::<String>(16);
     let power_state = Arc::new(PowerState::new());
     let script_state = Arc::new(ScriptState::new());
 
     let (tunnel_state, _) = TunnelState::new(&get_data_dir(), 3939);
     let app_state = AppState {
         telemetry_tx,
+        system_tx,
         db,
         jwt_key,
         lockout,
@@ -71,6 +67,7 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
         script_state,
         tunnel_state: Arc::new(tunnel_state),
         port: 3939,
+        setup_token: Arc::new("test-setup-token-123".to_string()),
     };
 
     let router = nodedesk_agent::build_router(app_state.clone());
@@ -154,11 +151,7 @@ pub async fn post_json(
 }
 
 /// Helper: send an authenticated GET request with a cookie
-pub async fn authed_get(
-    router: &mut Router,
-    path: &str,
-    cookie: &str,
-) -> axum::response::Response {
+pub async fn authed_get(router: &mut Router, path: &str, cookie: &str) -> axum::response::Response {
     let req = Request::get(path)
         .header("cookie", cookie)
         .body(Body::empty())

@@ -13,7 +13,10 @@ use crate::db;
 use crate::AppState;
 
 fn ok_json(msg: &str) -> (StatusCode, Json<serde_json::Value>) {
-    (StatusCode::OK, Json(json!({"success": true, "message": msg})))
+    (
+        StatusCode::OK,
+        Json(json!({"success": true, "message": msg})),
+    )
 }
 
 fn err_json(code: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::Value>) {
@@ -64,7 +67,11 @@ pub async fn change_password_handler(
         "UPDATE users SET password_hash = ?1, updated_at = ?2 WHERE id = 1",
         rusqlite::params![new_hash, now],
     ) {
-        return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("DB error: {}", e)).into_response();
+        return err_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("DB error: {}", e),
+        )
+        .into_response();
     }
     let _ = db::insert_audit_log(&db_lock, "password_changed", None, None);
     drop(db_lock);
@@ -108,7 +115,9 @@ pub async fn verify_totp_handler(
 ) -> Response {
     let secret_bytes = match auth::totp_secret_from_b32(&body.secret) {
         Ok(b) => b,
-        Err(_) => return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response(),
+        Err(_) => {
+            return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response()
+        }
     };
 
     if !auth::verify_totp_code(&secret_bytes, &body.code) {
@@ -125,7 +134,11 @@ pub async fn verify_totp_handler(
         "UPDATE users SET totp_secret = ?1, updated_at = ?2 WHERE id = 1",
         rusqlite::params![body.secret, now],
     ) {
-        return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("DB error: {}", e)).into_response();
+        return err_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &format!("DB error: {}", e),
+        )
+        .into_response();
     }
     let _ = db::insert_audit_log(&db_lock, "totp_reset_completed", None, None);
     drop(db_lock);
@@ -191,7 +204,13 @@ pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
     let db_path = crate::get_db_path();
     let data = match std::fs::read(&db_path) {
         Ok(d) => d,
-        Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &format!("Failed to read DB: {}", e)).into_response(),
+        Err(e) => {
+            return err_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Failed to read DB: {}", e),
+            )
+            .into_response()
+        }
     };
 
     let filename = db_path.file_name().unwrap().to_str().unwrap_or("data.db");
@@ -309,5 +328,3 @@ pub async fn set_port_handler(
         json!({"success": true, "new_port": body.port, "message": "Port will change on next restart"}),
     )
 }
-
-

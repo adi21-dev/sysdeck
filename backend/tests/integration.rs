@@ -15,14 +15,24 @@ async fn test_setup_json_api_full_flow() {
     let (mut router, _state) = test_app();
 
     // Step 1: Set password
-    let resp = post_json(&mut router, "/api/setup/password", json!({"password": "MySecureP@ss1"})).await;
+    let resp = post_json(
+        &mut router,
+        "/api/setup/password",
+        json!({"password": "MySecureP@ss1"}),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert_eq!(data["success"], true);
     let token = data["token"].as_str().unwrap().to_string();
 
     // Step 2: Get TOTP secret
-    let resp = post_json(&mut router, &format!("/api/setup/totp?token={}", token), json!({})).await;
+    let resp = post_json(
+        &mut router,
+        &format!("/api/setup/totp?token={}", token),
+        json!({}),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert_eq!(data["success"], true);
@@ -76,12 +86,7 @@ async fn test_setup_json_api_full_flow() {
 #[tokio::test]
 async fn test_setup_invalid_token_returns_error() {
     let (mut router, _state) = test_app();
-    let resp = post_json(
-        &mut router,
-        "/api/setup/totp?token=nonexistent",
-        json!({}),
-    )
-    .await;
+    let resp = post_json(&mut router, "/api/setup/totp?token=nonexistent", json!({})).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let data = body_json(resp).await;
     assert_eq!(data["success"], false);
@@ -90,7 +95,12 @@ async fn test_setup_invalid_token_returns_error() {
 #[tokio::test]
 async fn test_setup_weak_password_rejected() {
     let (mut router, _state) = test_app();
-    let resp = post_json(&mut router, "/api/setup/password", json!({"password": "weak"})).await;
+    let resp = post_json(
+        &mut router,
+        "/api/setup/password",
+        json!({"password": "weak"}),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let data = body_json(resp).await;
     assert_eq!(data["success"], false);
@@ -131,7 +141,13 @@ async fn test_login_success() {
     let code = auth::create_totp(secret).generate_current().unwrap();
     let resp = login_request(&mut router, "TestP@ss123", &code).await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().to_string();
+    let cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     assert!(cookie.contains("token="));
 }
 
@@ -153,7 +169,9 @@ async fn test_login_bad_totp() {
 #[tokio::test]
 async fn test_login_lockout() {
     let (mut router, secret) = test_app_with_user();
-    let code = auth::create_totp(secret.clone()).generate_current().unwrap();
+    let code = auth::create_totp(secret.clone())
+        .generate_current()
+        .unwrap();
     for _ in 0..5 {
         let resp = login_request(&mut router, "WrongP@ss1", &code).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
@@ -338,7 +356,12 @@ async fn test_file_list_invalid_path() {
     let (mut router, secret) = test_app_with_user();
     let cookie = login_and_cookie(&mut router, &secret).await;
 
-    let resp = authed_get(&mut router, "/api/files/list?path=Z:%5Cnonexistent", &cookie).await;
+    let resp = authed_get(
+        &mut router,
+        "/api/files/list?path=Z:%5Cnonexistent",
+        &cookie,
+    )
+    .await;
     let data = body_json(resp).await;
     assert_eq!(data["success"], false);
     assert!(data["error"].is_string());
@@ -483,9 +506,66 @@ async fn test_script_execute_creates_audit_log() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify audit log was created
-    let resp = authed_get(&mut router, "/api/audit/logs?event=script_executed", &cookie).await;
+    let resp = authed_get(
+        &mut router,
+        "/api/audit/logs?event=script_executed",
+        &cookie,
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     let entries = data["entries"].as_array().unwrap();
     assert!(entries.iter().any(|e| e["event"] == "script_executed"));
+}
+
+// ============================================================
+// Admin / Localhost Middleware Tests
+// ============================================================
+
+#[tokio::test]
+async fn test_admin_check_local() {
+    let (router, _state) = test_app();
+    let req = axum::http::Request::get("/api/admin/check")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let data = body_json(resp).await;
+    assert_eq!(data["is_local"], true);
+}
+
+#[tokio::test]
+async fn test_admin_check_remote() {
+    let (router, _state) = test_app();
+    let req = axum::http::Request::get("/api/admin/check")
+        .header("cf-connecting-ip", "203.0.113.1")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    let data = body_json(resp).await;
+    assert_eq!(data["is_local"], false);
+}
+
+#[tokio::test]
+async fn test_settings_rejected_via_tunnel() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    // Simulate tunnel request with Cloudflare headers
+    let req = axum::http::Request::get("/api/settings/port")
+        .header("cookie", &cookie)
+        .header("cf-ray", "abc123")
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_settings_allowed_via_localhost() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    // Localhost request (no X-Forwarded-For) should work
+    let resp = authed_get(&mut router, "/api/settings/port", &cookie).await;
+    assert_eq!(resp.status(), StatusCode::OK);
 }

@@ -11,15 +11,24 @@ use crate::tunnel::TunnelEvent;
 use crate::AppState;
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state.telemetry_tx, state.tunnel_state.tx.clone()))
+    ws.on_upgrade(move |socket| {
+        handle_socket(
+            socket,
+            state.telemetry_tx,
+            state.system_tx,
+            state.tunnel_state.tx.clone(),
+        )
+    })
 }
 
 async fn handle_socket(
     mut socket: WebSocket,
     telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
+    system_tx: broadcast::Sender<String>,
     tunnel_tx: broadcast::Sender<Arc<TunnelEvent>>,
 ) {
     let mut telemetry_rx = telemetry_tx.subscribe();
+    let mut system_rx = system_tx.subscribe();
     let mut tunnel_rx = tunnel_tx.subscribe();
 
     loop {
@@ -46,6 +55,17 @@ async fn handle_socket(
                         tracing::warn!("WS client lagged by {} messages", n);
                         continue;
                     }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            event = system_rx.recv() => {
+                match event {
+                    Ok(msg) => {
+                        if socket.send(Message::Text(msg)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }

@@ -166,9 +166,7 @@ fn execute_power_action(action: PowerAction) {
                 .spawn();
         }
         PowerAction::SignOut => {
-            let _ = std::process::Command::new("shutdown")
-                .args(["/l"])
-                .spawn();
+            let _ = std::process::Command::new("shutdown").args(["/l"]).spawn();
         }
         PowerAction::Lock => {
             let _ = std::process::Command::new("rundll32.exe")

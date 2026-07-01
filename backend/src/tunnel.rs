@@ -59,7 +59,10 @@ pub struct TunnelState {
 }
 
 impl TunnelState {
-    pub fn new(data_dir: &std::path::Path, port: u16) -> (Self, broadcast::Receiver<Arc<TunnelEvent>>) {
+    pub fn new(
+        data_dir: &std::path::Path,
+        port: u16,
+    ) -> (Self, broadcast::Receiver<Arc<TunnelEvent>>) {
         let (tx, rx) = broadcast::channel(100);
         (
             Self {
@@ -140,7 +143,8 @@ async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> 
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     let checksum = download_with_retry(&client, SHA256_URL).await?;
-    let checksum_text = std::str::from_utf8(&checksum).map_err(|e| format!("Invalid checksum UTF-8: {}", e))?;
+    let checksum_text =
+        std::str::from_utf8(&checksum).map_err(|e| format!("Invalid checksum UTF-8: {}", e))?;
     let expected_hash = checksum_text
         .lines()
         .next()
@@ -166,7 +170,9 @@ async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).await.ok();
+        fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
+            .await
+            .ok();
     }
 
     fs::rename(&tmp, exe_path)
@@ -186,11 +192,20 @@ async fn download_with_retry(client: &reqwest::Client, url: &str) -> Result<Vec<
             .map_err(|e| format!("Attempt {} failed: {}", attempt, e))?;
 
         if resp.status().is_success() {
-            return resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("Read: {}", e));
+            return resp
+                .bytes()
+                .await
+                .map(|b| b.to_vec())
+                .map_err(|e| format!("Read: {}", e));
         }
 
         if attempt < MAX_RETRIES {
-            tracing::warn!("Attempt {} returned {}, retry in {:?}", attempt, resp.status(), backoff);
+            tracing::warn!(
+                "Attempt {} returned {}, retry in {:?}",
+                attempt,
+                resp.status(),
+                backoff
+            );
             tokio::time::sleep(backoff).await;
             backoff *= 2;
         }
@@ -210,7 +225,11 @@ async fn run_tunnel_loop(
         };
 
         let mut child = match Command::new(&state.exe_path)
-            .args(["tunnel", "--url", &format!("http://localhost:{}", state.port)])
+            .args([
+                "tunnel",
+                "--url",
+                &format!("http://localhost:{}", state.port),
+            ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -265,7 +284,10 @@ async fn run_tunnel_loop(
 
         // Monitor process — restart on exit
         match child.wait().await {
-            Ok(status) => tracing::warn!("cloudflared exited with {:?}, restarting in 2s", status.code()),
+            Ok(status) => tracing::warn!(
+                "cloudflared exited with {:?}, restarting in 2s",
+                status.code()
+            ),
             Err(e) => tracing::error!("cloudflared wait error: {}", e),
         }
 

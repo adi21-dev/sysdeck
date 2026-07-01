@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
+use crate::auth;
+use crate::db;
+use crate::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::auth;
-use crate::db;
-use crate::AppState;
 
 // --- Setup State ---
 
@@ -266,7 +266,11 @@ pub async fn api_finish_handler(
             rusqlite::params![hash, now],
         );
     }
-    let _ = db::set_setting(&conn, "relay_opt_in", if flow.relay_opt_in { "true" } else { "false" });
+    let _ = db::set_setting(
+        &conn,
+        "relay_opt_in",
+        if flow.relay_opt_in { "true" } else { "false" },
+    );
     state.lockout.clear_failures(1);
     let _ = db::insert_audit_log(
         &conn,
@@ -296,6 +300,29 @@ pub async fn api_progress_handler(
         }
         None => Json(serde_json::json!({"success": false, "error": "Invalid token"})),
     }
+}
+
+// --- Setup token for headless/remote setup ---
+
+pub async fn check_token_handler(
+    _state: State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Json<serde_json::Value> {
+    let is_tunneled = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
+    Json(serde_json::json!({"token_required": is_tunneled}))
+}
+
+#[derive(Deserialize)]
+pub struct VerifyTokenRequest {
+    pub token: String,
+}
+
+pub async fn verify_setup_token_handler(
+    State(state): State<AppState>,
+    Json(body): Json<VerifyTokenRequest>,
+) -> Json<serde_json::Value> {
+    let valid = body.token == *state.setup_token;
+    Json(serde_json::json!({"success": valid}))
 }
 
 #[cfg(test)]
