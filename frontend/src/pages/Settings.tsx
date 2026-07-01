@@ -159,7 +159,6 @@ export function SettingsPage() {
   }
 
   const handleBrowseFolder = () => {
-    folderInputRef.current?.setAttribute("webkitdirectory", "")
     folderInputRef.current?.click()
   }
 
@@ -168,15 +167,15 @@ export function SettingsPage() {
     if (files && files.length > 0) {
       const file = files[0]
       const abs = (file as any).path as string | undefined
-      const rel = file.webkitRelativePath
-      if (abs && rel) {
-        const dir = abs.slice(0, -rel.length)
+      if (abs) {
+        const dir = file.webkitRelativePath
+          ? abs.slice(0, -file.webkitRelativePath.length)
+          : abs.includes("\\") ? abs.slice(0, abs.lastIndexOf("\\")) : abs
         if (browseTarget === "allowed") setNewAllowed(dir)
         else setNewBlocked(dir)
       }
     }
     e.target.value = ""
-    folderInputRef.current?.removeAttribute("webkitdirectory")
   }
 
   const handleExportDb = () => { window.open("/api/settings/export-db", "_blank") }

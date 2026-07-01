@@ -300,6 +300,19 @@ pub async fn set_paths_handler(
     State(state): State<AppState>,
     Json(body): Json<PathsBody>,
 ) -> Json<serde_json::Value> {
+    // Validate no overlapping allowed paths
+    for i in 0..body.allowed.len() {
+        let a = body.allowed[i].trim_end_matches('\\').to_lowercase();
+        for j in (i + 1)..body.allowed.len() {
+            let b = body.allowed[j].trim_end_matches('\\').to_lowercase();
+            if a.starts_with(&format!("{}\\", b)) || b.starts_with(&format!("{}\\", a)) || a == b {
+                return Json(json!({
+                    "success": false,
+                    "message": format!("Overlapping paths: '{}' and '{}'", body.allowed[i], body.allowed[j])
+                }));
+            }
+        }
+    }
     let allowed_json = serde_json::to_string(&body.allowed).unwrap_or_default();
     let blocked_json = serde_json::to_string(&body.blocked).unwrap_or_default();
     let db_lock = state.db.lock().await;

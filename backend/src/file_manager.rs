@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 
 use axum::extract::{Query, State};
@@ -20,13 +20,16 @@ const BLOCKED_PREFIXES: &[&str] = &[
     r"c:\program files (x86)",
 ];
 
+fn strip_wp(s: &str) -> &str {
+    s.strip_prefix(r"\\?\").unwrap_or(s)
+}
+
 pub fn validate_path(requested: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(requested);
     let canonical = std::fs::canonicalize(&path).map_err(|e| format!("Invalid path: {}", e))?;
 
-    // Windows long-path prefix
     let lower = canonical.to_string_lossy().to_lowercase();
-    let stripped = lower.strip_prefix(r"\\?\").unwrap_or(&lower);
+    let stripped = strip_wp(&lower);
     for blocked in BLOCKED_PREFIXES {
         if stripped.starts_with(blocked) {
             return Err(format!("Access to '{}' is blocked", canonical.display()));
@@ -34,6 +37,57 @@ pub fn validate_path(requested: &str) -> Result<PathBuf, String> {
     }
 
     Ok(canonical)
+}
+
+fn path_allowed(canonical: &Path, allowed: &[String]) -> bool {
+    if allowed.is_empty() {
+        return false;
+    }
+    let lower = strip_wp(&canonical.to_string_lossy().to_lowercase()).to_string();
+    let trimmed = lower.trim_end_matches('\\').to_string();
+    allowed.iter().any(|a| {
+        let al = a.to_lowercase();
+        let a_stripped = strip_wp(&al).to_string();
+        let a_trimmed = a_stripped.trim_end_matches('\\').to_string();
+        trimmed == a_trimmed || trimmed.starts_with(&format!("{}\\", a_trimmed))
+    })
+}
+
+fn path_blocked(canonical: &Path, blocked: &[String]) -> bool {
+    if blocked.is_empty() {
+        return false;
+    }
+    let lower = strip_wp(&canonical.to_string_lossy().to_lowercase()).to_string();
+    let trimmed = lower.trim_end_matches('\\').to_string();
+    blocked.iter().any(|b| {
+        let bl = b.to_lowercase();
+        let b_stripped = strip_wp(&bl).to_string();
+        let b_trimmed = b_stripped.trim_end_matches('\\').to_string();
+        trimmed == b_trimmed || trimmed.starts_with(&format!("{}\\", b_trimmed))
+    })
+}
+
+fn child_blocked_fast(child_path: &str, blocked: &[String]) -> bool {
+    if blocked.is_empty() {
+        return false;
+    }
+    let lower = child_path.to_lowercase();
+    blocked.iter().any(|b| {
+        let bl = b.to_lowercase();
+        let b_stripped = strip_wp(&bl).to_string();
+        let b_trimmed = b_stripped.trim_end_matches('\\').to_string();
+        lower == b_trimmed || lower.starts_with(&format!("{}\\", b_trimmed))
+    })
+}
+
+fn read_allowed_blocked(conn: &rusqlite::Connection) -> (Vec<String>, Vec<String>) {
+    let allowed = db::get_setting(conn, "allowed_paths")
+        .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
+        .unwrap_or_default();
+    let blocked = db::get_setting(conn, "blocked_paths")
+        .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
+        .unwrap_or_default();
+    (allowed, blocked)
 }
 
 #[derive(Serialize)]
@@ -64,12 +118,9 @@ pub(crate) async fn list_handler(
 ) -> impl IntoResponse {
     let path_str = query.path.unwrap_or_else(|| "C:\\".to_string());
 
-    // Check allowed paths from settings
-    let allowed = {
+    let (allowed, blocked) = {
         let conn = state.db.lock().await;
-        crate::db::get_setting(&conn, "allowed_paths")
-            .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
-            .unwrap_or_default()
+        read_allowed_blocked(&conn)
     };
     if allowed.is_empty() {
         return Json(ListResponse {
@@ -80,9 +131,7 @@ pub(crate) async fn list_handler(
         })
         .into_response()
     }
-    let req_lower = path_str.to_lowercase();
-    let ok = allowed.iter().any(|a| req_lower.starts_with(&a.to_lowercase()));
-    if !ok {
+    if !path_allowed(Path::new(&path_str), &allowed) {
         return Json(ListResponse {
             success: false,
             entries: vec![],
@@ -115,6 +164,17 @@ pub(crate) async fn list_handler(
         .into_response();
     }
 
+    // ponytail: canonicalize parent dir, fast string match for children
+    if path_blocked(&dir, &blocked) {
+        return Json(ListResponse {
+            success: false,
+            entries: vec![],
+            path: path_str,
+            error: Some("Access to this path is not allowed".to_string()),
+        })
+        .into_response()
+    }
+
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(d) => d,
@@ -130,10 +190,15 @@ pub(crate) async fn list_handler(
     };
 
     for entry in read_dir.flatten() {
+        let child_path = entry.path().to_string_lossy().to_string();
+        // ponytail: fast string check, no canonicalize per child
+        if child_blocked_fast(&child_path, &blocked) {
+            continue;
+        }
         let meta = entry.metadata().ok();
         entries.push(FileEntry {
             name: entry.file_name().to_string_lossy().to_string(),
-            path: entry.path().to_string_lossy().to_string(),
+            path: child_path,
             is_dir: entry.file_type().map(|t| t.is_dir()).unwrap_or(false),
             size: meta.as_ref().map(|m| m.len() as i64).unwrap_or(-1),
             modified: meta
@@ -219,7 +284,23 @@ async fn upload_stream(
         .get("path")
         .ok_or_else(|| "Missing 'path' query parameter".to_string())?;
 
+    let (allowed, blocked) = {
+        let conn = state.db.lock().await;
+        read_allowed_blocked(&conn)
+    };
+    if !path_allowed(Path::new(target_path), &allowed) {
+        return Err("Access denied".to_string());
+    }
+    if path_blocked(Path::new(target_path), &blocked) {
+        return Err("Access denied".to_string());
+    }
+
     let canonical = validate_path(target_path)?;
+
+    // Re-check after canonicalization for symlink defense
+    if path_blocked(&canonical, &blocked) {
+        return Err("Access denied".to_string());
+    }
 
     let file_path = if canonical.is_dir() {
         // If target is a directory, derive filename from Content-Disposition or default
@@ -300,13 +381,28 @@ pub(crate) struct DownloadQuery {
     path: String,
 }
 
-pub(crate) async fn download_handler(Query(query): Query<DownloadQuery>) -> Response {
+pub(crate) async fn download_handler(
+    State(state): State<crate::AppState>,
+    Query(query): Query<DownloadQuery>,
+) -> Response {
     let path = match validate_path(&query.path) {
         Ok(p) => p,
         Err(e) => {
             return (StatusCode::BAD_REQUEST, e).into_response();
         }
     };
+
+    let (allowed, blocked) = {
+        let conn = state.db.lock().await;
+        read_allowed_blocked(&conn)
+    };
+
+    if !path_allowed(&path, &allowed) {
+        return (StatusCode::FORBIDDEN, "Access to this path is not allowed".to_string()).into_response();
+    }
+    if path_blocked(&path, &blocked) {
+        return (StatusCode::FORBIDDEN, "Access to this path is blocked".to_string()).into_response();
+    }
 
     if !path.is_file() {
         return (StatusCode::NOT_FOUND, "File not found".to_string()).into_response();
@@ -364,6 +460,17 @@ pub(crate) async fn delete_handler(
             .into_response()
         }
     };
+
+    let (allowed, blocked) = {
+        let conn = state.db.lock().await;
+        read_allowed_blocked(&conn)
+    };
+    if !path_allowed(&path, &allowed) {
+        return Json(DeleteResponse { success: false, message: "Access denied".to_string() }).into_response();
+    }
+    if path_blocked(&path, &blocked) {
+        return Json(DeleteResponse { success: false, message: "Access denied".to_string() }).into_response();
+    }
 
     let result = if path.is_dir() {
         std::fs::remove_dir_all(&path)
@@ -429,6 +536,19 @@ pub(crate) async fn rename_handler(
                 .into_response();
             }
         }
+    }
+
+    let (allowed, blocked) = {
+        let conn = state.db.lock().await;
+        read_allowed_blocked(&conn)
+    };
+
+    let to_allowed = to.parent().is_some_and(|p| path_allowed(p, &allowed));
+    if !path_allowed(&from, &allowed) || !to_allowed {
+        return Json(RenameResponse { success: false, message: "Access denied".to_string() }).into_response();
+    }
+    if path_blocked(&from, &blocked) || path_blocked(&to, &blocked) {
+        return Json(RenameResponse { success: false, message: "Access denied".to_string() }).into_response();
     }
 
     match std::fs::rename(&from, &to) {

@@ -59,24 +59,21 @@ function fileType(name: string): string {
   return name.slice(dot + 1).toUpperCase()
 }
 
-function Breadcrumb({ path, onNavigate, allowedPaths }: { path: string; onNavigate: (p: string) => void; allowedPaths: string[] }) {
+function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
+  if (!path) {
+    return <span className="text-sm font-medium">Home</span>
+  }
+
   const parts = path.split("/").filter(Boolean)
   const crumbs = parts.map((part, i) => ({
     label: part,
-    path: parts.slice(0, i + 1).join("/"),
+    partPath: parts.slice(0, i + 1).join("/"),
   }))
-  const homePath = (() => {
-    if (!allowedPaths.length) return "/C:"
-    const cPath = allowedPaths.find((p) => /^[A-Za-z]:/.test(p))
-    if (cPath) return "/C:"
-    const first = allowedPaths[0].replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")
-    return first
-  })()
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <button onClick={() => onNavigate(homePath)} className="text-muted-foreground hover:text-foreground transition-colors">
-        {homePath === "/C:" ? "C:" : "Home"}
+      <button onClick={() => onNavigate("")} className="text-muted-foreground hover:text-foreground transition-colors">
+        Home
       </button>
       {crumbs.map((cr, i) => (
         <span key={i} className="flex items-center gap-2">
@@ -85,7 +82,7 @@ function Breadcrumb({ path, onNavigate, allowedPaths }: { path: string; onNaviga
             <span className="font-medium truncate max-w-[120px] md:max-w-[200px]">{cr.label}</span>
           ) : (
             <button
-              onClick={() => onNavigate(cr.path)}
+              onClick={() => onNavigate(cr.partPath)}
               className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[80px] md:max-w-[150px]"
             >
               {cr.label}
@@ -93,6 +90,31 @@ function Breadcrumb({ path, onNavigate, allowedPaths }: { path: string; onNaviga
           )}
         </span>
       ))}
+    </div>
+  )
+}
+
+const IS_HOME = ""
+
+function RootSelector({ paths, onNavigate }: { paths: string[]; onNavigate: (p: string) => void }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {paths.map((p) => {
+        const full = fromApiPath(p)
+        const parts = full.split("/").filter(Boolean)
+        const short = parts[parts.length - 1] || full
+        return (
+          <Card key={p} className="p-4 cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate(full)}>
+            <div className="flex items-center gap-3">
+              <Folder className="h-8 w-8 text-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{short}</p>
+                <p className="text-xs text-muted-foreground truncate">{p}</p>
+              </div>
+            </div>
+          </Card>
+        )
+      })}
     </div>
   )
 }
@@ -154,25 +176,35 @@ export function FilesPage() {
       if (d.success && d.allowed?.length > 0) {
         const paths: string[] = d.allowed
         setAllowedPaths(paths)
-        const cDrive = paths.find((p: string) => /^[A-Za-z]:/.test(p))
-        if (!cDrive) {
-          const first = paths[0].replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")
-          setCurrentPath(first)
+        if (paths.length === 1) {
+          const first = fromApiPath(paths[0])
+          handleNavigate(first)
         }
       } else {
         setAllowedPaths([])
         setError("No allowed paths configured. Go to Settings to add file access paths.")
       }
     }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    loadDir(currentPath)
+    if (currentPath !== IS_HOME) {
+      loadDir(currentPath)
+    }
   }, [loadDir, currentPath])
 
   const handleNavigate = useCallback(
-    (path: string) => { clearSelection(); loadDir(path) },
-    [loadDir, clearSelection],
+    (path: string) => {
+      clearSelection()
+      if (path === IS_HOME) {
+        setCurrentPath(IS_HOME)
+        setEntries([])
+      } else {
+        loadDir(path)
+      }
+    },
+    [loadDir, clearSelection, setCurrentPath, setEntries],
   )
 
   const handleRefresh = () => loadDir(currentPath)
@@ -275,20 +307,22 @@ export function FilesPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <Breadcrumb path={currentPath} onNavigate={handleNavigate} allowedPaths={allowedPaths} />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
-            className="p-2 rounded-lg border bg-background hover:bg-accent transition-colors"
-            title={viewMode === "table" ? "Grid view" : "List view"}
-          >
-            {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
-          </button>
-          <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity" onClick={() => fileInputRef.current?.click()}>
-            <Upload className="h-4 w-4" />
-            Upload
-          </button>
-        </div>
+        <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
+        {currentPath !== IS_HOME && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
+              className="p-2 rounded-lg border bg-background hover:bg-accent transition-colors"
+              title={viewMode === "table" ? "Grid view" : "List view"}
+            >
+              {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+            </button>
+            <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4" />
+              Upload
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -298,6 +332,10 @@ export function FilesPage() {
         </div>
       )}
 
+      {currentPath === IS_HOME && allowedPaths.length > 0 ? (
+        <RootSelector paths={allowedPaths} onNavigate={handleNavigate} />
+      ) : currentPath === IS_HOME ? null : (
+        <>
       {uploads.length > 0 && (
         <div className="space-y-2">
           {uploads.map((u) => (
@@ -431,6 +469,7 @@ export function FilesPage() {
         confirmText="DELETE" actionLabel="Delete All"
         onConfirm={() => { doBulkDelete(); setConfirmBulkDelete(false) }}
       />
+        </>)}
     </div>
   )
 }
