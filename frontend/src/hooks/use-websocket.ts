@@ -19,6 +19,11 @@ export function useWebSocket() {
     const url = `${protocol}//${window.location.host}/ws`
     let ws: WebSocket | null = null
 
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current)
+      reconnectTimer.current = null
+    }
+
     try {
       ws = new WebSocket(url)
     } catch {
@@ -66,7 +71,14 @@ export function useWebSocket() {
     }
 
     wsRef.current = ws
-    setRetryConnection(() => connect)
+    setRetryConnection(() => {
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = null
+      }
+      setStatus("offline")
+      setTimeout(connect, 100)
+    })
   }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown])
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from "react"
 import {
   Download, Trash2, Pencil, RefreshCw,
-  Table, Grid3X3, Folder, File, ChevronRight, Plus, X, FolderOpen,
+  Grid3X3, List, Folder, File, ChevronRight, X, Upload, Plus, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,36 +59,41 @@ function fileType(name: string): string {
   return name.slice(dot + 1).toUpperCase()
 }
 
-function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
+function Breadcrumb({ path, onNavigate, allowedPaths }: { path: string; onNavigate: (p: string) => void; allowedPaths: string[] }) {
   const parts = path.split("/").filter(Boolean)
   const crumbs = parts.map((part, i) => ({
     label: part,
     path: parts.slice(0, i + 1).join("/"),
   }))
+  const homePath = (() => {
+    if (!allowedPaths.length) return "/C:"
+    const cPath = allowedPaths.find((p) => /^[A-Za-z]:/.test(p))
+    if (cPath) return "/C:"
+    const first = allowedPaths[0].replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")
+    return first
+  })()
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-muted-foreground overflow-x-auto whitespace-nowrap pb-1">
-      <button onClick={() => onNavigate("/C:")} className="hover:text-foreground shrink-0">
-        C:
+    <div className="flex items-center gap-2 text-sm">
+      <button onClick={() => onNavigate(homePath)} className="text-muted-foreground hover:text-foreground transition-colors">
+        {homePath === "/C:" ? "C:" : "Home"}
       </button>
       {crumbs.map((cr, i) => (
-        <span key={i} className="flex items-center gap-1">
-          <ChevronRight className="h-3 w-3 shrink-0" />
+        <span key={i} className="flex items-center gap-2">
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
           {i === crumbs.length - 1 ? (
-            <span className="text-foreground font-medium truncate max-w-[120px] md:max-w-[200px]">
-              {cr.label}
-            </span>
+            <span className="font-medium truncate max-w-[120px] md:max-w-[200px]">{cr.label}</span>
           ) : (
             <button
               onClick={() => onNavigate(cr.path)}
-              className="hover:text-foreground truncate max-w-[80px] md:max-w-[150px]"
+              className="text-muted-foreground hover:text-foreground transition-colors truncate max-w-[80px] md:max-w-[150px]"
             >
               {cr.label}
             </button>
           )}
         </span>
       ))}
-    </nav>
+    </div>
   )
 }
 
@@ -101,6 +106,7 @@ export function FilesPage() {
     uploads,
     loading,
     error,
+    allowedPaths,
     setCurrentPath,
     setEntries,
     setViewMode,
@@ -111,6 +117,7 @@ export function FilesPage() {
     removeUpload,
     setLoading,
     setError,
+    setAllowedPaths,
   } = useFilesStore()
 
   const [sortBy, setSortBy] = useState<"name" | "size" | "type" | "modified">("name")
@@ -127,11 +134,11 @@ export function FilesPage() {
       setLoading(true)
       setError(null)
       try {
-      const data = await listPath(path)
-      if (data.success) {
-        setCurrentPath(fromApiPath(data.path))
-        setEntries((data.entries || []).map((e: FileEntry) => ({ ...e, path: fromApiPath(e.path) })))
-      } else {
+        const data = await listPath(path)
+        if (data.success) {
+          setCurrentPath(fromApiPath(data.path))
+          setEntries((data.entries || []).map((e: FileEntry) => ({ ...e, path: fromApiPath(e.path) })))
+        } else {
           setError(data.error || "Failed to list directory")
         }
       } catch {
@@ -143,14 +150,28 @@ export function FilesPage() {
   )
 
   useEffect(() => {
+    fetch("/api/settings/paths").then((r) => r.json()).then((d) => {
+      if (d.success && d.allowed?.length > 0) {
+        const paths: string[] = d.allowed
+        setAllowedPaths(paths)
+        const cDrive = paths.find((p: string) => /^[A-Za-z]:/.test(p))
+        if (!cDrive) {
+          const first = paths[0].replace(/\\/g, "/").replace(/^([A-Za-z]:)/, "/$1")
+          setCurrentPath(first)
+        }
+      } else {
+        setAllowedPaths([])
+        setError("No allowed paths configured. Go to Settings to add file access paths.")
+      }
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     loadDir(currentPath)
   }, [loadDir, currentPath])
 
   const handleNavigate = useCallback(
-    (path: string) => {
-      clearSelection()
-      loadDir(path)
-    },
+    (path: string) => { clearSelection(); loadDir(path) },
     [loadDir, clearSelection],
   )
 
@@ -173,10 +194,7 @@ export function FilesPage() {
 
   const handleSort = (col: typeof sortBy) => {
     if (sortBy === col) setSortAsc(!sortAsc)
-    else {
-      setSortBy(col)
-      setSortAsc(true)
-    }
+    else { setSortBy(col); setSortAsc(true) }
   }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -187,23 +205,13 @@ export function FilesPage() {
     formData.append("file", file)
     const xhr = new XMLHttpRequest()
     xhr.upload.onprogress = (ev) => {
-      if (ev.lengthComputable) {
-        updateUpload(file.name, Math.round((ev.loaded / ev.total) * 100))
-      }
+      if (ev.lengthComputable) updateUpload(file.name, Math.round((ev.loaded / ev.total) * 100))
     }
-    xhr.onload = () => {
-      removeUpload(file.name)
-      loadDir(currentPath)
-    }
+    xhr.onload = () => { removeUpload(file.name); loadDir(currentPath) }
     xhr.onerror = () => {
-      updateUpload(file.name, 0)
-      removeUpload(file.name)
-      setError(`Upload failed: ${file.name}`)
+      updateUpload(file.name, 0); removeUpload(file.name); setError(`Upload failed: ${file.name}`)
     }
-    xhr.open(
-      "POST",
-      `/api/files/upload?path=${encodeURIComponent(toApiPath(currentPath))}`,
-    )
+    xhr.open("POST", `/api/files/upload?path=${encodeURIComponent(toApiPath(currentPath))}`)
     xhr.send(formData)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
@@ -216,89 +224,48 @@ export function FilesPage() {
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
-      a.href = url
-      a.download = entry.name
-      a.click()
+      a.href = url; a.download = entry.name; a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      setError(`Download failed: ${entry.name}`)
-    }
+    } catch { setError(`Download failed: ${entry.name}`) }
   }
 
-  const handleDelete = async (entry: FileEntry) => {
-    setConfirmDelete({ path: entry.path, name: entry.name })
-  }
+  const handleDelete = (entry: FileEntry) => setConfirmDelete({ path: entry.path, name: entry.name })
 
   const doDelete = async (path: string) => {
     try {
       const data = await deletePath(path)
-      if (data.success) {
-        useToastStore.getState().addToast("Deleted successfully", "success")
-        clearSelection()
-        loadDir(currentPath)
-      } else {
-        setError(data.message || "Delete failed")
-      }
-    } catch {
-      setError(`Delete failed`)
-    }
+      if (data.success) { useToastStore.getState().addToast("Deleted successfully", "success"); clearSelection(); loadDir(currentPath) }
+      else setError(data.message || "Delete failed")
+    } catch { setError("Delete failed") }
   }
 
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return
-    setConfirmBulkDelete(true)
-  }
+  const handleBulkDelete = () => { if (selected.size > 0) setConfirmBulkDelete(true) }
 
   const doBulkDelete = async () => {
-    for (const p of selected) {
-      try {
-        await deletePath(p)
-      } catch {
-        setError(`Delete failed: ${p}`)
-      }
-    }
+    for (const p of selected) { try { await deletePath(p) } catch { setError(`Delete failed: ${p}`) } }
     useToastStore.getState().addToast(`Deleted ${selected.size} item(s)`, "success")
-    clearSelection()
-    loadDir(currentPath)
+    clearSelection(); loadDir(currentPath)
   }
 
-  const startRename = (entry: FileEntry) => {
-    setRenaming(entry.path)
-    setRenameValue(entry.name)
-  }
+  const startRename = (entry: FileEntry) => { setRenaming(entry.path); setRenameValue(entry.name) }
 
   const commitRename = async () => {
-    if (!renaming || !renameValue.trim()) {
-      setRenaming(null)
-      return
-    }
+    if (!renaming || !renameValue.trim()) { setRenaming(null); return }
     const parts = renaming.split("/")
     parts[parts.length - 1] = renameValue.trim()
     const newPath = parts.join("/")
     try {
       const data = await renamePath(renaming, newPath)
-      if (data.success) {
-        clearSelection()
-        loadDir(currentPath)
-      } else {
-        setError(data.message || "Rename failed")
-      }
-    } catch {
-      setError("Rename failed")
-    }
-    setRenaming(null)
-    setRenameValue("")
+      if (data.success) { clearSelection(); loadDir(currentPath) }
+      else setError(data.message || "Rename failed")
+    } catch { setError("Rename failed") }
+    setRenaming(null); setRenameValue("")
   }
 
   const handleTouchStart = (_e: React.TouchEvent, path: string) => {
-    longPressTimer.current = setTimeout(() => {
-      toggleSelected(path)
-    }, 500)
+    longPressTimer.current = setTimeout(() => toggleSelected(path), 500)
   }
-
-  const handleTouchEnd = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current)
-  }
+  const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current) }
 
   const sortIndicator = (col: typeof sortBy) => {
     if (sortBy !== col) return null
@@ -306,20 +273,23 @@ export function FilesPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">File Manager</h1>
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <Breadcrumb path={currentPath} onNavigate={handleNavigate} allowedPaths={allowedPaths} />
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")} title="Toggle view">
-            {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <Table className="h-4 w-4" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleRefresh} title="Refresh">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+          <button
+            onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
+            className="p-2 rounded-lg border bg-background hover:bg-accent transition-colors"
+            title={viewMode === "table" ? "Grid view" : "List view"}
+          >
+            {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+          </button>
+          <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity" onClick={() => fileInputRef.current?.click()}>
+            <Upload className="h-4 w-4" />
+            Upload
+          </button>
         </div>
       </div>
-
-      <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
 
       {error && (
         <div className="flex items-center justify-between rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -334,10 +304,7 @@ export function FilesPage() {
             <div key={u.name} className="flex items-center gap-3 text-sm">
               <span className="truncate max-w-[200px]">{u.name}</span>
               <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all"
-                  style={{ width: `${u.progress}%` }}
-                />
+                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${u.progress}%` }} />
               </div>
               <span className="text-muted-foreground w-10 text-right">{u.progress}%</span>
             </div>
@@ -348,15 +315,8 @@ export function FilesPage() {
       {selected.size > 0 && (
         <div className="flex items-center gap-2 p-2 rounded-md bg-accent">
           <span className="text-sm text-muted-foreground mr-2">{selected.size} selected</span>
-          <Button variant="outline" size="sm" onClick={handleBulkDelete}>
-            <Trash2 className="h-4 w-4 mr-1" /> Delete
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setViewMode(viewMode)} disabled>
-            <Download className="h-4 w-4 mr-1" /> Download
-          </Button>
-          <Button variant="ghost" size="sm" onClick={clearSelection}>
-            Clear
-          </Button>
+          <Button variant="outline" size="sm" onClick={handleBulkDelete}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button>
+          <Button variant="ghost" size="sm" onClick={clearSelection}>Clear</Button>
         </div>
       )}
 
@@ -365,123 +325,59 @@ export function FilesPage() {
           <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading...
         </div>
       ) : viewMode === "table" ? (
-        <div className="rounded-md border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="w-8 p-2 text-left">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all files"
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        entries.forEach((en) => {
-                          if (!en.is_dir) selected.add(en.path)
-                        })
-                        clearSelection()
-                        entries.forEach((en) => {
-                          if (!en.is_dir) toggleSelected(en.path)
-                        })
-                      } else clearSelection()
-                    }}
-                    className="accent-primary"
-                  />
-                </th>
-                <th className="p-2 text-left cursor-pointer select-none" onClick={() => handleSort("name")}>
-                  Name {sortIndicator("name")}
-                </th>
-                <th className="p-2 text-left cursor-pointer select-none hidden md:table-cell" onClick={() => handleSort("size")}>
-                  Size {sortIndicator("size")}
-                </th>
-                <th className="p-2 text-left cursor-pointer select-none hidden sm:table-cell" onClick={() => handleSort("type")}>
-                  Type {sortIndicator("type")}
-                </th>
-                <th className="p-2 text-left cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort("modified")}>
-                  Modified {sortIndicator("modified")}
-                </th>
-                <th className="w-24 p-2 text-right" scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((entry) => (
-                <tr
-                  key={entry.path}
-                  className={cn(
-                    "border-b last:border-0 hover:bg-muted/30 cursor-pointer",
-                    selected.has(entry.path) && "bg-accent",
+        <div className="rounded-xl border bg-card overflow-hidden">
+          <div className="divide-y">
+            {sorted.map((entry) => (
+              <div
+                key={entry.path}
+                className={cn(
+                  "flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors group cursor-pointer",
+                  selected.has(entry.path) && "bg-accent",
+                )}
+                onDoubleClick={() => handleDoubleClick(entry)}
+                onTouchStart={(e) => handleTouchStart(e, entry.path)}
+                onTouchEnd={handleTouchEnd}
+              >
+                {entry.is_dir ? (
+                  <Folder className="w-5 h-5 text-primary shrink-0" />
+                ) : (
+                  <File className="w-5 h-5 text-muted-foreground shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  {renaming === entry.path ? (
+                    <Input
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => e.key === "Enter" && commitRename()}
+                      className="h-7 text-sm"
+                    />
+                  ) : (
+                    <p className="text-sm font-medium truncate">{entry.name}</p>
                   )}
-                  onDoubleClick={() => handleDoubleClick(entry)}
-                  onTouchStart={(e) => handleTouchStart(e, entry.path)}
-                  onTouchEnd={handleTouchEnd}
-                >
-                  <td className="p-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${entry.name}`}
-                      checked={selected.has(entry.path)}
-                      onChange={() => toggleSelected(entry.path)}
-                      className="accent-primary"
-                    />
-                  </td>
-                  <td className="p-2">
-                    <div className="flex items-center gap-2">
-                      {entry.is_dir ? (
-                        <Folder className="h-4 w-4 shrink-0 text-blue-500" />
-                      ) : (
-                        <File className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      )}
-                      {renaming === entry.path ? (
-                        <Input
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onBlur={commitRename}
-                          onKeyDown={(e) => e.key === "Enter" && commitRename()}
-                          className="h-7 text-sm"
-                        />
-                      ) : (
-                        <span className="truncate max-w-[200px] md:max-w-[300px]">
-                          {entry.name}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-2 text-muted-foreground hidden md:table-cell">
-                    {entry.is_dir ? "—" : formatSize(entry.size)}
-                  </td>
-                  <td className="p-2 text-muted-foreground hidden sm:table-cell">
-                    {entry.is_dir ? "Folder" : fileType(entry.name)}
-                  </td>
-                  <td className="p-2 text-muted-foreground hidden lg:table-cell">
-                    {formatTime(entry.modified)}
-                  </td>
-                  <td className="p-2 text-right" aria-label="Actions">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDownload(entry)} title="Download">
-                        <Download className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => startRename(entry)} title="Rename">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(entry)} title="Delete">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {entries.length === 0 && (
-                <tr>
-                  <td colSpan={6}>
-                    <EmptyState
-                      icon={FolderOpen}
-                      title="This folder is empty"
-                      description="Upload files or navigate to another directory"
-                    />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  <p className="text-xs text-muted-foreground">
+                    {entry.is_dir ? "Folder" : `${formatSize(entry.size)} • `}Modified {formatTime(entry.modified)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {!entry.is_dir && (
+                    <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDownload(entry)} title="Download">
+                      <Download className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button className="p-1.5 rounded hover:bg-accent" onClick={() => startRename(entry)} title="Rename">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDelete(entry)} title="Delete">
+                    <Trash2 className="w-4 h-4 text-destructive" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {entries.length === 0 && (
+              <EmptyState icon={FolderOpen} title="This folder is empty" description="Upload files or navigate to another directory" />
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -498,34 +394,23 @@ export function FilesPage() {
               onClick={() => toggleSelected(entry.path)}
             >
               {entry.is_dir ? (
-                <Folder className="h-10 w-10 text-blue-500" />
+                <Folder className="h-10 w-10 text-primary" />
               ) : (
                 <File className="h-10 w-10 text-muted-foreground" />
               )}
               <span className="text-xs text-center truncate max-w-full">{entry.name}</span>
-              {!entry.is_dir && (
-                <span className="text-[10px] text-muted-foreground">{formatSize(entry.size)}</span>
-              )}
+              {!entry.is_dir && <span className="text-[10px] text-muted-foreground">{formatSize(entry.size)}</span>}
             </Card>
           ))}
           {entries.length === 0 && (
             <div className="col-span-full">
-              <EmptyState
-                icon={FolderOpen}
-                title="This folder is empty"
-                description="Upload files or navigate to another directory"
-              />
+              <EmptyState icon={FolderOpen} title="This folder is empty" description="Upload files or navigate to another directory" />
             </div>
           )}
         </div>
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleUpload}
-      />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleUpload} />
 
       <button
         onClick={() => fileInputRef.current?.click()}
@@ -535,24 +420,16 @@ export function FilesPage() {
         <Plus className="h-5 w-5" />
       </button>
 
-      <ConfirmDialog
-        open={confirmDelete != null}
-        onOpenChange={() => setConfirmDelete(null)}
-        title="Delete file"
-        description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone.`}
-        confirmText="DELETE"
-        actionLabel="Delete"
+      <ConfirmDialog open={confirmDelete != null} onOpenChange={() => setConfirmDelete(null)}
+        title="Delete file" description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone.`}
+        confirmText="DELETE" actionLabel="Delete"
         onConfirm={() => { if (confirmDelete) doDelete(confirmDelete.path); setConfirmDelete(null) }}
       />
 
-      <ConfirmDialog
-        open={confirmBulkDelete}
-        onOpenChange={() => setConfirmBulkDelete(false)}
-        title="Delete multiple files"
-        description={`Are you sure you want to delete ${selected.size} item(s)? This action cannot be undone.`}
-        confirmText="DELETE"
-        actionLabel="Delete All"
-        onConfirm={() => { setConfirmBulkDelete(false); doBulkDelete() }}
+      <ConfirmDialog open={confirmBulkDelete} onOpenChange={() => setConfirmBulkDelete(false)}
+        title="Delete multiple files" description={`Are you sure you want to delete ${selected.size} item(s)? This action cannot be undone.`}
+        confirmText="DELETE" actionLabel="Delete All"
+        onConfirm={() => { doBulkDelete(); setConfirmBulkDelete(false) }}
       />
     </div>
   )

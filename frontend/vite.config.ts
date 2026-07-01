@@ -5,6 +5,9 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -17,8 +20,9 @@ export default defineConfig({
         bypass: (req) => req.method === 'GET' ? req.url : undefined,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:3939',
+        target: 'http://127.0.0.1:3939',
         ws: true,
+        changeOrigin: true,
       },
       '/api': 'http://127.0.0.1:3939',
     },
