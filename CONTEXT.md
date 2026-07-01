@@ -1,152 +1,179 @@
-# 📄 Product & Technical Specification: RemotePC Agent V1
+# 📄 Product Requirements Document: NodeDesk V1
 
 ## 1. Problem Statement
-Users need to monitor, manage, and execute tasks on their personal Windows laptops while away. Traditional Remote Desktop Protocol (RDP) is resource-heavy, requires complex network configurations, and provides a terrible experience on mobile screens. Existing lightweight tools lack deep system integration, require self-hosting complex infrastructure, or compromise on security.
+Users need to monitor, manage, and execute tasks on their personal computers (Windows, macOS, Linux) while away. Traditional Remote Desktop Protocol (RDP/VNC) is resource-heavy, requires complex network configurations (port forwarding), and provides a terrible experience on mobile screens. Existing lightweight tools lack deep system integration, require self-hosting complex infrastructure, or compromise on security and ease of use.
 
 ## 2. Proposed Solution
-**RemotePC Agent** is a standalone, portable Windows executable (`.exe`). When launched, it starts a local web server, embeds a mobile-optimized React dashboard, and securely tunnels it to the public internet. Users access the dashboard via any standard web browser to monitor system health, manage files, execute scripts, and control hardware securely from anywhere.
+**NodeDesk** is a standalone, portable, cross-platform executable. When launched, it starts a local web server, embeds a mobile-optimized React dashboard, and securely tunnels it to the public internet. 
+
+Users access the dashboard via any standard web browser (or installed as a PWA on mobile) to monitor system health, manage files, execute scripts, and control hardware securely from anywhere. 
+
+**Core Philosophy:** "Run the binary, and you're connected." Zero-config networking, single-user ownership, and a strict separation between local machine management and remote access.
 
 ---
 
-## 3. System Architecture
+## 3. The "Three UI" Architecture
+NodeDesk operates on a context-aware UI model. The backend serves the same React frontend, but the UI adapts based on the access context.
 
-### 3.1 High-Level Architecture & Deployment Model
-*   **Portable Execution:** The `.exe` is fully portable. Users can place it anywhere (e.g., `C:\Tools\RemotePC.exe`).
-*   **Data Separation:** All runtime data is strictly isolated from the executable. Configuration, SQLite databases, logs, and the downloaded `cloudflared.exe` are stored in `%LOCALAPPDATA%\RemotePCAgent\`. This ensures that moving or updating the `.exe` never corrupts user data.
-*   **Desktop App vs. Service:** V1 runs as a standard Desktop Application in the user's session. If the user logs out of Windows, the agent terminates. *(Note: V2 will evaluate running as a Windows Service for background persistence).*
+### 3.1 Context 1: Localhost Admin UI (The Manager)
+*   **Access:** Strictly bound to `127.0.0.1` (or validated via request headers to ensure it's not coming through the tunnel).
+*   **Audience:** The Owner, physically sitting at the machine.
+*   **Capabilities:** Full access. Includes everything in the Remote UI **plus** the hidden **Settings/Configuration** tab.
+*   **Settings Include:** Tunnel controls (start/stop/copy URL), allowed/blocked file paths, port configuration, log/DB export, and update settings.
 
-### 3.2 Network, Tunnel & Transport
-*   **Local Server:** Listens on a fixed, user-configurable local port (e.g., `localhost:3939`). Falls back to a random port if occupied.
-*   **Public Tunnel (V1):** Uses **Cloudflare Quick Tunnels** (`trycloudflare.com`) for zero-config simplicity. 
-*   **Tunnel Evolution (V2 Roadmap):** V1 explicitly accepts the undocumented limits of Quick Tunnels. V2 will migrate to **Cloudflare Named Tunnels** for production-grade SLAs, persistent URLs, and higher connection limits.
-*   **Stream Parsing:** The agent captures and parses `cloudflared` **`stderr`** (where the URL is output) to extract the ephemeral URL.
-*   **Runtime Health Monitor:** Continuously monitors the `cloudflared` child process. If it crashes, the agent restarts it and updates the Relay.
+### 3.2 Context 2: Remote User UI (Desktop Web)
+*   **Access:** Accessed via the public Cloudflare Quick Tunnel URL.
+*   **Audience:** The Owner, accessing from another computer.
+*   **Capabilities:** Dashboard, File Manager, Script Engine, Power Controls. 
+*   **Restrictions:** The **Settings/Configuration** tab is completely hidden and API routes for settings return `403 Forbidden`. The user does not see technical jargon (no ports, no tunnel URLs).
 
-### 3.3 Database Architecture (Unified SQLite)
-*   **Single Engine:** Uses a single SQLite database (`%LOCALAPPDATA%\RemotePCAgent\data.db`) for both OLTP and OLAP.
-*   **Concurrency Configuration:** To prevent blocking between WebSocket reads, telemetry writes, and audit writes, SQLite is strictly configured with:
-    ```sql
-    PRAGMA journal_mode=WAL;
-    PRAGMA synchronous=NORMAL;
-    ```
-*   **Schema Versioning:** A `schema_version` table is created on first run. All future database migrations are handled via sequential SQL scripts checked against this version.
-*   **Telemetry Optimization:** WebSocket pushes data every 1 second, but SQLite only persists a data point every 1 minute.
+### 3.3 Context 3: Remote User UI (Mobile PWA)
+*   **Access:** Same as Remote User UI, but accessed via a mobile browser.
+*   **Capabilities:** Fully responsive, mobile-first design. Installable to the home screen as a Progressive Web App (PWA) for an app-like experience without App Store friction.
 
 ---
 
-## 4. Security & Access Control Model
+## 4. System Architecture & Build Pipeline
 
-### 4.1 Authentication & Session Management
-*   **Stateful Sessions:** Sessions are **not** purely stateless JWTs. A 256-bit JWT signing key is generated on first run, encrypted using **Windows DPAPI** (tied to the local user account), and stored in the SQLite database. 
-*   **Revocation:** The database maintains an active session table. "Revoke All Devices" instantly deletes these rows, invalidating all active JWTs.
-*   **WebSocket Expiry:** If a 90-day session token expires while a WebSocket is open, the backend sends an `{"event": "auth_expired"}` message and gracefully closes the socket, forcing a re-login.
-*   **CSRF & CSP:** The web server enforces strict `SameSite=Strict` cookies and serves a restrictive `Content-Security-Policy` (CSP) header to prevent XSS.
+### 4.1 The Single Binary & Build Pipeline
+NodeDesk is distributed as a **single, standalone binary** with zero external dependencies.
+*   **Frontend Build:** A Rust `build.rs` script automatically executes `npm install && npm run build` for the React app during compilation.
+*   **Embedding:** The compiled React `dist/` folder is embedded directly into the Rust binary using the `rust-embed` crate.
+*   **Cross-Compilation:** We use the `cross` tool to compile the Rust backend for Windows (`.exe`), macOS (`.app`/binary), and Linux (ELF binary) from a single codebase.
 
-### 4.2 Rate Limiting & Brute-Force Protection
-*   **Authentication Lockout (Account-Based):** Failed login/PIN attempts are tied to the Account ID. 5 failed attempts result in a 15-minute cooldown for that specific account, preventing CGNAT/NAT lockouts.
-*   **General API Abuse (IP-Based):** Standard IP-based rate limiting (via `governor`) is applied to non-auth endpoints.
+### 4.2 Network & Tunnel
+*   **Local Server:** Listens on a user-configurable local port (e.g., `localhost:3939`).
+*   **Public Tunnel (V1):** Uses **Cloudflare Quick Tunnels** (`trycloudflare.com`). The URL changes on every restart, but the Localhost Admin UI provides a prominent "Copy URL" button.
+*   **Stream Parsing:** The agent captures `cloudflared` **`stderr`** to extract the ephemeral URL.
 
-### 4.3 File System Security & Upload Limits
-*   **Path Canonicalization:** All requested paths are resolved via `std::fs::canonicalize` and verified against Allow/Block lists to prevent directory traversal (`../../`).
-*   **Streaming Uploads:** To prevent RAM exhaustion, file uploads use **streaming multipart parsing** (`axum::extract::Multipart` with streaming). Files are written directly to disk in chunks. Maximum upload size is strictly capped at 500 MB.
-
-### 4.4 Script Execution Sandbox
-Scripts execute with user privileges but are strictly sandboxed by the runtime environment:
-*   **Timeout:** Maximum execution time of 5 minutes. The process is forcefully killed if exceeded.
-*   **Output Limits:** Maximum stdout/stderr capture size of 1 MB. Excess output is truncated to prevent memory exhaustion.
-
-### 4.5 Audit Logging
-*   **Append-Only:** Enforced at the application logic layer (no DELETE/UPDATE queries).
-*   **Timestamps:** All timestamps are stored internally as **UTC**. The React frontend handles conversion to the user's local timezone.
-*   **Events Tracked:** Logins, pairing, script executions, file transfers, and **security settings changes** (password resets, path modifications).
+### 4.3 Database & Storage
+*   **Single Engine:** SQLite (`data.db`) stored in the OS-specific local app data directory (e.g., `~/.config/NodeDesk/` on Linux, `%LOCALAPPDATA%\NodeDesk\` on Windows).
+*   **Concurrency:** Strictly configured with `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;`.
+*   **Secret Storage:** Uses the **`keyring` crate** to securely store the JWT signing key and credentials in the OS-native Keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). *Fallback:* Machine-ID encryption if the OS keyring is unavailable (e.g., headless Linux).
 
 ---
 
-## 5. Detailed Feature Specifications
+## 5. Security & Access Control (Single-User Model)
+
+### 5.1 Authentication
+*   **Single Owner:** There is only one user account. 
+*   **Setup:** On first run, the user creates a strong password (enforced via `zxcvbn`) and sets up TOTP (2FA). 10 Recovery codes are generated.
+*   **Session Management:** Stateful sessions backed by a 256-bit JWT key (encrypted via `keyring`). 
+*   **Context Enforcement:** Middleware strictly checks request origins. Admin routes (`/api/admin/*`) are rejected if the request originates from the Cloudflare tunnel.
+
+### 5.2 Rate Limiting & Brute-Force Protection
+*   **Account Lockout:** 5 failed login attempts result in a 15-minute cooldown.
+*   **API Abuse:** Standard IP-based rate limiting via the `governor` crate for non-auth endpoints.
+
+### 5.3 File System & Script Security
+*   **Path Canonicalization:** All file paths are resolved via `std::fs::canonicalize` and checked against the Admin-defined Allow/Block lists to prevent directory traversal.
+*   **Streaming Uploads:** File uploads use streaming multipart parsing. Max size: 500 MB.
+*   **Script Sandbox:** Max execution time: 5 minutes. Max stdout/stderr capture: 1 MB. Processes are forcefully killed if limits are exceeded.
+
+---
+
+## 6. Detailed Feature Specifications
 
 ### A. System Dashboard (Tiered Telemetry)
 To minimize CPU overhead, `sysinfo` polling is tiered:
-*   **1 Second:** CPU %, RAM %, Network Up/Down.
-*   **5 Seconds:** Hardware Temperatures.
-*   **10 Seconds:** Disk Space / I/O.
-*   **30 Seconds:** Battery Status.
-*   *Historical Analytics:* Queried from SQLite, rendered via `recharts`, compressed via `gzip`/`Brotli` in transit.
+*   **1s:** CPU %, RAM %, Network Up/Down.
+*   **5s:** Hardware Temperatures.
+*   **10s:** Disk Space / I/O.
+*   **30s:** Battery Status (via OS FFI).
+*   *Analytics:* Historical data queried from SQLite, rendered via `recharts`.
 
-### B. Hardware & Quick Controls
-*   **Power Command Queue:** Power commands (Shutdown, Restart, Sleep) are placed in a global queue. If a shutdown is already pending, subsequent requests are rejected or merged to prevent OS-level conflicts. Includes a 5-second cancellation window.
+### B. Hardware & Power Controls
+*   **Power Queue:** Shutdown, Restart, Sleep commands are queued. Includes a 5-second cancellation window.
+*   **Active Transfer Guard:** If a file transfer is active, the UI prompts for confirmation before executing a power command.
 
 ### C. Secure File Manager & Script Engine
-*   File Manager: Browse, Upload (streaming), Download, Delete, Rename.
-*   Script Engine: Predefined & Custom Scripts. Output Modes: *Live Stream* or *Wait & Show*.
+*   **File Manager:** Browse, Upload (streaming), Download, Delete, Rename. Directories sorted first.
+*   **Script Engine:** Predefined & Custom Scripts (PowerShell/Bash/CMD). Output Modes: *Live Stream* (via WebSocket) or *Wait & Show*.
 
-### D. Logging & Maintenance
-*   **Log Rotation:** Debug logs in `%LOCALAPPDATA%\RemotePCAgent\logs\` are strictly rotated. Maximum 10MB per file, keeping only the last 3 files.
-*   **Database Export:** Settings page includes a "Export Data" button to download a backup of the SQLite database.
+### D. System Tray Integration
+*   **Status Indicators:** 
+    *   🟢 Green = Tunnel active & connected
+    *   🟡 Yellow = Tunnel reconnecting
+    *   🔴 Red = Tunnel down / offline
+*   **Context Menu:** Open Admin UI, Copy Remote URL, Pause/Resume Tunnel, Run on Startup, Quit.
+*   **Linux Support:** Uses `libappindicator` / `StatusNotifier` for proper integration with Linux desktop environments.
 
 ---
 
-## 6. Technical Stack
+## 7. UX/UI & Design Guidelines
+*As an experienced UI/UX designer, the following principles are mandated for the React frontend:*
 
-### Backend (Windows Agent)
+1.  **Progressive Disclosure:** The Remote UI is clean and minimal. Technical settings are completely hidden unless accessed via Localhost.
+2.  **Mobile-First PWA:** The Remote UI is designed for mobile screens first. Bottom navigation bar for mobile, sidebar for desktop.
+3.  **Dark Mode:** Essential for a remote monitoring tool. Defaults to system preference, with manual toggle.
+4.  **Connection Status:** An always-visible, subtle indicator in the header showing "Connected / Reconnecting / Offline".
+5.  **Destructive Action Patterns:** Deleting files or shutting down the PC requires a **two-step confirmation** (e.g., typing "SHUTDOWN" or a double-click confirmation) rather than a simple "OK/Cancel" modal.
+6.  **Empty States:** Friendly illustrations and clear CTAs when no scripts exist or no files are uploaded.
+7.  **Real-time Feedback:** Skeleton loaders for data, progress bars for uploads, and toast notifications for actions. No blocking modal spinners.
+8.  **Accessibility:** WCAG 2.1 AA compliance (keyboard navigation, ARIA labels, sufficient contrast).
+
+---
+
+## 8. Operational Workflows
+
+### 8.1 First-Run Experience
+*   **Desktop (Windows/macOS/Linux GUI):** The binary automatically opens the default web browser to `http://localhost:<port>/setup`.
+*   **Headless Linux (Servers):** Since there is no GUI to open a browser, the terminal prints:
+    ```text
+    NodeDesk is running on http://127.0.0.1:3939
+    To complete setup, use SSH port forwarding or access via your network.
+    One-time setup token: a8f9-3b2c-9d1e
+    ```
+
+### 8.2 The Shutdown Sequence
+1.  **Physical Shutdown:** Rust backend intercepts OS termination signals (`WM_QUERYENDSESSION` on Windows, `SIGTERM` on Linux/Mac), broadcasts `{"action": "shutting_down"}` to WebSockets, and exits gracefully.
+2.  **Remote Shutdown:** UI sends command -> Backend checks for active file transfers -> If clear, executes OS shutdown command -> UI transitions to "PC is offline" overlay.
+
+---
+
+## 9. Technical Stack
+
+### Backend (NodeDesk Agent)
 *   **Language:** Rust (Edition 2021)
-*   **Web Framework:** `axum` (with `tower-http` for CORS, Compression, and CSP).
-*   **Rate Limiting:** `governor` crate.
+*   **Web Framework:** `axum` (with `tower-http` for CORS, Compression, CSP).
 *   **Async Runtime:** `tokio`
 *   **Database:** `rusqlite` (bundled, WAL mode).
 *   **System Info:** `sysinfo` crate.
-*   **Security:** `argon2`, `totp-rs`, `jsonwebtoken`, `zxcvbn`, `windows` crate (for DPAPI and OS events).
+*   **Security:** `argon2`, `totp-rs`, `jsonwebtoken`, `zxcvbn`, `keyring` (OS Keychain).
 *   **File I/O:** `tokio::fs` (streaming multipart).
-*   **System Tray:** `tray-icon` crate.
+*   **System Tray:** `tray-icon` (Win/Mac), `libappindicator` (Linux).
 
-### Frontend (Web Dashboard)
+### Frontend (Web Dashboard & PWA)
 *   **Framework:** React 18+ (Vite), TailwindCSS, Zustand, `recharts`.
-*   **Embedding:** `rust-embed`.
-
-### Distribution & Trust
-*   **Format:** Single Portable `.exe`.
-*   **Code Signing:** **Critical for V1 Release.** Because the agent downloads executables, opens tunnels, and runs scripts, it will trigger Windows Defender/SmartScreen heuristics. The `.exe` **must** be signed with an Authenticode certificate to establish trust and prevent false positives.
-*   **`cloudflared.exe`:** Downloaded on first run to `%LOCALAPPDATA%`, verified via dynamic `.sha256sum` fetch. The agent checks for `cloudflared` updates alongside its own version check.
+*   **Embedding:** `rust-embed` (bundled directly into the Rust binary).
+*   **Build Integration:** `build.rs` script triggers `npm run build`.
 
 ---
 
-## 7. Operational Workflows
-
-### 7.1 First Run & Setup
-1.  Run `.exe`. Creates `%LOCALAPPDATA%\RemotePCAgent\` directory structure.
-2.  Downloads/verifies `cloudflared`.
-3.  Binds to local port (falls back if occupied).
-4.  Opens browser to `http://localhost:<port>/setup`.
-5.  Setup Wizard: Password (`zxcvbn`), TOTP, 10 Recovery Codes (12 random Base32 chars, stored as Argon2id hashes), Relay Opt-In.
-
-### 7.2 The Shutdown Sequence
-1.  **Physical Shutdown:** Rust backend intercepts `WM_QUERYENDSESSION`, broadcasts `{"action": "shutting_down"}` to WebSockets, and exits gracefully.
-2.  **Remote Shutdown:** 
-    *   UI sends command. Backend checks for active file transfers.
-    *   If active, UI shows confirmation dialog.
-    *   If confirmed, backend replies with success, executes `shutdown /s /t 5`. OS terminates process. UI transitions to "PC is offline".
-
----
-
-## 8. Performance & Resource Constraints
-
+## 10. Performance & Resource Constraints
 *Measurement Baseline: Idle, background, no active client connections.*
 
-*   **Binary Size:** **< 20MB**.
+*   **Binary Size:** **< 25MB** (Optimized via `opt-level="z"`, `lto=true`, `strip=true` in `Cargo.toml`).
 *   **Idle CPU:** < 0.5% (Achieved via tiered `sysinfo` polling).
-*   **Idle RAM:** **< 30MB**.
+*   **Idle RAM:** **< 40MB**.
 *   **Storage Footprint:** SQLite DB < 10MB. Logs < 30MB.
-*   **Network:** Minimal bandwidth when idle.
 
 ---
 
-## 9. Known Limitations (V1)
-1.  **No File Transfer Resume:** 500MB transfers fail completely on network drop.
-2.  **No Background Clipboard Polling:** PC-to-Web requires manual triggering.
-3.  **No Native Mobile App:** V1 relies entirely on the mobile web browser.
-4.  **Windows Only:** No macOS or Linux support.
-5.  **Desktop App Only:** Agent terminates on Windows user logout.
-6.  **Quick Tunnel Limits:** V1 uses Cloudflare Quick Tunnels, which have undocumented connection/bandwidth limits. V2 will migrate to Named Tunnels.
-7.  **Audit Log is Append-Only via Logic:** True cryptographic immutability is not enforced.
+## 11. Known Limitations (V1) & V2 Roadmap
+
+### V1 Limitations
+1.  **Ephemeral URLs:** Uses Cloudflare Quick Tunnels. The remote URL changes every time the app restarts.
+2.  **No File Transfer Resume:** 500MB transfers fail completely on network drop.
+3.  **No Native Mobile Apps:** Relies entirely on the responsive PWA.
+4.  **Desktop App Only:** Agent terminates when the user logs out of the OS (no background daemon/service mode).
+5.  **Audit Log is Append-Only via Logic:** True cryptographic immutability is not enforced.
+
+### V2 Roadmap (Future Consideration)
+*   **Cloudflare Named Tunnels:** For persistent URLs and production SLAs (requires user to bring their own domain/Cloudflare account).
+*   **Native Mobile Apps:** React Native or Flutter apps for deep OS integration (background clipboard, native push notifications).
+*   **Background Service Mode:** Run as a Windows Service / systemd daemon for headless persistence.
+*   **Multi-User Support:** Re-introduce granular roles (Viewer, Operator) if community demand arises.
+*   **File Transfer Resume:** Chunked uploads/downloads with state tracking.
 
 ---
-
