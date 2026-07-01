@@ -22,7 +22,7 @@ use axum::{middleware, Router};
 use rusqlite::Connection;
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tower_http::cors::CorsLayer;
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, TrayIconBuilder, TrayIconEvent};
 use std::time::Duration;
 
@@ -316,7 +316,10 @@ pub fn spawn_tray(
         let open_item = MenuItem::new("Open Admin UI", true, None);
         let copy_url_item = MenuItem::new("Copy Remote URL", false, None);
         let pause_item = MenuItem::new("Pause Tunnel", true, None);
-        let startup_item = CheckMenuItem::new("Run on Startup", true, false, None);
+        // ponytail: CheckMenuItem checkbox doesn't render on Windows tray-icon, use text prefix
+        let startup_enabled = is_startup_enabled();
+        let startup_text = if startup_enabled { "✓ Run on Startup" } else { "  Run on Startup" };
+        let startup_item = MenuItem::new(startup_text, true, None);
         let quit_item = MenuItem::new("Quit", true, None);
 
         let menu = Menu::with_items(&[
@@ -329,8 +332,6 @@ pub fn spawn_tray(
             &quit_item,
         ])
         .expect("Failed to create menu");
-
-        startup_item.set_checked(is_startup_enabled());
 
         let tray = TrayIconBuilder::new()
             .with_tooltip("NodeDesk Agent")
@@ -387,8 +388,8 @@ pub fn spawn_tray(
                             let _ = action_tx.send(TrayAction::ToggleTunnel);
                         }
                         if event.id == startup_item.id() {
-                            let on = !startup_item.is_checked();
-                            startup_item.set_checked(on);
+                            let on = !startup_item.text().contains('✓');
+                            startup_item.set_text(if on { "✓ Run on Startup" } else { "  Run on Startup" });
                             set_startup(on);
                         }
                     }
@@ -425,7 +426,7 @@ pub fn spawn_tray(
                             tunnel_url = url;
                         }
                         Ok(TrayCommand::SetStartupCheck(on)) => {
-                            startup_item.set_checked(on);
+                            startup_item.set_text(if on { "✓ Run on Startup" } else { "  Run on Startup" });
                         }
                         Ok(TrayCommand::Shutdown) => break,
                         Err(_) => break,

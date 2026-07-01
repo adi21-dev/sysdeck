@@ -217,7 +217,7 @@ async fn run_tunnel_loop(
     weak: std::sync::Weak<TunnelState>,
     mut kill_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
-    let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
+        let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
     loop {
         let state = match weak.upgrade() {
             Some(s) => s,
@@ -248,6 +248,9 @@ async fn run_tunnel_loop(
         let mut lines = reader.lines();
         let mut found_url = false;
 
+        // ponytail: 30s timeout for URL detection, add to settings if configurable needed
+        let mut timeout = tokio::time::interval(Duration::from_secs(30));
+
         // Wait for URL in stderr
         loop {
             tokio::select! {
@@ -271,6 +274,14 @@ async fn run_tunnel_loop(
                     let _ = child.kill().await;
                     let _ = child.wait().await;
                     return;
+                }
+                _ = timeout.tick() => {
+                    if !found_url {
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
+                        state.set_status(TunnelStatus::Failed("Tunnel start timed out after 30s".to_string())).await;
+                        return;
+                    }
                 }
             }
         }
