@@ -76,7 +76,7 @@ export function AuditPage() {
 
   useEffect(() => {
     loadLogs()
-  }, [])
+  }, [loadLogs])
 
   const handleLoadMore = async () => {
     if (!hasMore || loading || nextCursor == null) return
@@ -104,8 +104,9 @@ export function AuditPage() {
 
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Event</label>
+          <label htmlFor="filter-event" className="text-xs font-medium text-muted-foreground mb-1 block">Event</label>
           <select
+            id="filter-event"
             value={filters.event}
             onChange={(e) => handleFilterChange("event", e.target.value)}
             className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
@@ -119,8 +120,9 @@ export function AuditPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">From</label>
+          <label htmlFor="filter-from" className="text-xs font-medium text-muted-foreground mb-1 block">From</label>
           <input
+            id="filter-from"
             type="date"
             value={filters.from}
             onChange={(e) => handleFilterChange("from", e.target.value)}
@@ -128,8 +130,9 @@ export function AuditPage() {
           />
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">To</label>
+          <label htmlFor="filter-to" className="text-xs font-medium text-muted-foreground mb-1 block">To</label>
           <input
+            id="filter-to"
             type="date"
             value={filters.to}
             onChange={(e) => handleFilterChange("to", e.target.value)}

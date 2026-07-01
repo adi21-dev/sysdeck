@@ -5,9 +5,16 @@ import { useAuthStore } from "@/lib/store"
 export function ProtectedRoute() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
+  const setLocal = useAuthStore((s) => s.setLocal)
   const [checking, setChecking] = useState(!isAuthenticated)
 
   useEffect(() => {
+    setLocal(true)
+    fetch("/api/admin/check")
+      .then((r) => r.json())
+      .then((data) => setLocal(data.is_local))
+      .catch(() => {})
+
     if (isAuthenticated) {
       setChecking(false)
       return
@@ -21,7 +28,7 @@ export function ProtectedRoute() {
         setChecking(false)
       })
       .catch(() => setChecking(false))
-  }, [isAuthenticated, setAuthenticated])
+  }, [isAuthenticated, setAuthenticated, setLocal])
 
   if (checking) return null
   if (!isAuthenticated) return <Navigate to="/login" replace />

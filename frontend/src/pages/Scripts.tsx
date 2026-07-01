@@ -177,8 +177,9 @@ export function ScriptsPage() {
       <div className="space-y-4 rounded-lg border p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Script</label>
+            <label htmlFor="script-select" className="text-xs font-medium text-muted-foreground mb-1 block">Script</label>
             <select
+              id="script-select"
               value={predefined}
               onChange={(e) => handlePredefinedChange(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
@@ -189,8 +190,8 @@ export function ScriptsPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Type</label>
-            <div className="flex h-9 rounded-md border border-input overflow-hidden">
+            <span className="text-xs font-medium text-muted-foreground mb-1 block" id="type-label">Type</span>
+            <div className="flex h-9 rounded-md border border-input overflow-hidden" role="radiogroup" aria-labelledby="type-label">
               <button
                 onClick={() => setScriptType("powershell")}
                 className={cn("px-3 text-sm transition-colors", scriptType === "powershell" ? "bg-primary text-primary-foreground" : "bg-transparent")}
@@ -206,8 +207,8 @@ export function ScriptsPage() {
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Mode</label>
-            <div className="flex h-9 rounded-md border border-input overflow-hidden">
+            <span className="text-xs font-medium text-muted-foreground mb-1 block" id="mode-label">Mode</span>
+            <div className="flex h-9 rounded-md border border-input overflow-hidden" role="radiogroup" aria-labelledby="mode-label">
               <button
                 onClick={() => setMode("live")}
                 className={cn("px-3 text-sm transition-colors", mode === "live" ? "bg-primary text-primary-foreground" : "bg-transparent")}
@@ -232,8 +233,9 @@ export function ScriptsPage() {
 
         {(predefined === "Custom" || !PREDEFINED.find((p) => p.label === predefined)?.type) && (
           <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Script Content</label>
+            <label htmlFor="script-content" className="text-xs font-medium text-muted-foreground mb-1 block">Script Content</label>
             <textarea
+              id="script-content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter PowerShell or CMD commands..."

@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import { useWebSocket } from "@/hooks/use-websocket"
 import { useConnectionStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
-import { RefreshCw } from "lucide-react"
+import { MonitorDown, RefreshCw } from "lucide-react"
 
 function OfflineOverlay() {
   const status = useConnectionStore((s) => s.status)
@@ -24,11 +24,26 @@ function OfflineOverlay() {
   )
 }
 
+function ShuttingDownOverlay() {
+  const shuttingDown = useConnectionStore((s) => s.shuttingDown)
+
+  if (!shuttingDown) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-4 bg-black/80 backdrop-blur-md">
+      <MonitorDown className="h-16 w-16 text-red-400 animate-pulse" />
+      <p className="text-2xl font-bold text-white">NodeDesk is shutting down</p>
+      <p className="text-base text-white/70">You can close this window.</p>
+    </div>
+  )
+}
+
 export function WebSocketProvider({ children }: { children: ReactNode }) {
   useWebSocket()
   return (
     <>
       <OfflineOverlay />
+      <ShuttingDownOverlay />
       {children}
     </>
   )

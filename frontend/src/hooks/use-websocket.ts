@@ -11,6 +11,7 @@ export function useWebSocket() {
   const addToHistory = useTelemetryStore((s) => s.addToHistory)
   const setStatus = useConnectionStore((s) => s.setStatus)
   const setRetryConnection = useConnectionStore((s) => s.setRetryConnection)
+  const setShuttingDown = useConnectionStore((s) => s.setShuttingDown)
   const setTunnel = useTunnelStore((s) => s.setTunnel)
 
   const connect = useCallback(() => {
@@ -32,6 +33,10 @@ export function useWebSocket() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
+        if (data.action === "shutting_down") {
+          setShuttingDown(true)
+          return
+        }
         if (data.event === "auth_expired") {
           setAuthenticated(false)
           navigate("/login")
@@ -62,7 +67,7 @@ export function useWebSocket() {
 
     wsRef.current = ws
     setRetryConnection(() => connect)
-  }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel])
+  }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown])
 
   useEffect(() => {
     connect()

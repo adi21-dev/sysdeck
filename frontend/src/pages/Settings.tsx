@@ -402,9 +402,9 @@ export function SettingsPage() {
             <h3 className="font-medium text-sm flex items-center gap-2"><FolderKanban className="h-4 w-4" /> File Access Paths</h3>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Allowed Paths</label>
+                <label htmlFor="allowed-paths" className="text-xs text-muted-foreground mb-1 block">Allowed Paths</label>
                 <div className="flex gap-2 mb-2">
-                  <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
+                  <Input id="allowed-paths" placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
                   <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
                     <FolderOpen className="h-4 w-4" />
                   </Button>
@@ -420,9 +420,9 @@ export function SettingsPage() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Blocked Paths</label>
+                <label htmlFor="blocked-paths" className="text-xs text-muted-foreground mb-1 block">Blocked Paths</label>
                 <div className="flex gap-2 mb-2">
-                  <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
+                  <Input id="blocked-paths" placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
                   <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
                     <FolderOpen className="h-4 w-4" />
                   </Button>

@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout"
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute"
 import { WebSocketProvider } from "@/components/layout/WebSocketProvider"
 import { useAuthStore } from "@/lib/store"
+import { ToastContainer } from "@/components/ui/toast"
 import { LoginPage } from "@/pages/Login"
 import { SetupPage } from "@/pages/Setup"
 import { DashboardPage } from "@/pages/Dashboard"
@@ -38,6 +39,7 @@ function RootRedirect() {
 function App() {
   return (
     <BrowserRouter>
+      <ToastContainer />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />

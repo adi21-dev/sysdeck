@@ -1,13 +1,16 @@
 import { useEffect, useCallback, useState, useRef } from "react"
 import {
   Download, Trash2, Pencil, RefreshCw,
-  Table, Grid3X3, Folder, File, ChevronRight, Plus, X,
+  Table, Grid3X3, Folder, File, ChevronRight, Plus, X, FolderOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { useToastStore } from "@/lib/store"
 import { useFilesStore, type FileEntry } from "@/lib/files-store"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { EmptyState } from "@/components/ui/empty-state"
 
 function toApiPath(p: string): string {
   return p.replace(/^\/([A-Za-z]:)/, "$1\\").replace(/\//g, "\\")
@@ -114,6 +117,8 @@ export function FilesPage() {
   const [sortAsc, setSortAsc] = useState(true)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState<{ path: string; name: string } | null>(null)
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -139,7 +144,7 @@ export function FilesPage() {
 
   useEffect(() => {
     loadDir(currentPath)
-  }, [])
+  }, [loadDir, currentPath])
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -221,23 +226,30 @@ export function FilesPage() {
   }
 
   const handleDelete = async (entry: FileEntry) => {
-    if (!window.confirm(`Delete "${entry.name}"?`)) return
+    setConfirmDelete({ path: entry.path, name: entry.name })
+  }
+
+  const doDelete = async (path: string) => {
     try {
-      const data = await deletePath(entry.path)
+      const data = await deletePath(path)
       if (data.success) {
+        useToastStore.getState().addToast("Deleted successfully", "success")
         clearSelection()
         loadDir(currentPath)
       } else {
         setError(data.message || "Delete failed")
       }
     } catch {
-      setError(`Delete failed: ${entry.name}`)
+      setError(`Delete failed`)
     }
   }
 
   const handleBulkDelete = async () => {
     if (selected.size === 0) return
-    if (!window.confirm(`Delete ${selected.size} item(s)?`)) return
+    setConfirmBulkDelete(true)
+  }
+
+  const doBulkDelete = async () => {
     for (const p of selected) {
       try {
         await deletePath(p)
@@ -245,6 +257,7 @@ export function FilesPage() {
         setError(`Delete failed: ${p}`)
       }
     }
+    useToastStore.getState().addToast(`Deleted ${selected.size} item(s)`, "success")
     clearSelection()
     loadDir(currentPath)
   }
@@ -359,6 +372,7 @@ export function FilesPage() {
                 <th className="w-8 p-2 text-left">
                   <input
                     type="checkbox"
+                    aria-label="Select all files"
                     onChange={(e) => {
                       if (e.target.checked) {
                         entries.forEach((en) => {
@@ -385,7 +399,7 @@ export function FilesPage() {
                 <th className="p-2 text-left cursor-pointer select-none hidden lg:table-cell" onClick={() => handleSort("modified")}>
                   Modified {sortIndicator("modified")}
                 </th>
-                <th className="w-24 p-2 text-right">Actions</th>
+                <th className="w-24 p-2 text-right" scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -403,6 +417,7 @@ export function FilesPage() {
                   <td className="p-2">
                     <input
                       type="checkbox"
+                      aria-label={`Select ${entry.name}`}
                       checked={selected.has(entry.path)}
                       onChange={() => toggleSelected(entry.path)}
                       className="accent-primary"
@@ -422,7 +437,6 @@ export function FilesPage() {
                           onBlur={commitRename}
                           onKeyDown={(e) => e.key === "Enter" && commitRename()}
                           className="h-7 text-sm"
-                          autoFocus
                         />
                       ) : (
                         <span className="truncate max-w-[200px] md:max-w-[300px]">
@@ -440,7 +454,7 @@ export function FilesPage() {
                   <td className="p-2 text-muted-foreground hidden lg:table-cell">
                     {formatTime(entry.modified)}
                   </td>
-                  <td className="p-2 text-right">
+                  <td className="p-2 text-right" aria-label="Actions">
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDownload(entry)} title="Download">
                         <Download className="h-3.5 w-3.5" />
@@ -457,8 +471,12 @@ export function FilesPage() {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                    This folder is empty
+                  <td colSpan={6}>
+                    <EmptyState
+                      icon={FolderOpen}
+                      title="This folder is empty"
+                      description="Upload files or navigate to another directory"
+                    />
                   </td>
                 </tr>
               )}
@@ -491,8 +509,12 @@ export function FilesPage() {
             </Card>
           ))}
           {entries.length === 0 && (
-            <div className="col-span-full py-16 text-center text-muted-foreground">
-              This folder is empty
+            <div className="col-span-full">
+              <EmptyState
+                icon={FolderOpen}
+                title="This folder is empty"
+                description="Upload files or navigate to another directory"
+              />
             </div>
           )}
         </div>
@@ -512,6 +534,26 @@ export function FilesPage() {
       >
         <Plus className="h-5 w-5" />
       </button>
+
+      <ConfirmDialog
+        open={confirmDelete != null}
+        onOpenChange={() => setConfirmDelete(null)}
+        title="Delete file"
+        description={`Are you sure you want to delete "${confirmDelete?.name}"? This action cannot be undone.`}
+        confirmText="DELETE"
+        actionLabel="Delete"
+        onConfirm={() => { if (confirmDelete) doDelete(confirmDelete.path); setConfirmDelete(null) }}
+      />
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        onOpenChange={() => setConfirmBulkDelete(false)}
+        title="Delete multiple files"
+        description={`Are you sure you want to delete ${selected.size} item(s)? This action cannot be undone.`}
+        confirmText="DELETE"
+        actionLabel="Delete All"
+        onConfirm={() => { setConfirmBulkDelete(false); doBulkDelete() }}
+      />
     </div>
   )
 }

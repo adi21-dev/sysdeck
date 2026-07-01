@@ -3,16 +3,7 @@ import { Power, RefreshCw, Moon, LogOut, AlertTriangle, PowerOff, Lock } from "l
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface PowerResponse {
   success: boolean
@@ -174,27 +165,15 @@ export function ControlsPage() {
         ))}
       </div>
 
-      <AlertDialog open={confirmDialog != null} onOpenChange={() => setConfirmDialog(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Active file transfer in progress</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmDialog?.transfers} file transfer(s) are in progress.
-              {confirmDialog?.action === "shutdown" ? " Shutdown" : 
-               confirmDialog?.action === "restart" ? " Restart" : 
-               confirmDialog?.action === "sleep" ? " Sleep" :
-               confirmDialog?.action === "hibernate" ? " Hibernate" : " Sign Out"}
-              {" "}will cancel them. Continue?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmed} className="bg-destructive hover:bg-destructive/90">
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirmDialog != null}
+        onOpenChange={() => setConfirmDialog(null)}
+        title="Active file transfer in progress"
+        description={`${confirmDialog?.transfers} file transfer(s) are in progress. ${confirmDialog?.action === "shutdown" ? "Shutdown" : confirmDialog?.action === "restart" ? "Restart" : confirmDialog?.action === "sleep" ? "Sleep" : confirmDialog?.action === "hibernate" ? "Hibernate" : "Sign Out"} will cancel them.`}
+        confirmText={confirmDialog?.action?.toUpperCase() ?? "CONFIRM"}
+        actionLabel="Execute"
+        onConfirm={handleConfirmed}
+      />
     </div>
   )
 }

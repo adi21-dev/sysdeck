@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Check, Copy, Download, Eye, EyeOff } from "lucide-react"
+import { Check, Copy, Download, Eye, EyeOff, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { useAuthStore } from "@/lib/store"
 
-const STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay"] as const
+const BASE_STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay"] as const
 
 function StepIndicator({ current, steps }: { current: number; steps: readonly string[] }) {
   return (
@@ -90,9 +90,10 @@ function StepPassword({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="text-sm font-medium">Create Password</label>
+        <label htmlFor="create-password" className="text-sm font-medium">Create Password</label>
         <div className="relative">
           <Input
+            id="create-password"
             type={show ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -113,8 +114,9 @@ function StepPassword({
         <PasswordStrength password={password} />
       </div>
       <div>
-        <label className="text-sm font-medium">Confirm Password</label>
+        <label htmlFor="confirm-password" className="text-sm font-medium">Confirm Password</label>
         <Input
+          id="confirm-password"
           type={show ? "text" : "password"}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
@@ -209,8 +211,9 @@ function StepTotp({
         </div>
       )}
       <div>
-        <label className="text-sm font-medium">TOTP Code</label>
+        <label htmlFor="totp-code" className="text-sm font-medium">TOTP Code</label>
         <Input
+          id="totp-code"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -363,11 +366,69 @@ function StepRelay({ onComplete }: { onComplete: (enabled: boolean) => void }) {
   )
 }
 
+function StepToken({ onComplete }: { onComplete: () => void }) {
+  const [inputToken, setInputToken] = useState("")
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    setLoading(true)
+    try {
+      const res = await fetch("/api/setup/verify-setup-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: inputToken }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        onComplete()
+      } else {
+        setError("Invalid setup token. Check the server console for the token.")
+      }
+    } catch {
+      setError("Connection error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="flex items-center gap-2 rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
+        <ShieldAlert className="h-4 w-4 shrink-0" />
+        <span>This server requires a setup token. Enter the token printed in the server console.</span>
+      </div>
+      <div>
+        <label htmlFor="setup-token" className="text-sm font-medium">Setup Token</label>
+        <Input
+          id="setup-token"
+          type="text"
+          value={inputToken}
+          onChange={(e) => setInputToken(e.target.value)}
+          placeholder="Enter setup token"
+          required
+          autoComplete="off"
+        />
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button type="submit" className="w-full" disabled={loading || !inputToken}>
+        {loading ? "Verifying..." : "Verify & Continue"}
+      </Button>
+    </form>
+  )
+}
+
 export function SetupPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [token, setToken] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
+  const [tokenRequired, setTokenRequired] = useState(false)
+  const [offset, setOffset] = useState(0)
+
+  const steps = tokenRequired ? ["Token", ...BASE_STEPS] : BASE_STEPS
 
   useEffect(() => {
     async function checkStatus() {
@@ -378,13 +439,19 @@ export function SetupPage() {
           navigate("/login", { replace: true })
           return
         }
+        const tokenRes = await fetch("/api/setup/check-token")
+        const tokenData = await tokenRes.json()
+        if (tokenData.token_required) {
+          setTokenRequired(true)
+          setOffset(1)
+        }
         const savedToken = sessionStorage.getItem("setup_token")
         if (savedToken) {
           const progressRes = await fetch(`/api/setup/progress?token=${savedToken}`)
           const progressData = await progressRes.json()
           if (progressData.success) {
             setToken(savedToken)
-            setStep(progressData.current_step - 1)
+            setStep(progressData.current_step - 1 + (tokenData.token_required ? 1 : 0))
           }
         }
       } catch {
@@ -396,19 +463,23 @@ export function SetupPage() {
     checkStatus()
   }, [navigate])
 
-  const handlePasswordComplete = useCallback((newToken: string) => {
-    setToken(newToken)
+  const handleTokenComplete = useCallback(() => {
     setStep(1)
   }, [])
 
+  const handlePasswordComplete = useCallback((newToken: string) => {
+    setToken(newToken)
+    setStep(1 + offset)
+  }, [offset])
+
   const handleTotpComplete = useCallback((newToken: string) => {
     setToken(newToken)
-    setStep(2)
-  }, [])
+    setStep(2 + offset)
+  }, [offset])
 
   const handleRecoveryComplete = useCallback(() => {
-    setStep(3)
-  }, [])
+    setStep(3 + offset)
+  }, [offset])
 
   const handleRelayComplete = useCallback(async (enabled: boolean) => {
     const token = sessionStorage.getItem("setup_token")
@@ -440,6 +511,8 @@ export function SetupPage() {
     )
   }
 
+  const baseStep = step - offset
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
@@ -447,24 +520,30 @@ export function SetupPage() {
           <h1 className="text-2xl font-bold">NodeDesk Agent Setup</h1>
           <p className="text-muted-foreground mt-1 text-sm">Configure your agent</p>
         </div>
-        <StepIndicator current={step} steps={STEPS} />
+        <StepIndicator current={step} steps={steps} />
         <Card>
           <CardHeader>
-            <CardTitle>{STEPS[step]}</CardTitle>
+            <CardTitle>{steps[step]}</CardTitle>
             <CardDescription>
-              {step === 0 && "Create a strong password to secure your agent"}
-              {step === 1 && "Set up two-factor authentication"}
-              {step === 2 && "Store your recovery codes safely"}
-              {step === 3 && "Configure remote access"}
+              {steps[step] === "Token" ? "Enter the setup token from the server console" :
+               steps[step] === "Password" ? "Create a strong password to secure your agent" :
+               steps[step] === "Two-Factor Auth" ? "Set up two-factor authentication" :
+               steps[step] === "Recovery Codes" ? "Store your recovery codes safely" :
+               "Configure remote access"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {step === 0 && <StepPassword onComplete={handlePasswordComplete} />}
-            {step === 1 && token && (
+            {step === 0 && tokenRequired ? (
+              <StepToken onComplete={handleTokenComplete} />
+            ) : baseStep === 0 ? (
+              <StepPassword onComplete={handlePasswordComplete} />
+            ) : baseStep === 1 && token ? (
               <StepTotp token={token} onComplete={handleTotpComplete} />
-            )}
-            {step === 2 && <StepRecoveryCodes onComplete={handleRecoveryComplete} />}
-            {step === 3 && <StepRelay onComplete={handleRelayComplete} />}
+            ) : baseStep === 2 ? (
+              <StepRecoveryCodes onComplete={handleRecoveryComplete} />
+            ) : baseStep === 3 ? (
+              <StepRelay onComplete={handleRelayComplete} />
+            ) : null}
           </CardContent>
         </Card>
       </div>

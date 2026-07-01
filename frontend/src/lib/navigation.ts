@@ -20,5 +20,8 @@ export const navItems: NavItem[] = [
   { to: "/scripts", icon: Terminal, label: "Scripts" },
   { to: "/controls", icon: Power, label: "Controls" },
   { to: "/audit", icon: ScrollText, label: "Audit" },
+]
+
+export const adminNavItems: NavItem[] = [
   { to: "/settings", icon: Settings, label: "Settings" },
 ]
