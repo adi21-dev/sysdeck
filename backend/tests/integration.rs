@@ -341,7 +341,11 @@ async fn test_file_list_unauthenticated() {
 
 #[tokio::test]
 async fn test_file_list_authenticated() {
-    let (mut router, secret) = test_app_with_user();
+    let secret = nodedesk_agent::auth::generate_totp_secret();
+    let (mut router, _state) = test_app_with_seeded(|conn| {
+        seed_user(conn, "TestP@ss123", &secret);
+        nodedesk_agent::db::set_setting(conn, "allowed_paths", r#"["C:\\Users"]"#).unwrap();
+    });
     let cookie = login_and_cookie(&mut router, &secret).await;
 
     let resp = authed_get(&mut router, "/api/files/list?path=C:%5CUsers", &cookie).await;

@@ -58,8 +58,39 @@ struct ListResponse {
     error: Option<String>,
 }
 
-pub(crate) async fn list_handler(Query(query): Query<ListQuery>) -> impl IntoResponse {
+pub(crate) async fn list_handler(
+    State(state): State<crate::AppState>,
+    Query(query): Query<ListQuery>,
+) -> impl IntoResponse {
     let path_str = query.path.unwrap_or_else(|| "C:\\".to_string());
+
+    // Check allowed paths from settings
+    let allowed = {
+        let conn = state.db.lock().await;
+        crate::db::get_setting(&conn, "allowed_paths")
+            .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
+            .unwrap_or_default()
+    };
+    if allowed.is_empty() {
+        return Json(ListResponse {
+            success: false,
+            entries: vec![],
+            path: path_str,
+            error: Some("No allowed paths configured. Go to Settings → File Access to add paths.".to_string()),
+        })
+        .into_response()
+    }
+    let req_lower = path_str.to_lowercase();
+    let ok = allowed.iter().any(|a| req_lower.starts_with(&a.to_lowercase()));
+    if !ok {
+        return Json(ListResponse {
+            success: false,
+            entries: vec![],
+            path: path_str,
+            error: Some("Access to this path is not allowed".to_string()),
+        })
+        .into_response()
+    }
 
     let dir = match validate_path(&path_str) {
         Ok(p) => p,

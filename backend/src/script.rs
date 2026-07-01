@@ -156,8 +156,9 @@ async fn run_script(
             .stderr(std::process::Stdio::piped())
             .spawn()
     } else {
+        let content = content.replace("\r\n", " & ").replace('\n', " & ");
         Command::new("cmd")
-            .args(["/C", content])
+            .args(["/C", &content])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
