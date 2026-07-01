@@ -2,12 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { Play, Copy, Check, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+
 import { cn } from "@/lib/utils"
 import { useScriptsStore, type ScriptOutput } from "@/lib/scripts-store"
 
@@ -24,7 +19,7 @@ export function ScriptsPage() {
     output, status, consoleOpen, errorCount,
     setMode, setScriptType, setContent, setPredefined,
     setRunning, setRunId, addOutput, clearOutput,
-    setStatus, setConsoleOpen,
+    setStatus,
   } = useScriptsStore()
 
   const [localError, setLocalError] = useState<string | null>(null)
@@ -74,7 +69,6 @@ export function ScriptsPage() {
 
     setRunning(true)
     setStatus("running")
-    setConsoleOpen(true)
 
     try {
       const res = await fetch("/api/scripts/execute", {
@@ -148,9 +142,7 @@ export function ScriptsPage() {
   }
 
   useEffect(() => {
-    return () => {
-      disconnectWs()
-    }
+    return () => { disconnectWs() }
   }, [disconnectWs])
 
   const handleCopyAll = async () => {
@@ -171,79 +163,96 @@ export function ScriptsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Script Engine</h1>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <div className="rounded-xl border bg-card p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={predefined}
+                onChange={(e) => handlePredefinedChange(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+              >
+                {PREDEFINED.map((p) => (
+                  <option key={p.label} value={p.label}>{p.label}</option>
+                ))}
+              </select>
+              <select
+                value={scriptType}
+                onChange={(e) => setScriptType(e.target.value as "powershell" | "cmd")}
+                className="px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+              >
+                <option value="powershell">PowerShell</option>
+                <option value="cmd">CMD</option>
+              </select>
+            </div>
 
-      <div className="space-y-4 rounded-lg border p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <label htmlFor="script-select" className="text-xs font-medium text-muted-foreground mb-1 block">Script</label>
-            <select
-              id="script-select"
-              value={predefined}
-              onChange={(e) => handlePredefinedChange(e.target.value)}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-            >
-              {PREDEFINED.map((p) => (
-                <option key={p.label} value={p.label}>{p.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground mb-1 block" id="type-label">Type</span>
-            <div className="flex h-9 rounded-md border border-input overflow-hidden" role="radiogroup" aria-labelledby="type-label">
-              <button
-                onClick={() => setScriptType("powershell")}
-                className={cn("px-3 text-sm transition-colors", scriptType === "powershell" ? "bg-primary text-primary-foreground" : "bg-transparent")}
-              >
-                PS
-              </button>
-              <button
-                onClick={() => setScriptType("cmd")}
-                className={cn("px-3 text-sm transition-colors", scriptType === "cmd" ? "bg-primary text-primary-foreground" : "bg-transparent")}
-              >
-                CMD
-              </button>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="text-primary" />
+                Live Output
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" name="mode" checked={mode === "wait"} onChange={() => setMode("wait")} className="text-primary" />
+                Wait & Show
+              </label>
             </div>
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground mb-1 block" id="mode-label">Mode</span>
-            <div className="flex h-9 rounded-md border border-input overflow-hidden" role="radiogroup" aria-labelledby="mode-label">
-              <button
-                onClick={() => setMode("live")}
-                className={cn("px-3 text-sm transition-colors", mode === "live" ? "bg-primary text-primary-foreground" : "bg-transparent")}
-              >
-                Live
-              </button>
-              <button
-                onClick={() => setMode("wait")}
-                className={cn("px-3 text-sm transition-colors", mode === "wait" ? "bg-primary text-primary-foreground" : "bg-transparent")}
-              >
-                Wait
-              </button>
-            </div>
-          </div>
-          <div className="self-end">
-            <Button onClick={handleRun} disabled={running}>
-              <Play className="h-4 w-4 mr-1" />
-              {running ? "Running..." : "Run"}
+
+            {(predefined === "Custom" || !PREDEFINED.find((p) => p.label === predefined)?.type) && (
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Enter your script here..."
+                rows={8}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+              />
+            )}
+
+            <Button onClick={handleRun} disabled={running} className="w-full">
+              <Play className="h-4 w-4 mr-2" />
+              {running ? "Running..." : "Run Script"}
             </Button>
           </div>
         </div>
 
-        {(predefined === "Custom" || !PREDEFINED.find((p) => p.label === predefined)?.type) && (
-          <div>
-            <label htmlFor="script-content" className="text-xs font-medium text-muted-foreground mb-1 block">Script Content</label>
-            <textarea
-              id="script-content"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Enter PowerShell or CMD commands..."
-              rows={4}
-              className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm font-mono resize-y min-h-[80px]"
-            />
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold">Output</h3>
+              {statusBadge()}
+            </div>
+            <button
+              onClick={handleCopyAll}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy All"}
+            </button>
           </div>
-        )}
+          <div
+            ref={outputRef}
+            className="bg-muted rounded-lg p-4 font-mono text-xs h-80 overflow-y-auto space-y-1"
+          >
+            {output.length === 0 && (
+              <p className="text-muted-foreground italic">Waiting for output...</p>
+            )}
+            {output.map((line, i) => (
+              <div key={i} className={cn(
+                "whitespace-pre-wrap break-all",
+                line.stream === "stderr" && "text-destructive",
+                line.stream === "system" && "text-muted-foreground",
+              )}>
+                {line.stream === "system" ? (
+                  <><span className="text-muted-foreground">▸</span> {line.data}</>
+                ) : line.stream === "stderr" ? (
+                  <><span className="text-xs text-destructive">[stderr]</span> {line.data}</>
+                ) : (
+                  line.data
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {localError && (
@@ -253,49 +262,7 @@ export function ScriptsPage() {
         </div>
       )}
 
-      <Sheet open={consoleOpen} onOpenChange={setConsoleOpen}>
-        <SheetContent side="bottom" className="h-[60vh] max-h-[500px] p-0 flex flex-col">
-          <SheetHeader className="p-4 border-b shrink-0">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <SheetTitle>Console</SheetTitle>
-                {statusBadge()}
-              </div>
-              <Button variant="ghost" size="sm" onClick={handleCopyAll}>
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copied ? "Copied" : "Copy All"}
-              </Button>
-            </div>
-          </SheetHeader>
-          <div className="flex-1 overflow-hidden flex flex-col">
-            <div className="flex border-b shrink-0">
-              <button className="px-4 py-2 text-sm font-medium border-b-2 border-primary">
-                Output {errorCount > 0 && <Badge variant="destructive" className="ml-1">{errorCount}</Badge>}
-              </button>
-            </div>
-            <div ref={outputRef} className="flex-1 overflow-auto p-4 font-mono text-sm space-y-1 bg-black/5">
-              {output.length === 0 && (
-                <p className="text-muted-foreground italic">Waiting for output...</p>
-              )}
-              {output.map((line, i) => (
-                <div key={i} className={cn(
-                  "whitespace-pre-wrap break-all",
-                  line.stream === "stderr" && "text-destructive",
-                  line.stream === "system" && "text-muted-foreground",
-                )}>
-                  {line.stream === "system" ? (
-                    <>▸ {line.data}</>
-                  ) : line.stream === "stderr" ? (
-                    <><span className="text-xs text-destructive">[stderr]</span> {line.data}</>
-                  ) : (
-                    line.data
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
+
     </div>
   )
 }

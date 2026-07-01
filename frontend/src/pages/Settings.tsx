@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react"
 import {
-  Key, Shield, Eye, EyeOff, Download, FolderKanban, Server, Globe, AlertTriangle, Check, Copy, RefreshCw, FolderOpen,
+  Shield, Eye, EyeOff, Download, Server, Globe, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTunnelStore } from "@/lib/store"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useTunnelStore } from "@/lib/store"
 
 export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
@@ -58,7 +57,6 @@ export function SettingsPage() {
   const tunnel = useTunnelStore()
   const [tunnelLoading, setTunnelLoading] = useState(false)
 
-  // Load initial data
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
       if (d.success) setPort(String(d.port))
@@ -68,6 +66,9 @@ export function SettingsPage() {
         setAllowedPaths(d.allowed || [])
         setBlockedPaths(d.blocked || [])
       }
+    }).catch(() => {})
+    fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
+      if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null, error: d.error ?? null })
     }).catch(() => {})
   }, [])
 
@@ -178,13 +179,8 @@ export function SettingsPage() {
     folderInputRef.current?.removeAttribute("webkitdirectory")
   }
 
-  const handleExportDb = () => {
-    window.open("/api/settings/export-db", "_blank")
-  }
-
-  const handleDownloadLogs = () => {
-    window.open("/api/settings/download-logs", "_blank")
-  }
+  const handleExportDb = () => { window.open("/api/settings/export-db", "_blank") }
+  const handleDownloadLogs = () => { window.open("/api/settings/download-logs", "_blank") }
 
   const handleSavePaths = async () => {
     try {
@@ -237,9 +233,7 @@ export function SettingsPage() {
   }
 
   const addPath = (list: string[], setter: (v: string[]) => void, val: string) => {
-    if (val.trim() && !list.includes(val.trim())) {
-      setter([...list, val.trim()])
-    }
+    if (val.trim() && !list.includes(val.trim())) setter([...list, val.trim()])
   }
 
   const removePath = (list: string[], setter: (v: string[]) => void, idx: number) => {
@@ -247,9 +241,7 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
-
+    <div className="space-y-6">
       {error && (
         <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -257,154 +249,170 @@ export function SettingsPage() {
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-md bg-green-500/10 p-3 text-sm text-green-600">
+        <div className="flex items-center gap-2 rounded-md bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
           <Check className="h-4 w-4" />
           <span>{success}</span>
         </div>
       )}
 
-      {/* Security */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> Security</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-3">
-            <h3 className="font-medium text-sm">Change Password</h3>
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Change Password</h3>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label htmlFor="settings-current-pw" className="block text-sm font-medium mb-2">Current Password</label>
+            <input
+              id="settings-current-pw"
+              type={showPw ? "text" : "password"}
+              value={currentPw}
+              onChange={(e) => setCurrentPw(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+            />
+          </div>
+          <div>
+            <label htmlFor="settings-new-pw" className="block text-sm font-medium mb-2">New Password</label>
             <div className="relative">
-              <Input type={showPw ? "text" : "password"} placeholder="Current password" value={currentPw}
-                onChange={(e) => setCurrentPw(e.target.value)} />
-            </div>
-            <div className="relative">
-              <Input type={showPw ? "text" : "password"} placeholder="New password" value={newPw}
-                onChange={(e) => setNewPw(e.target.value)} />
-              <button onClick={() => setShowPw(!showPw)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+              <input
+                id="settings-new-pw"
+                type={showPw ? "text" : "password"}
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 pr-10"
+              />
+              <button
+                onClick={() => setShowPw(!showPw)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <Input type="password" placeholder="Confirm new password" value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)} />
-            <Button onClick={handleChangePassword} size="sm"><Key className="h-4 w-4 mr-1" /> Update Password</Button>
           </div>
-
-          <div className="space-y-3">
-            <h3 className="font-medium text-sm">Two-Factor Authentication (TOTP)</h3>
-            {totpStep === "idle" && (
-              <Button onClick={handleResetTotp} size="sm" variant="outline">Reset TOTP</Button>
-            )}
-            {totpStep === "verify" && totpQr && (
-              <div className="space-y-3">
-                <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
-                <p className="text-xs text-muted-foreground">Scan this QR with your authenticator app, then enter the 6-digit code:</p>
-                <div className="flex gap-2">
-                  <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)}
-                    className="w-32" maxLength={6} />
-                  <Button onClick={handleVerifyTotp} size="sm" disabled={totpCode.length !== 6}>Verify</Button>
-                </div>
-              </div>
-            )}
+          <div>
+            <label htmlFor="settings-confirm-pw" className="block text-sm font-medium mb-2">Confirm New Password</label>
+            <input
+              id="settings-confirm-pw"
+              type="password"
+              value={confirmPw}
+              onChange={(e) => setConfirmPw(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+            />
           </div>
+          <Button onClick={handleChangePassword} size="sm"><Key className="h-4 w-4 mr-1" /> Update Password</Button>
+        </div>
+      </div>
 
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Two-Factor Authentication</h3>
+        {totpStep === "idle" && (
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+            <div>
+              <p className="font-medium">TOTP Authentication</p>
+              <p className="text-sm text-muted-foreground">Currently enabled</p>
+            </div>
+            <Button onClick={handleResetTotp} size="sm" variant="outline">Reset TOTP</Button>
+          </div>
+        )}
+        {totpStep === "verify" && totpQr && (
           <div className="space-y-3">
-            <h3 className="font-medium text-sm">Recovery Codes</h3>
-            {recoveryCodes.length > 0 && showCodes && (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                  {recoveryCodes.map((code, i) => (
-                    <div key={i} className="rounded border px-3 py-1.5 bg-muted/30">
-                      {code}
-                    </div>
-                  ))}
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => {
-                  navigator.clipboard.writeText(recoveryCodes.join("\n"))
-                  setCodesCopied(true)
-                  setTimeout(() => setCodesCopied(false), 2000)
-                }}>
-                  {codesCopied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy all</>}
-                </Button>
-              </div>
-            )}
-            <Button onClick={handleRegenCodes} size="sm" variant="outline">
-              <RefreshCw className="h-4 w-4 mr-1" /> Regenerate Codes
+            <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
+            <p className="text-xs text-muted-foreground">Scan this QR with your authenticator app, then enter the 6-digit code:</p>
+            <div className="flex gap-2">
+              <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} className="w-32" maxLength={6} />
+              <Button onClick={handleVerifyTotp} size="sm" disabled={totpCode.length !== 6}>Verify</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Recovery Codes</h3>
+        {recoveryCodes.length > 0 && showCodes && (
+          <div className="p-4 rounded-lg border bg-muted/50 mb-4">
+            <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+              {recoveryCodes.map((code, i) => (
+                <code key={i}>{code}</code>
+              ))}
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => {
+              navigator.clipboard.writeText(recoveryCodes.join("\n"))
+              setCodesCopied(true)
+              setTimeout(() => setCodesCopied(false), 2000)
+            }} className="mt-2">
+              {codesCopied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy all</>}
             </Button>
           </div>
+        )}
+        <Button onClick={handleRegenCodes} size="sm" variant="outline">
+          <RefreshCw className="h-4 w-4 mr-1" /> Generate New Codes
+        </Button>
+      </div>
 
-          <div className="space-y-3">
-            <h3 className="font-medium text-sm">Session Management</h3>
-            <Button onClick={() => setShowRevokeDialog(true)} size="sm" variant="destructive">
-              <Shield className="h-4 w-4 mr-1" /> Revoke All Devices
-            </Button>
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Active Sessions</h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 rounded-lg border">
+            <div className="flex items-center gap-3">
+              <Monitor className="w-5 h-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Current Session</p>
+                <p className="text-xs text-muted-foreground">Active now</p>
+              </div>
+            </div>
+            <span className="text-xs text-green-600 dark:text-green-400 font-medium">Current</span>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <Button onClick={() => setShowRevokeDialog(true)} size="sm" variant="destructive" className="mt-4">
+          <Shield className="h-4 w-4 mr-1" /> Revoke All Sessions
+        </Button>
+      </div>
 
-      {/* Data & Maintenance */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Download className="h-5 w-5" /> Data & Maintenance</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-3">
-          <Button onClick={handleExportDb} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" /> Export Database
-          </Button>
-          <Button onClick={handleDownloadLogs} variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" /> Download Logs
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Tunnel */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Cloudflare Tunnel</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Remote Access</h3>
+        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50 mb-4">
+          <div>
+            <p className="font-medium">Cloudflare Tunnel</p>
+            <p className="text-sm text-muted-foreground">Status: {tunnel.status}</p>
+          </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">Status: </span>
-            <span className={`text-sm ${tunnel.status === "running" ? "text-green-500" : tunnel.status === "failed" ? "text-red-500" : tunnel.status === "downloading" || tunnel.status === "starting" ? "text-yellow-500" : "text-muted-foreground"}`}>
-              {tunnel.status.charAt(0).toUpperCase() + tunnel.status.slice(1)}
+            <span className={`status-dot w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : "bg-yellow-500"}`} />
+            <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+              {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : "Connecting"}
             </span>
           </div>
-          {tunnel.url && (
-            <div className="text-sm">
-              <span className="text-muted-foreground">URL: </span>
-              <a href={tunnel.url} target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                {tunnel.url}
-              </a>
-            </div>
-          )}
-          {tunnel.error && (
-            <p className="text-sm text-red-500">Error: {tunnel.error}</p>
-          )}
-          <div className="flex gap-2">
-            {tunnel.status === "running" ? (
-              <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>
-                Stop Tunnel
-              </Button>
-            ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
-              <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>
-                Start Tunnel
-              </Button>
-            ) : null}
+        </div>
+        {tunnel.url && (
+          <div className="flex items-center gap-2 p-3 rounded-lg border bg-background">
+            <code className="flex-1 text-sm truncate">{tunnel.url}</code>
+            <button className="p-2 rounded hover:bg-accent" onClick={() => {
+              navigator.clipboard.writeText(tunnel.url!)
+              showSuccess("URL copied")
+            }}>
+              <Copy className="h-4 w-4" />
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        )}
+        <div className="flex gap-2 mt-4">
+          {tunnel.status === "running" ? (
+            <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>Stop Tunnel</Button>
+          ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
+            <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>Start Tunnel</Button>
+          ) : (
+            <Button size="sm" disabled>
+              {tunnel.status === "downloading" ? "Downloading..." : tunnel.status === "starting" ? "Starting..." : "—"}
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {/* Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Server className="h-5 w-5" /> Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Configuration</h3>
+        <div className="space-y-6">
           <div className="space-y-3">
-            <h3 className="font-medium text-sm flex items-center gap-2"><FolderKanban className="h-4 w-4" /> File Access Paths</h3>
+            <label className="text-sm font-medium">File Access Paths</label>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label htmlFor="allowed-paths" className="text-xs text-muted-foreground mb-1 block">Allowed Paths</label>
+                <p className="text-xs text-muted-foreground mb-1">Allowed Paths</p>
                 <div className="flex gap-2 mb-2">
-                  <Input id="allowed-paths" placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
+                  <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
                   <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
                     <FolderOpen className="h-4 w-4" />
                   </Button>
@@ -420,9 +428,9 @@ export function SettingsPage() {
                 </div>
               </div>
               <div>
-                <label htmlFor="blocked-paths" className="text-xs text-muted-foreground mb-1 block">Blocked Paths</label>
+                <p className="text-xs text-muted-foreground mb-1">Blocked Paths</p>
                 <div className="flex gap-2 mb-2">
-                  <Input id="blocked-paths" placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
+                  <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
                   <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
                     <FolderOpen className="h-4 w-4" />
                   </Button>
@@ -442,7 +450,7 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-3">
-            <h3 className="font-medium text-sm flex items-center gap-2"><Server className="h-4 w-4" /> Local Server Port</h3>
+            <label className="text-sm font-medium">Local Server Port</label>
             <div className="flex gap-2">
               <Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
               <Button onClick={handleSavePort} size="sm">Save</Button>
@@ -450,8 +458,16 @@ export function SettingsPage() {
             <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
           </div>
 
-        </CardContent>
-      </Card>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={handleExportDb} variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-1" /> Export Database
+            </Button>
+            <Button onClick={handleDownloadLogs} variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-1" /> Download Logs
+            </Button>
+          </div>
+        </div>
+      </div>
 
       <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 
@@ -465,9 +481,7 @@ export function SettingsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRevokeAll} className="bg-destructive hover:bg-destructive/90">
-              Revoke All
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleRevokeAll} className="bg-destructive hover:bg-destructive/90">Revoke All</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

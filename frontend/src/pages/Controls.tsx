@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Power, RefreshCw, Moon, LogOut, AlertTriangle, PowerOff, Lock } from "lucide-react"
+import { Power, RefreshCw, Moon, Bed, LogOut, Lock, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
@@ -35,6 +34,15 @@ async function powerStatus(): Promise<PowerStatus> {
   const res = await fetch("/api/power/status")
   return res.json()
 }
+
+const cards = [
+  { action: "shutdown", label: "Shutdown", desc: "Power off the system completely", icon: Power, destructive: true },
+  { action: "restart", label: "Restart", desc: "Reboot the system", icon: RefreshCw, destructive: false },
+  { action: "sleep", label: "Sleep", desc: "Put system in low-power state", icon: Moon, destructive: false },
+  { action: "hibernate", label: "Hibernate", desc: "Save state and power off", icon: Bed, destructive: false },
+  { action: "signout", label: "Sign Out", desc: "Log out of current session", icon: LogOut, destructive: false },
+  { action: "lock", label: "Lock", desc: "Lock the workstation", icon: Lock, destructive: false },
+]
 
 export function ControlsPage() {
   const [pendingAction, setPendingAction] = useState<{ action: string; remaining: number } | null>(null)
@@ -90,11 +98,8 @@ export function ControlsPage() {
     setConfirmDialog(null)
     try {
       const data = await powerAction(action, true)
-      if (data.success) {
-        startPolling()
-      } else {
-        setError(data.message || "Command failed")
-      }
+      if (data.success) startPolling()
+      else setError(data.message || "Command failed")
     } catch {
       setError("Network error")
     }
@@ -111,19 +116,8 @@ export function ControlsPage() {
     }
   }
 
-  const cards = [
-    { action: "shutdown", label: "Shutdown", icon: Power, color: "text-red-500", bg: "bg-red-500/10" },
-    { action: "restart", label: "Restart", icon: RefreshCw, color: "text-amber-500", bg: "bg-amber-500/10" },
-    { action: "sleep", label: "Sleep", icon: Moon, color: "text-blue-500", bg: "bg-blue-500/10" },
-    { action: "hibernate", label: "Hibernate", icon: PowerOff, color: "text-purple-500", bg: "bg-purple-500/10" },
-    { action: "signout", label: "Sign Out", icon: LogOut, color: "text-orange-500", bg: "bg-orange-500/10" },
-    { action: "lock", label: "Lock", icon: Lock, color: "text-gray-500", bg: "bg-gray-500/10" },
-  ]
-
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Power Controls</h1>
-
+    <div className="space-y-6">
       {error && (
         <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="h-4 w-4" />
@@ -132,36 +126,36 @@ export function ControlsPage() {
       )}
 
       {pendingAction && (
-        <div className="flex items-center justify-between rounded-md bg-accent p-4">
+        <div className="flex items-center justify-between rounded-md border bg-card p-4">
           <div>
-            <p className="font-medium">{pendingAction.action} in progress</p>
-            <p className="text-sm text-muted-foreground">
-              {pendingAction.remaining}s remaining
-            </p>
+            <p className="font-medium capitalize">{pendingAction.action} in progress</p>
+            <p className="text-sm text-muted-foreground">{pendingAction.remaining}s remaining</p>
           </div>
-          <Button variant="destructive" onClick={handleCancel}>
-            Cancel
-          </Button>
+          <Button variant="destructive" onClick={handleCancel}>Cancel</Button>
         </div>
       )}
 
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cards.map((card) => (
-          <Card
+          <button
             key={card.action}
-            className="cursor-pointer hover:shadow-md transition-shadow"
             onClick={() => !pendingAction && handlePowerAction(card.action)}
+            className={cn(
+              "rounded-xl border bg-card p-6 text-left transition-colors hover:bg-accent/50 group",
+              card.destructive && "hover:border-destructive/50",
+              !card.destructive && "hover:border-primary/50",
+              pendingAction && "opacity-50 cursor-not-allowed"
+            )}
           >
-            <CardHeader className={cn("flex items-center justify-center py-8", card.bg)}>
-              <card.icon className={cn("h-12 w-12", card.color)} />
-            </CardHeader>
-            <CardContent className="text-center py-4">
-              <CardTitle className="text-lg">{card.label}</CardTitle>
-              {pendingAction && (
-                <p className="text-xs text-muted-foreground mt-1">Disabled — action pending</p>
-              )}
-            </CardContent>
-          </Card>
+            <div className={cn(
+              "w-12 h-12 rounded-lg flex items-center justify-center mb-4 transition-colors",
+              card.destructive ? "bg-destructive/10 group-hover:bg-destructive/20" : "bg-primary/10 group-hover:bg-primary/20"
+            )}>
+              <card.icon className={cn("w-6 h-6", card.destructive ? "text-destructive" : "text-primary")} />
+            </div>
+            <h3 className="font-semibold mb-1">{card.label}</h3>
+            <p className="text-sm text-muted-foreground">{card.desc}</p>
+          </button>
         ))}
       </div>
 
@@ -177,5 +171,3 @@ export function ControlsPage() {
     </div>
   )
 }
-
-

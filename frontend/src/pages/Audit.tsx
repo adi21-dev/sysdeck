@@ -1,7 +1,6 @@
 import { useEffect, useCallback } from "react"
 import { ScrollText, LogIn, LogOut, FolderUp, FolderX, Pencil, Settings, AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { useAuditStore, type AuditEntry } from "@/lib/audit-store"
 
 const EVENT_ICONS: Record<string, { icon: typeof LogIn; label: string }> = {
@@ -99,49 +98,35 @@ export function AuditPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Audit Log</h1>
-
-      <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label htmlFor="filter-event" className="text-xs font-medium text-muted-foreground mb-1 block">Event</label>
+    <div className="space-y-4">
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-col sm:flex-row gap-3">
           <select
-            id="filter-event"
             value={filters.event}
             onChange={(e) => handleFilterChange("event", e.target.value)}
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
           >
             <option value="">All Events</option>
             {EVENT_TYPES.filter(Boolean).map((ev) => (
-              <option key={ev} value={ev}>
-                {EVENT_ICONS[ev]?.label || ev}
-              </option>
+              <option key={ev} value={ev}>{EVENT_ICONS[ev]?.label || ev}</option>
             ))}
           </select>
-        </div>
-        <div>
-          <label htmlFor="filter-from" className="text-xs font-medium text-muted-foreground mb-1 block">From</label>
           <input
-            id="filter-from"
             type="date"
             value={filters.from}
             onChange={(e) => handleFilterChange("from", e.target.value)}
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
-        </div>
-        <div>
-          <label htmlFor="filter-to" className="text-xs font-medium text-muted-foreground mb-1 block">To</label>
           <input
-            id="filter-to"
             type="date"
             value={filters.to}
             onChange={(e) => handleFilterChange("to", e.target.value)}
-            className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
           />
+          <Button variant="outline" onClick={loadLogs} disabled={loading}>
+            {loading ? "Loading..." : "Apply Filters"}
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={loadLogs}>
-          Refresh
-        </Button>
       </div>
 
       {error && (
@@ -154,55 +139,53 @@ export function AuditPage() {
         </div>
       )}
 
-      {entries.length === 0 && !loading ? (
-        <div className="py-16 text-center text-muted-foreground">
-          No audit entries match your filters
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {entries.map((entry) => {
-            const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event }
-            const Icon = eventInfo.icon
-            return (
-              <div
-                key={entry.id}
-                className="flex items-start gap-3 rounded-md border p-3 hover:bg-accent/50 transition-colors"
-              >
-                <div className="mt-0.5">
-                  <Icon className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">{eventInfo.label}</span>
-                    {entry.event === "login_failed" && (
-                      <Badge variant="destructive" className="text-[10px]">Failed</Badge>
-                    )}
-                  </div>
-                  {entry.details && (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{entry.details}</p>
-                  )}
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-xs text-muted-foreground" title={absoluteTime(entry.created_at)}>
-                    {relativeTime(entry.created_at)}
-                  </p>
-                  {entry.ip_address && (
-                    <p className="text-[10px] text-muted-foreground">{entry.ip_address}</p>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-
-          {hasMore && (
-            <div className="text-center pt-2">
-              <Button variant="outline" onClick={handleLoadMore} disabled={loading}>
-                {loading ? "Loading..." : "Load More"}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="rounded-xl border bg-card overflow-hidden">
+        {entries.length === 0 && !loading ? (
+          <div className="py-16 text-center text-muted-foreground">No audit entries match your filters</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="text-left p-4 font-medium">Timestamp</th>
+                  <th className="text-left p-4 font-medium">Event</th>
+                  <th className="text-left p-4 font-medium">Details</th>
+                  <th className="text-left p-4 font-medium">IP Address</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {entries.map((entry) => {
+                  const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event }
+                  const Icon = eventInfo.icon
+                  return (
+                    <tr key={entry.id} className="hover:bg-accent/50 transition-colors cursor-pointer">
+                      <td className="p-4 text-muted-foreground whitespace-nowrap" title={absoluteTime(entry.created_at)}>
+                        {relativeTime(entry.created_at)}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <span className="font-medium">{eventInfo.label}</span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-muted-foreground max-w-xs truncate">{entry.details || "—"}</td>
+                      <td className="p-4 text-muted-foreground font-mono text-xs">{entry.ip_address || "—"}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {hasMore && entries.length > 0 && (
+          <div className="p-4 border-t flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Showing {entries.length} entries</p>
+            <Button variant="outline" onClick={handleLoadMore} disabled={loading}>
+              {loading ? "Loading..." : "Load More"}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

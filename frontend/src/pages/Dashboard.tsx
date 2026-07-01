@@ -1,9 +1,10 @@
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
 } from "recharts"
+import { Cpu, MemoryStick, Thermometer, HardDrive, Activity, BatteryCharging, Zap, ArrowDown, ArrowUp } from "lucide-react"
 import { useTelemetryStore } from "@/lib/store"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B"
@@ -13,13 +14,43 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`
 }
 
+const RANGES = [
+  { label: "1h", value: "1h" },
+  { label: "6h", value: "6h" },
+  { label: "24h", value: "24h" },
+  { label: "7d", value: "7d" },
+]
+
 export function DashboardPage() {
   const current = useTelemetryStore((s) => s.current)
-  const history = useTelemetryStore((s) => s.history)
+  const liveHistory = useTelemetryStore((s) => s.history)
+  const [historical, setHistorical] = useState<any[]>([])
+  const [range, setRange] = useState("1h")
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
+  useEffect(() => {
+    setLoadingHistory(true)
+    fetch(`/api/telemetry/history?range=${range}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setHistorical(data)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false))
+  }, [range])
 
   const chartData = useMemo(() => {
-    const source = history.length > 60 ? history.slice(-60) : history
-    return source.map((t) => ({
+    const count = range === "1h" ? 60 : range === "6h" ? 180 : range === "24h" ? 300 : 1000
+    const seen = new Set<number>()
+    const merged = [...historical, ...liveHistory]
+      .filter((t) => {
+        if (seen.has(t.timestamp)) return false
+        seen.add(t.timestamp)
+        return true
+      })
+      .sort((a, b) => a.timestamp - b.timestamp)
+    const source = merged.length > count ? merged.slice(-count) : merged
+    return source.map((t: any) => ({
       time: new Date(t.timestamp).toLocaleTimeString(),
       cpu: t.cpu_usage,
       ram: +((t.ram_used / t.ram_total) * 100).toFixed(1),
@@ -27,7 +58,7 @@ export function DashboardPage() {
       tx: +(t.net_tx_bps / 1024 / 1024).toFixed(2),
       battery: t.battery_percent ?? null,
     }))
-  }, [history])
+  }, [historical, liveHistory, range])
 
   const cpu = current?.cpu_usage?.toFixed(1) ?? null
   const ramPct = current ? +((current.ram_used / current.ram_total) * 100).toFixed(1) : null
@@ -43,156 +74,190 @@ export function DashboardPage() {
   const batteryCharging = current?.battery_charging ?? null
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-
-      {/* Metric Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">CPU</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{cpu ?? "—"}%</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">RAM</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{ramPct != null ? `${ramPct}%` : "—"}</p>
-            <p className="text-xs text-muted-foreground">{ramUsed ?? "—"} / {ramTotal ?? "—"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Temperature</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{temp != null ? `${temp.toFixed(0)}°C` : "—"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Disk</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{diskPct != null ? `${diskPct}%` : "—"}</p>
-            <p className="text-xs text-muted-foreground">{diskUsed ?? "—"} / {diskTotal ?? "—"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Network</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-1">
-            <p>↓ {rx ?? "—"}</p>
-            <p>↑ {tx ?? "—"}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs text-muted-foreground">Battery</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {batteryPct != null ? (
-              <p className={`text-2xl font-bold ${batteryCharging ? "text-yellow-500" : batteryPct < 20 ? "text-red-500" : "text-green-500"}`}>
-                {batteryCharging ? "⚡ " : ""}{batteryPct.toFixed(0)}%
-              </p>
-            ) : (
-              <p className="text-2xl font-bold">—</p>
-            )}
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex gap-1">
+          {RANGES.map((r) => (
+            <Button key={r.value} size="sm" variant={range === r.value ? "default" : "outline"} onClick={() => setRange(r.value)} disabled={loadingHistory}>
+              {r.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">CPU & RAM</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="ramGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="time" className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <YAxis domain={[0, 100]} className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="cpu" stroke="#22c55e" fill="url(#cpuGrad)" name="CPU %" dot={false} />
-                  <Area type="monotone" dataKey="ram" stroke="#3b82f6" fill="url(#ramGrad)" name="RAM %" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">CPU Usage</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Network I/O</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="rxGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="txGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="time" className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <YAxis className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="rx" stroke="#22c55e" fill="url(#rxGrad)" name="Down (MB/s)" dot={false} />
-                  <Area type="monotone" dataKey="tx" stroke="#f59e0b" fill="url(#txGrad)" name="Up (MB/s)" dot={false} />
-                </AreaChart>
-              </ResponsiveContainer>
+            <span className="text-2xl font-bold">{cpu ?? "—"}%</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <MemoryStick className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Memory</span>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Battery</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
-                  <defs>
-                    <linearGradient id="batGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#eab308" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#eab308" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="time" className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <YAxis domain={[0, 100]} className="text-xs text-muted-foreground" tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Area type="monotone" dataKey="battery" stroke="#eab308" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls />
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="text-right">
+              <span className="text-2xl font-bold">{ramUsed?.split(" ")[0] ?? "—"}</span>
+              <span className="text-sm text-muted-foreground">/{ramTotal ?? "—"}</span>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="w-full bg-secondary rounded-full h-2">
+            <div className="bg-primary h-2 rounded-full" style={{ width: `${ramPct ?? 0}%` }} />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">{ramPct != null ? `${ramPct}% used` : "—"}</p>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Thermometer className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Temperature</span>
+            </div>
+            <span className="text-2xl font-bold">{temp != null ? `${temp.toFixed(0)}°C` : "—"}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {temp != null ? (temp > 70 ? "High — check cooling" : "Normal operating range") : "No data"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Disk Usage</span>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold">{diskUsed?.split(" ")[0] ?? "—"}</span>
+              <span className="text-sm text-muted-foreground">/{diskTotal ?? "—"}</span>
+            </div>
+          </div>
+          <div className="w-full bg-secondary rounded-full h-2">
+            <div className="bg-primary h-2 rounded-full" style={{ width: `${diskPct ?? 0}%` }} />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">{diskPct != null ? `${diskPct}% used` : "—"}</p>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Network</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <ArrowDown className="w-3 h-3" /> Download
+              </span>
+              <span className="font-medium">{rx ?? "—"}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground flex items-center gap-1">
+                <ArrowUp className="w-3 h-3" /> Upload
+              </span>
+              <span className="font-medium">{tx ?? "—"}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <BatteryCharging className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">Battery</span>
+            </div>
+            <span className="text-2xl font-bold">{batteryPct != null ? `${batteryPct.toFixed(0)}%` : "—"}</span>
+          </div>
+          {batteryPct != null && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1">
+              <Zap className={`w-3 h-3 ${batteryCharging ? "text-green-500" : "text-muted-foreground"}`} />
+              {batteryCharging ? "Charging" : "Discharging"}
+            </p>
+          )}
+        </div>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-sm font-semibold mb-4">CPU & RAM Usage</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="cpuGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(221.2 83.2% 53.3%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(221.2 83.2% 53.3%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="ramGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <Area type="monotone" dataKey="cpu" stroke="hsl(221.2 83.2% 53.3%)" fill="url(#cpuGrad)" name="CPU %" dot={false} strokeWidth={2} />
+                <Area type="monotone" dataKey="ram" stroke="hsl(142.1 76.2% 36.3%)" fill="url(#ramGrad)" name="RAM %" dot={false} strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-sm font-semibold mb-4">Network I/O</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="rxGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="txGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(221.2 83.2% 53.3%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(221.2 83.2% 53.3%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <Area type="monotone" dataKey="rx" stroke="hsl(142.1 76.2% 36.3%)" fill="url(#rxGrad)" name="Down (MB/s)" dot={false} strokeWidth={2} />
+                <Area type="monotone" dataKey="tx" stroke="hsl(221.2 83.2% 53.3%)" fill="url(#txGrad)" name="Up (MB/s)" dot={false} strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-sm font-semibold mb-4">Battery</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="batGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(40 100% 50%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(40 100% 50%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <Area type="monotone" dataKey="battery" stroke="hsl(40 100% 50%)" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
