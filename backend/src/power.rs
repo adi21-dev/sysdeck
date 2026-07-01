@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use axum::extract::State;
@@ -16,6 +17,68 @@ pub enum PowerAction {
     Lock,
 }
 
+// --- SystemCommands trait for testable OS interactions ---
+
+pub trait SystemCommands: Send + Sync {
+    fn execute_power_action(&self, action: PowerAction);
+}
+
+pub struct RealOs;
+
+impl SystemCommands for RealOs {
+    fn execute_power_action(&self, action: PowerAction) {
+        match action {
+            PowerAction::Shutdown => {
+                let _ = std::process::Command::new("shutdown")
+                    .args(["/s", "/t", "1"])
+                    .spawn();
+            }
+            PowerAction::Restart => {
+                let _ = std::process::Command::new("shutdown")
+                    .args(["/r", "/t", "1"])
+                    .spawn();
+            }
+            PowerAction::Sleep => {
+                let _ = std::process::Command::new("rundll32.exe")
+                    .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
+                    .spawn();
+            }
+            PowerAction::Hibernate => {
+                let _ = std::process::Command::new("rundll32.exe")
+                    .args(["powrprof.dll,SetSuspendState", "1", "1", "0"])
+                    .spawn();
+            }
+            PowerAction::SignOut => {
+                let _ = std::process::Command::new("shutdown").args(["/l"]).spawn();
+            }
+            PowerAction::Lock => {
+                let _ = std::process::Command::new("rundll32.exe")
+                    .args(["user32.dll,LockWorkStation"])
+                    .spawn();
+            }
+        }
+    }
+}
+
+pub struct MockOs {
+    pub last_action: std::sync::Mutex<Option<PowerAction>>,
+}
+
+impl MockOs {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            last_action: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+impl SystemCommands for MockOs {
+    fn execute_power_action(&self, action: PowerAction) {
+        *self.last_action.lock().unwrap() = Some(action);
+    }
+}
+
 pub struct PendingCommand {
     pub action: PowerAction,
     pub requested_at: Instant,
@@ -25,6 +88,7 @@ pub struct PendingCommand {
 pub struct PowerState {
     pub pending: Mutex<Option<PendingCommand>>,
     pub active_uploads: AtomicU32,
+    pub system_commands: Arc<dyn SystemCommands>,
 }
 
 impl PowerState {
@@ -33,6 +97,15 @@ impl PowerState {
         Self {
             pending: Mutex::new(None),
             active_uploads: AtomicU32::new(0),
+            system_commands: Arc::new(RealOs),
+        }
+    }
+
+    pub fn with_commands(commands: Arc<dyn SystemCommands>) -> Self {
+        Self {
+            pending: Mutex::new(None),
+            active_uploads: AtomicU32::new(0),
+            system_commands: commands,
         }
     }
 }
@@ -115,6 +188,7 @@ pub(crate) async fn execute_handler(
     drop(pending);
 
     let state_clone = state.clone();
+    let commands = state.power_state.system_commands.clone();
     tokio::spawn(async move {
         let cancelled = tokio::time::timeout(Duration::from_secs(5), cancel_rx).await;
 
@@ -124,7 +198,7 @@ pub(crate) async fn execute_handler(
             }
             _ => {
                 tracing::info!("Executing power command: {}", action_str);
-                execute_power_action(action);
+                commands.execute_power_action(action);
             }
         }
 
@@ -141,39 +215,6 @@ pub(crate) async fn execute_handler(
         active_transfers: None,
     })
     .into_response()
-}
-
-fn execute_power_action(action: PowerAction) {
-    match action {
-        PowerAction::Shutdown => {
-            let _ = std::process::Command::new("shutdown")
-                .args(["/s", "/t", "5"])
-                .spawn();
-        }
-        PowerAction::Restart => {
-            let _ = std::process::Command::new("shutdown")
-                .args(["/r", "/t", "5"])
-                .spawn();
-        }
-        PowerAction::Sleep => {
-            let _ = std::process::Command::new("rundll32.exe")
-                .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
-                .spawn();
-        }
-        PowerAction::Hibernate => {
-            let _ = std::process::Command::new("rundll32.exe")
-                .args(["powrprof.dll,SetSuspendState", "1", "1", "0"])
-                .spawn();
-        }
-        PowerAction::SignOut => {
-            let _ = std::process::Command::new("shutdown").args(["/l"]).spawn();
-        }
-        PowerAction::Lock => {
-            let _ = std::process::Command::new("rundll32.exe")
-                .args(["user32.dll,LockWorkStation"])
-                .spawn();
-        }
-    }
 }
 
 pub async fn cancel_power_handler(State(state): State<crate::AppState>) -> impl IntoResponse {

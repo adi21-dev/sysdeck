@@ -46,7 +46,7 @@ pub enum TrayAction {
 pub use auth::{admin_check_handler, admin_middleware, IpRateLimiter, LockoutState};
 pub use setup::{check_token_handler, verify_setup_token_handler};
 pub use db::TelemetrySnapshot;
-pub use power::PowerState;
+pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
 pub use script::ScriptState;
 pub use setup::SetupManager;
 pub use tunnel::TunnelState;

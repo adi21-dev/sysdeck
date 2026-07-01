@@ -397,7 +397,6 @@ async fn test_power_execute_requires_confirmation() {
     let (mut router, secret) = test_app_with_user();
     let cookie = login_and_cookie(&mut router, &secret).await;
 
-    // Without confirmed=true, power action should be rejected due to safety check
     let resp = authed_post_json(
         &mut router,
         "/api/power/execute",
@@ -407,9 +406,35 @@ async fn test_power_execute_requires_confirmation() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
-    // The handler returns success=true with active_transfers=0 or a message
-    // It only proceeds if confirmed=true and action is an actual action
     assert!(data["success"] == true || data["success"] == false);
+}
+
+#[tokio::test]
+async fn test_power_execute_records_action_in_mock() {
+    let totp_secret = nodedesk_agent::auth::generate_totp_secret();
+    let (mut router, _state, mock) = test_app_with_mock(|conn| {
+        seed_user(conn, "TestP@ss123", &totp_secret);
+    });
+    let code = nodedesk_agent::auth::create_totp(totp_secret)
+        .generate_current()
+        .unwrap();
+    let resp = login_request(&mut router, "TestP@ss123", &code).await;
+    assert_eq!(resp.status(), 200);
+    let cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().to_string();
+
+    let resp = authed_post_json(
+        &mut router,
+        "/api/power/execute",
+        &cookie,
+        json!({"action": "shutdown", "confirmed": true}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+
+    let last = mock.last_action.lock().unwrap();
+    assert_eq!(*last, Some(nodedesk_agent::PowerAction::Shutdown));
 }
 
 // ============================================================

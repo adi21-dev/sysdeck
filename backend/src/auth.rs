@@ -532,9 +532,12 @@ pub async fn login_handler(
         let _ = db::wal_checkpoint(&conn);
     }
 
+    let is_secure = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
     let cookie = format!(
-        "token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path=/",
-        token, JWT_EXPIRY_SECS
+        "token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path={}",
+        token,
+        JWT_EXPIRY_SECS,
+        if is_secure { "/; Secure" } else { "/" },
     );
 
     (

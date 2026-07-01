@@ -13,7 +13,7 @@ use nodedesk_agent::auth::LockoutState;
 use nodedesk_agent::db::{self, TelemetrySnapshot};
 use nodedesk_agent::get_data_dir;
 use nodedesk_agent::setup::SetupManager;
-use nodedesk_agent::{AppState, PowerState, ScriptState, TunnelState};
+use nodedesk_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TunnelState};
 
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
 
@@ -33,8 +33,26 @@ pub fn test_app_with_user() -> (Router, Vec<u8>) {
     (router.0, secret)
 }
 
+/// Like `test_app_with_seeded` but returns the MockOs for assertions.
+/// Power OS commands are recorded instead of executed.
+pub fn test_app_with_mock(
+    seed: impl FnOnce(&Connection),
+) -> (Router, AppState, Arc<MockOs>) {
+    let mock = Arc::new(MockOs::new());
+    let router = test_app_inner(seed, mock.clone() as Arc<dyn SystemCommands>);
+    (router.0, router.1, mock)
+}
+
 /// Like `test_app` but seeds the DB with a closure before wrapping in Arc<Mutex>.
+/// All tests use MockOs by default — power OS commands are never actually executed.
 pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState) {
+    test_app_inner(seed, Arc::new(MockOs::new()))
+}
+
+fn test_app_inner(
+    seed: impl FnOnce(&Connection),
+    commands: Arc<dyn SystemCommands>,
+) -> (Router, AppState) {
     let conn = Connection::open_in_memory().unwrap();
     db::init_telemetry_table(&conn).unwrap();
     db::init_auth_tables(&conn).unwrap();
@@ -51,7 +69,7 @@ pub fn test_app_with_seeded(seed: impl FnOnce(&Connection)) -> (Router, AppState
     ));
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
     let (system_tx, _) = broadcast::channel::<String>(16);
-    let power_state = Arc::new(PowerState::new());
+    let power_state = Arc::new(PowerState::with_commands(commands));
     let script_state = Arc::new(ScriptState::new());
 
     let (tunnel_state, _) = TunnelState::new(&get_data_dir(), 3939);

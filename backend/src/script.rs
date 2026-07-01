@@ -13,6 +13,26 @@ use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+fn kill_process_tree(pid: Option<u32>) {
+    let Some(pid) = pid else { return };
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &pid.to_string()])
+            .spawn()
+            .map(|mut c| { let _ = c.wait(); });
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-P", &pid.to_string()])
+            .spawn();
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .spawn();
+    }
+}
+
 use crate::auth;
 use crate::db;
 
@@ -126,8 +146,12 @@ async fn run_script(
     output_tx: broadcast::Sender<ScriptOutput>,
 ) -> ScriptResult {
     let child = if script_type.eq_ignore_ascii_case("powershell") {
+        let ps_content = format!(
+            "$OutputEncoding = [System.Text.Encoding]::UTF8; {}",
+            content
+        );
         Command::new("powershell")
-            .args(["-NoProfile", "-Command", content])
+            .args(["-NoProfile", "-Command", &ps_content])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -197,11 +221,11 @@ async fn run_script(
             truncated: stdout_truncated || stderr_truncated,
         },
         Err(_) => {
-            let _ = child.kill().await;
+            kill_process_tree(child.id());
             let _ = child.wait().await;
             let _ = output_tx.send(ScriptOutput {
                 stream: "system".to_string(),
-                data: "\n[Process killed after 5 minute timeout]\n".to_string(),
+                data: "\n[Process tree killed after 5 minute timeout]\n".to_string(),
             });
             ScriptResult {
                 exit_code: -1,
@@ -234,17 +258,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
             buf.pop();
         }
 
-        let mut line = String::from_utf8(buf.clone()).unwrap_or_else(|_| {
-            // PowerShell pipes UTF-16LE when stdout is redirected; decode it
-            let u16: Vec<u16> = buf
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
-            String::from_utf16_lossy(&u16)
-        });
-
-        // strip trailing null chars from partial UTF-16 decode
-        line.truncate(line.trim_end_matches('\0').len());
+        let line = String::from_utf8_lossy(&buf).to_string();
 
         total += line.len();
         if total <= MAX_OUTPUT_SIZE {
