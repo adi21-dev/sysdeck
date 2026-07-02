@@ -10,6 +10,7 @@ pub mod setup;
 pub mod telemetry;
 pub mod tunnel;
 pub mod ws;
+pub mod hardware;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -581,6 +582,21 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/power/execute", post(power::execute_handler))
         .route("/api/power/cancel", post(power::cancel_power_handler))
         .route("/api/power/status", get(power::power_status_handler))
+        .route("/api/power/schedule", post(hardware::schedule_power_handler))
+        // Hardware Controls
+        .route("/api/audio/status", get(hardware::audio_status_handler))
+        .route("/api/audio/volume", post(hardware::audio_volume_handler))
+        .route("/api/audio/mute", post(hardware::audio_mute_handler))
+        .route("/api/audio/device", post(hardware::audio_device_handler))
+        .route("/api/audio/media", post(hardware::audio_media_handler))
+        .route("/api/display/status", get(hardware::display_status_handler))
+        .route("/api/display/brightness", post(hardware::display_brightness_handler))
+        .route("/api/display/night-light", post(hardware::display_night_light_handler))
+        .route("/api/toggles/status", get(hardware::toggles_status_handler))
+        .route("/api/toggles/wifi", post(hardware::toggle_wifi_handler))
+        .route("/api/toggles/bluetooth", post(hardware::toggle_bluetooth_handler))
+        .route("/api/toggles/dark-mode", post(hardware::toggle_dark_mode_handler))
+        .route("/api/toggles/dnd", post(hardware::toggle_dnd_handler))
         // Tunnel
         .route("/api/tunnel/status", get(tunnel::status_handler))
         .route("/api/tunnel/start", post(tunnel::start_handler))
