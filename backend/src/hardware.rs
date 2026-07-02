@@ -6,7 +6,7 @@ use axum::response::{IntoResponse, Json};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct AudioStatus {
     pub volume: u32,
     pub muted: bool,
@@ -14,18 +14,15 @@ pub struct AudioStatus {
     pub default_device: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct DisplayStatus {
     pub brightness: u32,
     pub night_light: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct ToggleStatus {
-    pub wifi: bool,
-    pub bluetooth: bool,
     pub dark_mode: bool,
-    pub dnd: bool,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +61,28 @@ pub struct ToggleRequest {
 }
 
 #[derive(Deserialize)]
+pub struct ControlCenterToggleReq {
+    pub toggle: String,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Debug)]
+pub struct ControlCenterStatus {
+    pub dark_mode: bool,
+    pub wifi_on: Option<bool>,
+    pub bluetooth_on: Option<bool>,
+    pub dnd_on: Option<bool>,
+    pub battery_saver_on: Option<bool>,
+    pub airplane_mode_on: Option<bool>,
+    pub auto_brightness: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct MonitorRequest {
+    pub action: String,
+}
+
+#[derive(Deserialize)]
 pub struct ScheduledPowerRequest {
     pub action: String, // "shutdown" or "restart"
     pub delay_mins: u64,
@@ -75,6 +94,7 @@ pub struct ScheduledPowerRequest {
 
 // --- Common command executor ---
 
+#[allow(dead_code)]
 fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(cmd)
         .args(args)
@@ -114,88 +134,242 @@ fn run_powershell(script: &str) -> Result<String, String> {
     }
 }
 
+
+
 // --- Windows-Specific implementation ---
 
 #[cfg(target_os = "windows")]
-const COM_AUDIO_CSHARP: &str = r#"
-using System;
-using System.Runtime.InteropServices;
-public class Audio {
-    [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IAudioEndpointVolume {
-        int RegisterControlChangeNotify(IntPtr p);
-        int UnregisterControlChangeNotify(IntPtr p);
-        int GetCapability(out uint m);
-        int SetChannelVolumeLevel(uint c, float l, ref Guid e);
-        int SetChannelVolumeLevelScalar(uint c, float l, ref Guid e);
-        int GetChannelVolumeLevel(uint c, out float l);
-        int GetChannelVolumeLevelScalar(uint c, out float l);
-        int SetMasterVolumeLevel(float l, ref Guid e);
-        int SetMasterVolumeLevelScalar(float l, ref Guid e);
-        int GetMasterVolumeLevel(out float l);
-        int GetMasterVolumeLevelScalar(out float l);
-        int SetMute([MarshalAs(UnmanagedType.Bool)] bool m, ref Guid e);
-        int GetMute([MarshalAs(UnmanagedType.Bool)] out bool m);
-    }
-    [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMMDevice {
-        int Activate(ref Guid iid, int dwClsCtx, IntPtr pParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
-    }
-    [Guid("A95664D2-9614-4F35-A74E-61986D82F6FF"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    interface IMMDeviceEnumerator {
-        int EnumAudioEndpoints(int d, int s, out IntPtr pp);
-        int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice);
-    }
-    [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
-    class MMDeviceEnumeratorCom {}
+#[allow(non_camel_case_types, non_snake_case, clippy::upper_case_acronyms)]
+mod win_com {
+    use std::ffi::c_void;
 
-    private static IAudioEndpointVolume GetVolumeObject() {
-        var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorCom();
-        IMMDevice device;
-        enumerator.GetDefaultAudioEndpoint(0, 1, out device);
-        var iidVolume = new Guid("5CDF2C82-841E-4546-9722-0CF74078229A");
-        object volObj;
-        device.Activate(ref iidVolume, 23, IntPtr.Zero, out volObj);
-        return (IAudioEndpointVolume)volObj;
+    #[repr(C)]
+    #[derive(Debug, Clone, Copy)]
+    pub struct GUID {
+        pub data1: u32,
+        pub data2: u16,
+        pub data3: u16,
+        pub data4: [u8; 8],
     }
-    public static float GetVolume() {
-        float v;
-        GetVolumeObject().GetMasterVolumeLevelScalar(out v);
-        return v * 100;
+
+    pub const CLSID_MM_DEVICE_ENUMERATOR: GUID = GUID {
+        data1: 0xbcde0395,
+        data2: 0xe52f,
+        data3: 0x467c,
+        data4: [0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e],
+    };
+
+    pub const IID_IM_DEVICE_ENUMERATOR: GUID = GUID {
+        data1: 0xa95664d2,
+        data2: 0x9614,
+        data3: 0x4f35,
+        data4: [0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6],
+    };
+
+    pub const IID_IAUDIO_ENDPOINT_VOLUME: GUID = GUID {
+        data1: 0x5cdf2c82,
+        data2: 0x841e,
+        data3: 0x4546,
+        data4: [0x97, 0x22, 0x0c, 0xf7, 0x40, 0x78, 0x22, 0x9a],
+    };
+
+    #[repr(C)]
+    pub struct IMMDeviceEnumerator {
+        pub lpVtbl: *const IMMDeviceEnumeratorVtbl,
     }
-    public static void SetVolume(float level) {
-        Guid g = Guid.Empty;
-        GetVolumeObject().SetMasterVolumeLevelScalar(level / 100f, ref g);
+
+    #[repr(C)]
+    pub struct IMMDeviceEnumeratorVtbl {
+        pub QueryInterface: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub AddRef: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator) -> u32,
+        pub Release: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator) -> u32,
+        pub EnumAudioEndpoints: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, dataFlow: u32, dwStateMask: u32, ppDevices: *mut *mut c_void) -> i32,
+        pub GetDefaultAudioEndpoint: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, dataFlow: u32, role: u32, ppEndpoint: *mut *mut IMMDevice) -> i32,
     }
-    public static bool GetMute() {
-        bool m;
-        GetVolumeObject().GetMute(out m);
-        return m;
+
+    #[repr(C)]
+    pub struct IMMDevice {
+        pub lpVtbl: *const IMMDeviceVtbl,
     }
-    public static void SetMute(bool mute) {
-        Guid g = Guid.Empty;
-        GetVolumeObject().SetMute(mute, ref g);
+
+    #[repr(C)]
+    pub struct IMMDeviceVtbl {
+        pub QueryInterface: unsafe extern "system" fn(this: *mut IMMDevice, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub AddRef: unsafe extern "system" fn(this: *mut IMMDevice) -> u32,
+        pub Release: unsafe extern "system" fn(this: *mut IMMDevice) -> u32,
+        pub Activate: unsafe extern "system" fn(this: *mut IMMDevice, iid: *const GUID, dwClsContext: u32, pActivationParams: *mut c_void, ppInterface: *mut *mut c_void) -> i32,
+        pub OpenPropertyStore: unsafe extern "system" fn(this: *mut IMMDevice, stgmAccess: u32, ppProperties: *mut *mut c_void) -> i32,
+        pub GetId: unsafe extern "system" fn(this: *mut IMMDevice, ppstrId: *mut *mut u16) -> i32,
+        pub GetState: unsafe extern "system" fn(this: *mut IMMDevice, pdwState: *mut u32) -> i32,
     }
+
+    #[repr(C)]
+    pub struct IAudioEndpointVolume {
+        pub lpVtbl: *const IAudioEndpointVolumeVtbl,
+    }
+
+    #[repr(C)]
+    pub struct IAudioEndpointVolumeVtbl {
+        pub QueryInterface: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub AddRef: unsafe extern "system" fn(this: *mut IAudioEndpointVolume) -> u32,
+        pub Release: unsafe extern "system" fn(this: *mut IAudioEndpointVolume) -> u32,
+        pub RegisterControlChangeNotify: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
+        pub UnregisterControlChangeNotify: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
+        pub GetChannelCount: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pnChannelCount: *mut u32) -> i32,
+        pub SetMasterVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, fLevelDB: f32, pguidEventContext: *const GUID) -> i32,
+        pub SetMasterVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, fLevel: f32, pguidEventContext: *const GUID) -> i32,
+        pub GetMasterVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevelDB: *mut f32) -> i32,
+        pub GetMasterVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevel: *mut f32) -> i32,
+        pub SetChannelVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, fLevelDB: f32, pguidEventContext: *const GUID) -> i32,
+        pub SetChannelVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, fLevel: f32, pguidEventContext: *const GUID) -> i32,
+        pub GetChannelVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, pfLevelDB: *mut f32) -> i32,
+        pub GetChannelVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, pfLevel: *mut f32) -> i32,
+        pub SetMute: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, bMute: i32, pguidEventContext: *const GUID) -> i32,
+        pub GetMute: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pbMute: *mut i32) -> i32,
+    }
+
+    }
+
+#[cfg(target_os = "windows")]
+unsafe fn get_volume_interface() -> Result<*mut win_com::IAudioEndpointVolume, String> {
+    use windows_sys::Win32::System::Com::*;
+    use win_com::*;
+
+    // Initialize COM on this thread
+    let _ = CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32);
+
+    let mut enumerator: *mut IMMDeviceEnumerator = std::ptr::null_mut();
+    let hr = CoCreateInstance(
+        &CLSID_MM_DEVICE_ENUMERATOR as *const GUID as *const _,
+        std::ptr::null_mut(),
+        CLSCTX_ALL,
+        &IID_IM_DEVICE_ENUMERATOR as *const GUID as *const _,
+        &mut enumerator as *mut *mut _ as *mut _,
+    );
+    if hr < 0 {
+        return Err(format!("CoCreateInstance(MMDeviceEnumerator) failed: HRESULT 0x{:X}", hr));
+    }
+
+    let mut device: *mut IMMDevice = std::ptr::null_mut();
+    let hr = ((*(*enumerator).lpVtbl).GetDefaultAudioEndpoint)(
+        enumerator,
+        0, // eRender
+        0, // eConsole
+        &mut device,
+    );
+    ((*(*enumerator).lpVtbl).Release)(enumerator);
+
+    if hr < 0 {
+        return Err(format!("GetDefaultAudioEndpoint failed: HRESULT 0x{:X}", hr));
+    }
+
+    let mut volume: *mut IAudioEndpointVolume = std::ptr::null_mut();
+    let hr = ((*(*device).lpVtbl).Activate)(
+        device,
+        &IID_IAUDIO_ENDPOINT_VOLUME as *const GUID as *const _,
+        CLSCTX_ALL,
+        std::ptr::null_mut(),
+        &mut volume as *mut *mut _ as *mut _,
+    );
+    ((*(*device).lpVtbl).Release)(device);
+
+    if hr < 0 {
+        return Err(format!("Activate(IAudioEndpointVolume) failed: HRESULT 0x{:X}", hr));
+    }
+
+    Ok(volume)
 }
-"#;
 
 // --- API handlers ---
 
 pub async fn get_audio_status() -> Result<AudioStatus, String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let script = format!("{}\n[Audio]::GetVolume()\n[Audio]::GetMute()", COM_AUDIO_CSHARP);
-            let res = run_powershell(&script)?;
-            let lines: Vec<&str> = res.lines().collect();
-            let volume = lines.first().and_then(|l| l.parse::<f32>().ok()).unwrap_or(50.0) as u32;
-            let muted = lines.get(1).map(|l| l.trim().eq_ignore_ascii_case("true")).unwrap_or(false);
+        unsafe {
+            let volume_interface = match get_volume_interface() {
+                Ok(vi) => vi,
+                Err(e) => return Err(e),
+            };
 
-            // Get sound devices via CIM
-            let devices_str = run_powershell("Get-CimInstance Win32_SoundDevice | Select-Object -ExpandProperty Name")
-                .unwrap_or_default();
-            let devices: Vec<String> = devices_str.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
-            let default_device = devices.first().cloned().unwrap_or_else(|| "Default Audio Endpoint".to_string());
+            let mut vol_scalar: f32 = 0.0;
+            let hr_vol = ((*(*volume_interface).lpVtbl).GetMasterVolumeLevelScalar)(volume_interface, &mut vol_scalar);
+
+            let mut muted_bool: i32 = 0;
+            let hr_mute = ((*(*volume_interface).lpVtbl).GetMute)(volume_interface, &mut muted_bool);
+
+            ((*(*volume_interface).lpVtbl).Release)(volume_interface);
+
+            if hr_vol < 0 || hr_mute < 0 {
+                return Err(format!("Failed to query volume/mute: HRESULT 0x{:X}, 0x{:X}", hr_vol, hr_mute));
+            }
+
+            let volume = (vol_scalar * 100.0) as u32;
+            let muted = muted_bool != 0;
+
+            // Retrieve default device ID via COM
+            use windows_sys::Win32::System::Com::*;
+            use win_com::*;
+
+            let mut enumerator: *mut IMMDeviceEnumerator = std::ptr::null_mut();
+            let hr = CoCreateInstance(
+                &CLSID_MM_DEVICE_ENUMERATOR as *const GUID as *const _,
+                std::ptr::null_mut(),
+                CLSCTX_ALL,
+                &IID_IM_DEVICE_ENUMERATOR as *const GUID as *const _,
+                &mut enumerator as *mut *mut _ as *mut _,
+            );
+
+            let mut default_id = String::new();
+            if hr >= 0 {
+                let mut device: *mut IMMDevice = std::ptr::null_mut();
+                let hr_device = ((*(*enumerator).lpVtbl).GetDefaultAudioEndpoint)(
+                    enumerator,
+                    0, // eRender
+                    0, // eConsole
+                    &mut device,
+                );
+                if hr_device >= 0 {
+                    let mut pwstr_id: *mut u16 = std::ptr::null_mut();
+                    let hr_id = ((*(*device).lpVtbl).GetId)(device, &mut pwstr_id);
+                    if hr_id >= 0 && !pwstr_id.is_null() {
+                        let mut len = 0;
+                        while *pwstr_id.add(len) != 0 {
+                            len += 1;
+                        }
+                        let slice = std::slice::from_raw_parts(pwstr_id, len);
+                        default_id = String::from_utf16_lossy(slice);
+                        CoTaskMemFree(pwstr_id as *mut _);
+                    }
+                    ((*(*device).lpVtbl).Release)(device);
+                }
+                ((*(*enumerator).lpVtbl).Release)(enumerator);
+            }
+
+            let script = r#"$baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64); $regKey = $baseKey.OpenSubKey("SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"); if ($regKey) { $subKeys = $regKey.GetSubKeyNames(); foreach ($sk in $subKeys) { $devKey = $regKey.OpenSubKey($sk); $state = $devKey.GetValue("DeviceState"); if ($state -eq 1) { $propKey = $devKey.OpenSubKey("Properties"); if ($propKey) { $endpoint = $propKey.GetValue("{a45c254e-df1c-4efd-8020-67d146a850e0},2"); $drv26 = $propKey.GetValue("{b3f8fa53-0004-438e-9003-51a46e139bfc},26"); $drv6 = $propKey.GetValue("{b3f8fa53-0004-438e-9003-51a46e139bfc},6"); $driver = if ($drv26) { $drv26 } else { $drv6 }; if ($endpoint -and $driver) { Write-Output "DEV:$endpoint ($driver)|$sk" } elseif ($endpoint) { Write-Output "DEV:$endpoint|$sk" } } } } }"#;
+
+            let output = run_powershell(script).unwrap_or_default();
+            let mut default_device = "Default".to_string();
+            let mut devices = Vec::new();
+
+            for line in output.lines() {
+                if let Some(rest) = line.strip_prefix("DEV:") {
+                    let parts: Vec<&str> = rest.split('|').collect();
+                    if parts.len() >= 2 {
+                        let name = parts[0].trim().to_string();
+                        let id = parts[1].trim().to_string();
+                        devices.push(name.clone());
+                        if !default_id.is_empty() && default_id.contains(&id) {
+                            default_device = name;
+                        }
+                    }
+                }
+            }
+
+            if devices.is_empty() {
+                devices.push("Default".to_string());
+            } else if default_device == "Default" {
+                default_device = devices[0].clone();
+            }
 
             Ok(AudioStatus { volume, muted, devices, default_device })
         }
@@ -269,9 +443,14 @@ pub async fn set_audio_volume(volume: u32) -> Result<(), String> {
     let volume = volume.min(100);
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let script = format!("{}\n[Audio]::SetVolume({})", COM_AUDIO_CSHARP, volume);
-            run_powershell(&script)?;
+        unsafe {
+            let volume_interface = get_volume_interface()?;
+            let scalar = (volume as f32) / 100.0;
+            let hr = ((*(*volume_interface).lpVtbl).SetMasterVolumeLevelScalar)(volume_interface, scalar, std::ptr::null());
+            ((*(*volume_interface).lpVtbl).Release)(volume_interface);
+            if hr < 0 {
+                return Err(format!("SetMasterVolumeLevelScalar failed: HRESULT 0x{:X}", hr));
+            }
             Ok(())
         }
         #[cfg(target_os = "macos")]
@@ -296,9 +475,13 @@ pub async fn set_audio_volume(volume: u32) -> Result<(), String> {
 pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let script = format!("{}\n[Audio]::SetMute(${})", COM_AUDIO_CSHARP, if muted { "true" } else { "false" });
-            run_powershell(&script)?;
+        unsafe {
+            let volume_interface = get_volume_interface()?;
+            let hr = ((*(*volume_interface).lpVtbl).SetMute)(volume_interface, if muted { 1 } else { 0 }, std::ptr::null());
+            ((*(*volume_interface).lpVtbl).Release)(volume_interface);
+            if hr < 0 {
+                return Err(format!("SetMute failed: HRESULT 0x{:X}", hr));
+            }
             Ok(())
         }
         #[cfg(target_os = "macos")]
@@ -326,8 +509,52 @@ pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
 pub async fn set_audio_device(_device: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            Err("Switching audio output device is not natively supported on Windows without third-party utilities.".to_string())
+        unsafe {
+            use windows_sys::Win32::System::Com::*;
+
+            // 1. Run PowerShell to find the ID corresponding to the friendly name
+            let script = format!(
+                r#"$target = '{}'; $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64); $regKey = $baseKey.OpenSubKey("SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render"); if ($regKey) {{ $subKeys = $regKey.GetSubKeyNames(); foreach ($sk in $subKeys) {{ $devKey = $regKey.OpenSubKey($sk); $state = $devKey.GetValue("DeviceState"); if ($state -eq 1) {{ $propKey = $devKey.OpenSubKey("Properties"); if ($propKey) {{ $endpoint = $propKey.GetValue("{{a45c254e-df1c-4efd-8020-67d146a850e0}},2"); $drv26 = $propKey.GetValue("{{b3f8fa53-0004-438e-9003-51a46e139bfc}},26"); $drv6 = $propKey.GetValue("{{b3f8fa53-0004-438e-9003-51a46e139bfc}},6"); $driver = if ($drv26) {{ $drv26 }} else {{ $drv6 }}; $fullName = if ($endpoint -and $driver) {{ "$endpoint ($driver)" }} else {{ $endpoint }}; if ($fullName -eq $target) {{ Write-Output "{{0.0.0.00000000}}.$sk"; break }} }} }} }} }}"#,
+                _device.replace('\'', "''")
+            );
+
+            let device_id = match run_powershell(&script) {
+                Ok(out) => out.trim().to_string(),
+                Err(e) => return Err(format!("Failed to resolve audio device ID: {}", e)),
+            };
+
+            if device_id.is_empty() {
+                return Err(format!("Could not find active audio endpoint matching '{}'", _device));
+            }
+
+            // 2. Initialize COM on this thread
+            let _ = CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32);
+
+            use com_policy_config::*;
+            use windows::Win32::Media::Audio::*;
+
+            let policy_config: IPolicyConfig = match windows::Win32::System::Com::CoCreateInstance(&PolicyConfigClient, None, windows::Win32::System::Com::CLSCTX_ALL) {
+                Ok(pc) => pc,
+                Err(e) => return Err(format!("CoCreateInstance(PolicyConfigClient) failed: {}", e)),
+            };
+
+            // Convert to UTF-16 wide string
+            let device_id_wide: Vec<u16> = device_id.encode_utf16().chain(std::iter::once(0)).collect();
+            let pcwstr_id = windows::core::PCWSTR::from_raw(device_id_wide.as_ptr());
+
+            // Set for Console, Multimedia, Communications roles
+            let hr_c = policy_config.SetDefaultEndpoint(pcwstr_id, eConsole);
+            let hr_m = policy_config.SetDefaultEndpoint(pcwstr_id, eMultimedia);
+            let hr_com = policy_config.SetDefaultEndpoint(pcwstr_id, eCommunications);
+
+            if hr_c.is_err() || hr_m.is_err() || hr_com.is_err() {
+                return Err(format!(
+                    "SetDefaultEndpoint failed: Errors {:?}, {:?}, {:?}",
+                    hr_c, hr_m, hr_com
+                ));
+            }
+
+            Ok(())
         }
         #[cfg(target_os = "macos")]
         {
@@ -425,7 +652,7 @@ pub async fn set_display_brightness(brightness: u32) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let script = format!("(Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})", brightness);
+            let script = format!("(Get-WmiObject -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})", brightness);
             run_powershell(&script)?;
             Ok(())
         }
@@ -457,114 +684,23 @@ pub async fn get_toggle_status() -> Result<ToggleStatus, String> {
             let dark_out = run_powershell("(Get-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize -ErrorAction SilentlyContinue).AppsUseLightTheme")
                 .unwrap_or_else(|_| "1".to_string());
             let dark_mode = dark_out.trim() == "0";
-
-            // Wi-Fi check
-            let wifi_out = run_powershell("Get-NetAdapter -Name *WiFi* -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Status")
-                .unwrap_or_default();
-            let wifi = wifi_out.trim().eq_ignore_ascii_case("Up") || wifi_out.trim().eq_ignore_ascii_case("Disconnected");
-
-            // Bluetooth check
-            let bt_out = run_powershell("(Get-Service -Name bthserv -ErrorAction SilentlyContinue).Status")
-                .unwrap_or_default();
-            let bluetooth = bt_out.trim().eq_ignore_ascii_case("Running");
-
-            // DND check
-            let dnd_out = run_powershell("(Get-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings -ErrorAction SilentlyContinue).NOC_GLOBAL_SETTING_TOASTS_ENABLED")
-                .unwrap_or_else(|_| "1".to_string());
-            let dnd = dnd_out.trim() == "0";
-
-            Ok(ToggleStatus { wifi, bluetooth, dark_mode, dnd })
+            Ok(ToggleStatus { dark_mode })
         }
         #[cfg(target_os = "macos")]
         {
             let dark_out = run_cmd("osascript", &["-e", "tell application \"System Events\" to tell appearance preferences to get dark mode"])
                 .unwrap_or_else(|_| "false".to_string());
             let dark_mode = dark_out.trim().eq_ignore_ascii_case("true");
-
-            let wifi_out = run_cmd("networksetup", &["-getairportpower", "en0"]).unwrap_or_default();
-            let wifi = wifi_out.contains("On");
-
-            Ok(ToggleStatus {
-                wifi,
-                bluetooth: false,
-                dark_mode,
-                dnd: false,
-            })
+            Ok(ToggleStatus { dark_mode })
         }
         #[cfg(target_os = "linux")]
         {
-            let nm_out = run_cmd("nmcli", &["radio", "wifi"]).unwrap_or_default();
-            let wifi = nm_out.contains("enabled");
-
-            let bt_out = run_cmd("bluetoothctl", &["show"]).unwrap_or_default();
-            let bluetooth = bt_out.contains("Powered: yes");
-
             let theme_out = run_cmd("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]).unwrap_or_default();
             let dark_mode = theme_out.contains("prefer-dark");
-
-            Ok(ToggleStatus {
-                wifi,
-                bluetooth,
-                dark_mode,
-                dnd: false,
-            })
+            Ok(ToggleStatus { dark_mode })
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Ok(ToggleStatus { wifi: false, bluetooth: false, dark_mode: false, dnd: false })
-    }).await.map_err(|e| format!("Task join error: {}", e))?
-}
-
-pub async fn set_toggle_wifi(enabled: bool) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            let state = if enabled { "enabled" } else { "disabled" };
-            run_cmd("netsh", &["interface", "set", "interface", "name=Wi-Fi", &format!("admin={}", state)])?;
-            Ok(())
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let state = if enabled { "on" } else { "off" };
-            run_cmd("networksetup", &["-setairportpower", "en0", state])?;
-            Ok(())
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let state = if enabled { "on" } else { "off" };
-            run_cmd("nmcli", &["radio", "wifi", state])?;
-            Ok(())
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Err("Not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
-}
-
-pub async fn set_toggle_bluetooth(enabled: bool) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            let script = if enabled {
-                "Start-Service -Name bthserv"
-            } else {
-                "Stop-Service -Name bthserv -Force"
-            };
-            run_powershell(script)?;
-            Ok(())
-        }
-        #[cfg(target_os = "macos")]
-        {
-            let state = if enabled { "1" } else { "0" };
-            run_cmd("blueutil", &["--power", state])?;
-            Ok(())
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let state = if enabled { "power on" } else { "power off" };
-            run_cmd("bluetoothctl", &[state])?;
-            Ok(())
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Err("Not supported on this OS".to_string())
+        Ok(ToggleStatus { dark_mode: false })
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
@@ -598,30 +734,105 @@ pub async fn set_toggle_dark_mode(enabled: bool) -> Result<(), String> {
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
-pub async fn set_toggle_dnd(enabled: bool) -> Result<(), String> {
+pub async fn get_control_center_status() -> Result<ControlCenterStatus, String> {
+    let toggle_status = get_toggle_status().await?;
+
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let val = if enabled { "0" } else { "1" };
-            let script = format!(
-                "Set-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings -Name NOC_GLOBAL_SETTING_TOASTS_ENABLED -Value {}",
-                val
-            );
-            run_powershell(&script)?;
-            Ok(())
+            let wifi_out = run_powershell("(Get-NetAdapter -Name '*Wi-Fi*').Status")
+                .unwrap_or_default();
+            let wifi_on = Some(wifi_out.trim().eq_ignore_ascii_case("Up"));
+
+            let dnd_out = run_powershell(
+                "(Get-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings' -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -ErrorAction SilentlyContinue).NOC_GLOBAL_SETTING_TOASTS_ENABLED"
+            ).unwrap_or_default();
+            let dnd_on = match dnd_out.trim() {
+                "0" => Some(true),
+                "1" => Some(false),
+                _ => None,
+            };
+
+            Ok(ControlCenterStatus {
+                dark_mode: toggle_status.dark_mode,
+                wifi_on,
+                bluetooth_on: None,
+                dnd_on,
+                battery_saver_on: None,
+                airplane_mode_on: None,
+                auto_brightness: None,
+            })
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(not(target_os = "windows"))]
         {
-            Err("Toggling Do Not Disturb is not natively supported on macOS via command line.".to_string())
+            Ok(ControlCenterStatus {
+                dark_mode: toggle_status.dark_mode,
+                wifi_on: None,
+                bluetooth_on: None,
+                dnd_on: None,
+                battery_saver_on: None,
+                airplane_mode_on: None,
+                auto_brightness: None,
+            })
+        }
+    }).await.map_err(|e| format!("Task join error: {}", e))?
+}
+
+pub async fn set_control_center_toggle(toggle: String, enabled: bool) -> Result<(), String> {
+    match toggle.as_str() {
+        "dark_mode" => set_toggle_dark_mode(enabled).await,
+        "wifi" => {
+            let action = if enabled { "Enable" } else { "Disable" };
+            let action = action.to_string();
+            tokio::task::spawn_blocking(move || {
+                #[cfg(target_os = "windows")]
+                {
+                    let script = format!("{} -NetAdapter -Name '*Wi-Fi*' -Confirm:$false", action);
+                    run_powershell(&script).map(|_| ())
+                }
+                #[cfg(not(target_os = "windows"))]
+                Err("Wi-Fi toggle not supported on this OS".to_string())
+            }).await.map_err(|e| format!("Task join error: {}", e))?
+        }
+        "dnd" => {
+            tokio::task::spawn_blocking(move || {
+                #[cfg(target_os = "windows")]
+                {
+                    let val = if enabled { 0 } else { 1 };
+                    let script = format!("Set-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings' -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value {}", val);
+                    run_powershell(&script).map(|_| ())
+                }
+                #[cfg(not(target_os = "windows"))]
+                Err("DND toggle not supported on this OS".to_string())
+            }).await.map_err(|e| format!("Task join error: {}", e))?
+        }
+        _ => Err(format!("Unknown toggle: {}", toggle)),
+    }
+}
+
+pub async fn set_display_monitor(action: &str) -> Result<(), String> {
+    match action {
+        "off" => set_monitor_off().await,
+        _ => Err(format!("Unknown monitor action: {}", action)),
+    }
+}
+
+pub async fn set_monitor_off() -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
+        {
+            let script = r#"Add-Type -Name Monitor -Namespace Win32 -MemberDefinition '[DllImport("user32.dll")] public static extern int SendMessage(int hWnd, int Msg, int wParam, int lParam);'
+[Win32.Monitor]::SendMessage(0xFFFF, 0x0112, 0xF170, 2)"#;
+            run_powershell(script)?;
+            Ok(())
         }
         #[cfg(target_os = "linux")]
         {
-            let state = if enabled { "false" } else { "true" };
-            run_cmd("gsettings", &["set", "org.gnome.desktop.notifications", "show-banners", state])?;
+            run_cmd("xset", &["dpms", "force", "off"])?;
             Ok(())
         }
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Err("Not supported on this OS".to_string())
+        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+        Err("Monitor off not supported on this OS".to_string())
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
@@ -690,20 +901,6 @@ pub async fn toggles_status_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn toggle_wifi_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
-    match set_toggle_wifi(req.enabled).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
-    }
-}
-
-pub async fn toggle_bluetooth_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
-    match set_toggle_bluetooth(req.enabled).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
-    }
-}
-
 pub async fn toggle_dark_mode_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
     match set_toggle_dark_mode(req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
@@ -711,8 +908,25 @@ pub async fn toggle_dark_mode_handler(Json(req): Json<ToggleRequest>) -> impl In
     }
 }
 
-pub async fn toggle_dnd_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
-    match set_toggle_dnd(req.enabled).await {
+pub async fn control_center_status_handler() -> impl IntoResponse {
+    match get_control_center_status().await {
+        Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+    }
+}
+
+pub async fn control_center_toggle_handler(Json(req): Json<ControlCenterToggleReq>) -> impl IntoResponse {
+    match set_control_center_toggle(req.toggle, req.enabled).await {
+        Ok(_) => match get_control_center_status().await {
+            Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
+            Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        },
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+    }
+}
+
+pub async fn display_monitor_handler(Json(req): Json<MonitorRequest>) -> impl IntoResponse {
+    match set_display_monitor(&req.action).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
     }
@@ -795,4 +1009,33 @@ pub async fn schedule_power_handler(
         "success": true,
         "message": format!("{:?} scheduled in {} minute(s). Use Cancel to abort.", action, req.delay_mins)
     })).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_set_audio_device() {
+        let status = get_audio_status().await.unwrap();
+        println!("BEFORE: {}", status.default_device);
+        
+        if status.devices.len() > 1 {
+            let next_device = status.devices.iter().find(|&d| d != &status.default_device).unwrap();
+            println!("SWITCHING TO: {}", next_device);
+            set_audio_device(next_device.clone()).await.unwrap();
+            
+            let status2 = get_audio_status().await.unwrap();
+            println!("AFTER: {}", status2.default_device);
+            
+            // Switch back to original
+            set_audio_device(status.default_device.clone()).await.unwrap();
+            println!("SWITCHED BACK");
+            
+            assert_eq!(&status2.default_device, next_device);
+        } else {
+            println!("Only one device found, cannot test switching");
+        }
+        panic!("Show output!");
+    }
 }

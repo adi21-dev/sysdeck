@@ -164,7 +164,7 @@ async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> 
 
     let tmp = exe_path.with_extension("tmp");
     fs::write(&tmp, &binary_data)
-        .await
+            .await
         .map_err(|e| format!("Write failed: {}", e))?;
 
     #[cfg(unix)]

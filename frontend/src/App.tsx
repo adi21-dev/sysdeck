@@ -11,6 +11,7 @@ import { DashboardPage } from "@/pages/Dashboard"
 import { FilesPage } from "@/pages/Files"
 import { ScriptsPage } from "@/pages/Scripts"
 import { ControlsPage } from "@/pages/Controls"
+import { ControlCenterPage } from "@/pages/ControlCenter"
 import { AuditPage } from "@/pages/Audit"
 import { SettingsPage } from "@/pages/Settings"
 
@@ -56,6 +57,8 @@ function App() {
             <Route path="/files" element={<FilesPage />} />
             <Route path="/scripts" element={<ScriptsPage />} />
             <Route path="/controls" element={<ControlsPage />} />
+            <Route path="/control-center" element={<ControlCenterPage />} />
+            <Route path="/controls" element={<Navigate to="/control-center" replace />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

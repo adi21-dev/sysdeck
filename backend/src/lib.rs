@@ -11,6 +11,7 @@ pub mod telemetry;
 pub mod tunnel;
 pub mod ws;
 pub mod hardware;
+pub mod network;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -593,10 +594,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/display/brightness", post(hardware::display_brightness_handler))
         .route("/api/display/night-light", post(hardware::display_night_light_handler))
         .route("/api/toggles/status", get(hardware::toggles_status_handler))
-        .route("/api/toggles/wifi", post(hardware::toggle_wifi_handler))
-        .route("/api/toggles/bluetooth", post(hardware::toggle_bluetooth_handler))
         .route("/api/toggles/dark-mode", post(hardware::toggle_dark_mode_handler))
-        .route("/api/toggles/dnd", post(hardware::toggle_dnd_handler))
+        // Control Center
+        .route("/api/control-center/status", get(hardware::control_center_status_handler))
+        .route("/api/control-center/toggle", post(hardware::control_center_toggle_handler))
+        .route("/api/control-center/monitor", post(hardware::display_monitor_handler))
+        // Network Controls
+        .route("/api/network/status", get(network::network_status_handler))
+        .route("/api/network/flush-dns", post(network::flush_dns_handler))
+        .route("/api/network/adapter", post(network::adapter_handler))
+        .route("/api/network/wifi", get(network::wifi_scan_handler))
+        .route("/api/network/wifi/connect", post(network::wifi_connect_handler))
+        .route("/api/network/wifi/disconnect", post(network::wifi_disconnect_handler))
         // Tunnel
         .route("/api/tunnel/status", get(tunnel::status_handler))
         .route("/api/tunnel/start", post(tunnel::start_handler))

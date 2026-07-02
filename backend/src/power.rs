@@ -15,6 +15,7 @@ pub enum PowerAction {
     Hibernate,
     SignOut,
     Lock,
+    SwitchUser,
 }
 
 // --- SystemCommands trait for testable OS interactions ---
@@ -52,6 +53,11 @@ impl SystemCommands for RealOs {
                 let _ = std::process::Command::new("shutdown").args(["/l"]).spawn();
             }
             PowerAction::Lock => {
+                let _ = std::process::Command::new("rundll32.exe")
+                    .args(["user32.dll,LockWorkStation"])
+                    .spawn();
+            }
+            PowerAction::SwitchUser => {
                 let _ = std::process::Command::new("rundll32.exe")
                     .args(["user32.dll,LockWorkStation"])
                     .spawn();
@@ -143,6 +149,7 @@ pub(crate) async fn execute_handler(
         "hibernate" => PowerAction::Hibernate,
         "signout" => PowerAction::SignOut,
         "lock" => PowerAction::Lock,
+        "switchuser" => PowerAction::SwitchUser,
         _ => {
             return Json(PowerResponse {
                 success: false,
@@ -208,10 +215,7 @@ pub(crate) async fn execute_handler(
 
     Json(PowerResponse {
         success: true,
-        message: format!(
-            "{:?} will execute in 5 seconds. Use /api/power/cancel to abort.",
-            action
-        ),
+        message: format!("{:?} will execute in 5 seconds.", action),
         active_transfers: None,
     })
     .into_response()

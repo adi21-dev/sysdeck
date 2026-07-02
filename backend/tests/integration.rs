@@ -598,3 +598,96 @@ async fn test_settings_allowed_via_localhost() {
     let resp = authed_get(&mut router, "/api/settings/port", &cookie).await;
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+// ============================================================
+// Control Center Tests
+// ============================================================
+
+#[tokio::test]
+async fn test_control_center_status() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    let resp = authed_get(&mut router, "/api/control-center/status", &cookie).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let data = body_json(resp).await;
+    assert_eq!(data["success"], true);
+    assert!(data["data"]["dark_mode"].is_boolean());
+    // Other fields are optional, but should exist
+    assert!(data["data"].get("wifi_on").is_some());
+    assert!(data["data"].get("bluetooth_on").is_some());
+    assert!(data["data"].get("dnd_on").is_some());
+    assert!(data["data"].get("battery_saver_on").is_some());
+    assert!(data["data"].get("airplane_mode_on").is_some());
+    assert!(data["data"].get("auto_brightness").is_some());
+}
+
+#[tokio::test]
+async fn test_control_center_toggle_dark_mode() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    let resp = authed_post_json(
+        &mut router,
+        "/api/control-center/toggle",
+        &cookie,
+        json!({"toggle": "dark_mode", "enabled": true}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let data = body_json(resp).await;
+    assert_eq!(data["success"], true);
+    assert!(data["data"]["dark_mode"].is_boolean());
+}
+
+#[tokio::test]
+async fn test_control_center_toggle_wifi() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    let resp = authed_post_json(
+        &mut router,
+        "/api/control-center/toggle",
+        &cookie,
+        json!({"toggle": "wifi", "enabled": true}),
+    )
+    .await;
+    // May succeed or fail depending on whether Wi-Fi adapter exists
+    let status = resp.status();
+    let data = body_json(resp).await;
+    assert!(status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR);
+    if status == StatusCode::OK {
+        assert_eq!(data["success"], true);
+    }
+}
+
+#[tokio::test]
+async fn test_control_center_toggle_unsupported() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    let resp = authed_post_json(
+        &mut router,
+        "/api/control-center/toggle",
+        &cookie,
+        json!({"toggle": "bluetooth", "enabled": true}),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn test_display_monitor_off() {
+    let (mut router, secret) = test_app_with_user();
+    let cookie = login_and_cookie(&mut router, &secret).await;
+
+    let resp = authed_post_json(
+        &mut router,
+        "/api/control-center/monitor",
+        &cookie,
+        json!({"action": "off"}),
+    )
+    .await;
+    // May succeed or fail depending on OS
+    assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::INTERNAL_SERVER_ERROR);
+}

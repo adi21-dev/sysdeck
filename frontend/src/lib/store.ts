@@ -156,10 +156,48 @@ export interface TogglesData {
   dnd: boolean
 }
 
+export interface NetworkData {
+  ipv4: string
+  ipv6: string | null
+  interfaces: InterfaceInfo[]
+  default_gateway: string
+  dns_servers: string[]
+  connection_type: string
+  internet_connection: boolean | null
+}
+
+export interface InterfaceInfo {
+  name: string
+  status: string
+  interface_type: string
+  mac: string
+  ipv4: string | null
+}
+
+export interface WifiNetwork {
+  ssid: string
+  signal_strength: number
+  security_type: string
+  connected: boolean
+}
+
+export interface ControlCenterToggle {
+  dark_mode: boolean
+  wifi_on: boolean | null
+  bluetooth_on: boolean | null
+  dnd_on: boolean | null
+  battery_saver_on: boolean | null
+  airplane_mode_on: boolean | null
+  auto_brightness: boolean | null
+}
+
 interface HardwareState {
   audio: AudioData | null
   display: DisplayData | null
   toggles: TogglesData | null
+  network: NetworkData | null
+  wifiNetworks: WifiNetwork[]
+  controlCenter: ControlCenterToggle | null
   loading: boolean
   error: string | null
 
@@ -167,6 +205,15 @@ interface HardwareState {
   fetchDisplay: () => Promise<void>
   fetchToggles: () => Promise<void>
   fetchAll: () => Promise<void>
+  fetchNetwork: () => Promise<void>
+  fetchWifiNetworks: () => Promise<void>
+  fetchControlCenter: () => Promise<void>
+  toggleControlCenter: (toggle: string, enabled: boolean) => Promise<void>
+  flushDns: () => Promise<void>
+  toggleAdapter: (name: string, enabled: boolean) => Promise<void>
+  wifiConnect: (ssid: string, password?: string) => Promise<void>
+  wifiDisconnect: () => Promise<void>
+  monitorOff: () => Promise<void>
 
   setVolume: (volume: number) => Promise<void>
   setMuted: (muted: boolean) => Promise<void>
@@ -201,6 +248,9 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
     audio: null,
     display: null,
     toggles: null,
+    network: null,
+    wifiNetworks: [],
+    controlCenter: null,
     loading: false,
     error: null,
 
@@ -245,6 +295,74 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
       }
     },
 
+    fetchNetwork: async () => {
+      try {
+        const data = await handleApiCall<NetworkData>("/api/network/status", "GET")
+        set({ network: data })
+      } catch (err: any) {
+        set({ error: err.message })
+      }
+    },
+
+    fetchWifiNetworks: async () => {
+      try {
+        const data = await handleApiCall<WifiNetwork[]>("/api/network/wifi", "GET")
+        set({ wifiNetworks: data })
+      } catch {
+        // silently fail — Wi-Fi may not be available
+      }
+    },
+
+    fetchControlCenter: async () => {
+      try {
+        const data = await handleApiCall<ControlCenterToggle>("/api/control-center/status", "GET")
+        set({ controlCenter: data })
+      } catch (err: any) {
+        set({ error: err.message })
+      }
+    },
+
+    toggleControlCenter: async (toggle, enabled) => {
+      const prev = get().controlCenter
+      if (prev) {
+        const updated = { ...prev }
+        if (toggle === "dark_mode") updated.dark_mode = enabled
+        else if (toggle === "wifi") updated.wifi_on = enabled
+        else if (toggle === "dnd") updated.dnd_on = enabled
+        set({ controlCenter: updated })
+      }
+      try {
+        await handleApiCall("/api/control-center/toggle", "POST", { toggle, enabled })
+        get().fetchControlCenter()
+      } catch (err: any) {
+        set({ controlCenter: prev })
+        throw err
+      }
+    },
+
+    flushDns: async () => {
+      await handleApiCall("/api/network/flush-dns", "POST")
+    },
+
+    toggleAdapter: async (name, enabled) => {
+      await handleApiCall("/api/network/adapter", "POST", { name, enabled })
+      setTimeout(() => get().fetchNetwork(), 3000)
+    },
+
+    wifiConnect: async (ssid, password) => {
+      await handleApiCall("/api/network/wifi/connect", "POST", { ssid, password })
+      setTimeout(() => { get().fetchNetwork(); get().fetchWifiNetworks() }, 4000)
+    },
+
+    wifiDisconnect: async () => {
+      await handleApiCall("/api/network/wifi/disconnect", "POST")
+      setTimeout(() => get().fetchWifiNetworks(), 2000)
+    },
+
+    monitorOff: async () => {
+      await handleApiCall("/api/control-center/monitor", "POST", { action: "off" })
+    },
+
     setVolume: async (volume) => {
       await handleApiCall("/api/audio/volume", "POST", { volume })
       set({ audio: get().audio ? { ...get().audio!, volume } : null })
@@ -257,7 +375,7 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
 
     setDevice: async (device) => {
       await handleApiCall("/api/audio/device", "POST", { device })
-      set({ audio: get().audio ? { ...get().audio!, default_device: device } : null })
+      get().fetchAudio()
     },
 
     triggerMedia: async (action) => {

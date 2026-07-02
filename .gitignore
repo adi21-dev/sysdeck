@@ -39,3 +39,7 @@ test_*.db
 frontend/test-results/
 frontend/.auth/
 frontend/e2e/*.png
+
+graphify-out/
+.agents/
+.opencode/

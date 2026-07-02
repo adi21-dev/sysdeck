@@ -2,7 +2,7 @@ import {
   LayoutDashboard,
   FolderOpen,
   Terminal,
-  Power,
+  Smartphone,
   ScrollText,
   Settings,
   type LucideIcon,
@@ -18,7 +18,7 @@ export const navItems: NavItem[] = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/files", icon: FolderOpen, label: "Files" },
   { to: "/scripts", icon: Terminal, label: "Scripts" },
-  { to: "/controls", icon: Power, label: "Controls" },
+  { to: "/control-center", icon: Smartphone, label: "Control Center" },
   { to: "/audit", icon: ScrollText, label: "Audit" },
 ]
 
