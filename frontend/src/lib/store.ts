@@ -135,3 +135,164 @@ export const useTunnelStore = create<TunnelState>((set) => ({
   error: null,
   setTunnel: (t) => set(t),
 }))
+
+// Hardware Control State
+export interface AudioData {
+  volume: number
+  muted: boolean
+  devices: string[]
+  default_device: string
+}
+
+export interface DisplayData {
+  brightness: number
+  night_light: boolean
+}
+
+export interface TogglesData {
+  wifi: boolean
+  bluetooth: boolean
+  dark_mode: boolean
+  dnd: boolean
+}
+
+interface HardwareState {
+  audio: AudioData | null
+  display: DisplayData | null
+  toggles: TogglesData | null
+  loading: boolean
+  error: string | null
+
+  fetchAudio: () => Promise<void>
+  fetchDisplay: () => Promise<void>
+  fetchToggles: () => Promise<void>
+  fetchAll: () => Promise<void>
+
+  setVolume: (volume: number) => Promise<void>
+  setMuted: (muted: boolean) => Promise<void>
+  setDevice: (device: string) => Promise<void>
+  triggerMedia: (action: string) => Promise<void>
+  setBrightness: (brightness: number) => Promise<void>
+  setNightLight: (enabled: boolean) => Promise<void>
+  setWifi: (enabled: boolean) => Promise<void>
+  setBluetooth: (enabled: boolean) => Promise<void>
+  setDarkMode: (enabled: boolean) => Promise<void>
+  setDnd: (enabled: boolean) => Promise<void>
+}
+
+export const useHardwareStore = create<HardwareState>((set, get) => {
+  const handleApiCall = async <T>(url: string, method: string, body?: any): Promise<T> => {
+    const options: RequestInit = {
+      method,
+      headers: { "Content-Type": "application/json" },
+    }
+    if (body !== undefined) {
+      options.body = JSON.stringify(body)
+    }
+    const res = await fetch(url, options)
+    const json = await res.json()
+    if (!json.success) {
+      throw new Error(json.message || "Operation failed")
+    }
+    return json.data
+  }
+
+  return {
+    audio: null,
+    display: null,
+    toggles: null,
+    loading: false,
+    error: null,
+
+    fetchAudio: async () => {
+      try {
+        const data = await handleApiCall<AudioData>("/api/audio/status", "GET")
+        set({ audio: data })
+      } catch (err: any) {
+        set({ error: err.message })
+      }
+    },
+
+    fetchDisplay: async () => {
+      try {
+        const data = await handleApiCall<DisplayData>("/api/display/status", "GET")
+        set({ display: data })
+      } catch (err: any) {
+        set({ error: err.message })
+      }
+    },
+
+    fetchToggles: async () => {
+      try {
+        const data = await handleApiCall<TogglesData>("/api/toggles/status", "GET")
+        set({ toggles: data })
+      } catch (err: any) {
+        set({ error: err.message })
+      }
+    },
+
+    fetchAll: async () => {
+      set({ loading: true, error: null })
+      try {
+        const [audio, display, toggles] = await Promise.all([
+          handleApiCall<AudioData>("/api/audio/status", "GET"),
+          handleApiCall<DisplayData>("/api/display/status", "GET"),
+          handleApiCall<TogglesData>("/api/toggles/status", "GET"),
+        ])
+        set({ audio, display, toggles, loading: false })
+      } catch (err: any) {
+        set({ error: err.message, loading: false })
+      }
+    },
+
+    setVolume: async (volume) => {
+      await handleApiCall("/api/audio/volume", "POST", { volume })
+      set({ audio: get().audio ? { ...get().audio!, volume } : null })
+    },
+
+    setMuted: async (muted) => {
+      await handleApiCall("/api/audio/mute", "POST", { muted })
+      set({ audio: get().audio ? { ...get().audio!, muted } : null })
+    },
+
+    setDevice: async (device) => {
+      await handleApiCall("/api/audio/device", "POST", { device })
+      set({ audio: get().audio ? { ...get().audio!, default_device: device } : null })
+    },
+
+    triggerMedia: async (action) => {
+      await handleApiCall("/api/audio/media", "POST", { action })
+    },
+
+    setBrightness: async (brightness) => {
+      await handleApiCall("/api/display/brightness", "POST", { brightness })
+      set({ display: get().display ? { ...get().display!, brightness } : null })
+    },
+
+    setNightLight: async (night_light) => {
+      await handleApiCall("/api/display/night-light", "POST", { night_light })
+      set({ display: get().display ? { ...get().display!, night_light } : null })
+    },
+
+    setWifi: async (enabled) => {
+      await handleApiCall("/api/toggles/wifi", "POST", { enabled })
+      set({ toggles: get().toggles ? { ...get().toggles!, wifi: enabled } : null })
+    },
+
+    setBluetooth: async (enabled) => {
+      await handleApiCall("/api/toggles/bluetooth", "POST", { enabled })
+      set({ toggles: get().toggles ? { ...get().toggles!, bluetooth: enabled } : null })
+    },
+
+    setDarkMode: async (enabled) => {
+      await handleApiCall("/api/toggles/dark-mode", "POST", { enabled })
+      set({ toggles: get().toggles ? { ...get().toggles!, dark_mode: enabled } : null })
+      useThemeStore.getState().setDark(enabled)
+    },
+
+    setDnd: async (enabled) => {
+      await handleApiCall("/api/toggles/dnd", "POST", { enabled })
+      set({ toggles: get().toggles ? { ...get().toggles!, dnd: enabled } : null })
+    },
+  }
+})
