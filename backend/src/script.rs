@@ -43,6 +43,7 @@ const SCRIPT_TIMEOUT: Duration = Duration::from_secs(300);
 pub struct ScriptOutput {
     pub stream: String,
     pub data: String,
+    pub seq: usize,
 }
 
 #[derive(Serialize)]
@@ -53,8 +54,11 @@ pub struct ScriptResult {
     pub truncated: bool,
 }
 
+#[derive(Clone)]
 pub struct ScriptHandle {
     pub output_tx: broadcast::Sender<ScriptOutput>,
+    pub history: std::sync::Arc<tokio::sync::Mutex<Vec<ScriptOutput>>>,
+    pub completed: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct ScriptState {
@@ -97,8 +101,11 @@ pub(crate) async fn execute_handler(
         );
     }
 
+    let history = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let completed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
     if req.mode == "wait" {
-        let result = run_script(&req.script_type, &req.content, output_tx).await;
+        let result = run_script(&req.script_type, &req.content, output_tx, None).await;
         return Json(json!({
             "success": true,
             "id": id,
@@ -117,19 +124,26 @@ pub(crate) async fn execute_handler(
             id.clone(),
             ScriptHandle {
                 output_tx: output_tx.clone(),
+                history: history.clone(),
+                completed: completed.clone(),
             },
         );
     }
 
     let state_clone = state.clone();
     let id_clone = id.clone();
+    let history_clone = history.clone();
+    let completed_clone = completed.clone();
     tokio::spawn(async move {
-        let result = run_script(&req.script_type, &req.content, output_tx.clone()).await;
+        let _result = run_script(
+            &req.script_type,
+            &req.content,
+            output_tx.clone(),
+            Some(history_clone),
+        )
+        .await;
 
-        let _ = output_tx.send(ScriptOutput {
-            stream: "system".to_string(),
-            data: serde_json::to_string(&result).unwrap_or_default(),
-        });
+        completed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
 
         tokio::time::sleep(Duration::from_secs(15)).await;
 
@@ -144,6 +158,7 @@ async fn run_script(
     script_type: &str,
     content: &str,
     output_tx: broadcast::Sender<ScriptOutput>,
+    history: Option<std::sync::Arc<tokio::sync::Mutex<Vec<ScriptOutput>>>>,
 ) -> ScriptResult {
     let child = if script_type.eq_ignore_ascii_case("powershell") {
         let ps_content = format!(
@@ -181,12 +196,14 @@ async fn run_script(
 
     let stdout_task = stdout.map(|stdout| {
         let tx = output_tx.clone();
-        tokio::spawn(async move { read_stream(stdout, "stdout", tx).await })
+        let hist = history.clone();
+        tokio::spawn(async move { read_stream(stdout, "stdout", tx, hist).await })
     });
 
     let stderr_task = stderr.map(|stderr| {
         let tx = output_tx.clone();
-        tokio::spawn(async move { read_stream(stderr, "stderr", tx).await })
+        let hist = history.clone();
+        tokio::spawn(async move { read_stream(stderr, "stderr", tx, hist).await })
     });
 
     let status = tokio::time::timeout(SCRIPT_TIMEOUT, child.wait()).await;
@@ -204,10 +221,24 @@ async fn run_script(
     match status {
         Ok(Ok(status)) => {
             let exit_code = status.code().unwrap_or(-1);
-            let _ = output_tx.send(ScriptOutput {
-                stream: "system".to_string(),
-                data: format!("\n[Process exited with code {}]\n", exit_code),
-            });
+            let mut seq = 0;
+            if let Some(ref hist) = history {
+                let mut h = hist.lock().await;
+                seq = h.len();
+                let msg = ScriptOutput {
+                    stream: "system".to_string(),
+                    data: format!("\n[Process exited with code {}]\n", exit_code),
+                    seq,
+                };
+                h.push(msg.clone());
+                let _ = output_tx.send(msg);
+            } else {
+                let _ = output_tx.send(ScriptOutput {
+                    stream: "system".to_string(),
+                    data: format!("\n[Process exited with code {}]\n", exit_code),
+                    seq,
+                });
+            }
             ScriptResult {
                 exit_code,
                 stdout: stdout_output,
@@ -224,10 +255,24 @@ async fn run_script(
         Err(_) => {
             kill_process_tree(child.id());
             let _ = child.wait().await;
-            let _ = output_tx.send(ScriptOutput {
-                stream: "system".to_string(),
-                data: "\n[Process tree killed after 5 minute timeout]\n".to_string(),
-            });
+            let mut seq = 0;
+            if let Some(ref hist) = history {
+                let mut h = hist.lock().await;
+                seq = h.len();
+                let msg = ScriptOutput {
+                    stream: "system".to_string(),
+                    data: "\n[Process tree killed after 5 minute timeout]\n".to_string(),
+                    seq,
+                };
+                h.push(msg.clone());
+                let _ = output_tx.send(msg);
+            } else {
+                let _ = output_tx.send(ScriptOutput {
+                    stream: "system".to_string(),
+                    data: "\n[Process tree killed after 5 minute timeout]\n".to_string(),
+                    seq,
+                });
+            }
             ScriptResult {
                 exit_code: -1,
                 stdout: stdout_output,
@@ -242,6 +287,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     stream: R,
     stream_name: &'static str,
     output_tx: broadcast::Sender<ScriptOutput>,
+    history: Option<std::sync::Arc<tokio::sync::Mutex<Vec<ScriptOutput>>>>,
 ) -> (String, bool) {
     let mut reader = tokio::io::BufReader::new(stream);
     let mut buf = Vec::new();
@@ -265,16 +311,44 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
         if total <= MAX_OUTPUT_SIZE {
             output.push_str(&line);
             output.push('\n');
-            let _ = output_tx.send(ScriptOutput {
-                stream: stream_name.to_string(),
-                data: line,
-            });
+            let mut seq = 0;
+            if let Some(ref hist) = history {
+                let mut h = hist.lock().await;
+                seq = h.len();
+                let msg = ScriptOutput {
+                    stream: stream_name.to_string(),
+                    data: line,
+                    seq,
+                };
+                h.push(msg.clone());
+                let _ = output_tx.send(msg);
+            } else {
+                let _ = output_tx.send(ScriptOutput {
+                    stream: stream_name.to_string(),
+                    data: line,
+                    seq,
+                });
+            }
         } else if !truncated {
             truncated = true;
-            let _ = output_tx.send(ScriptOutput {
-                stream: stream_name.to_string(),
-                data: "\n[Output truncated at 1MB]\n".to_string(),
-            });
+            let mut seq = 0;
+            if let Some(ref hist) = history {
+                let mut h = hist.lock().await;
+                seq = h.len();
+                let msg = ScriptOutput {
+                    stream: stream_name.to_string(),
+                    data: "\n[Output truncated at 1MB]\n".to_string(),
+                    seq,
+                };
+                h.push(msg.clone());
+                let _ = output_tx.send(msg);
+            } else {
+                let _ = output_tx.send(ScriptOutput {
+                    stream: stream_name.to_string(),
+                    data: "\n[Output truncated at 1MB]\n".to_string(),
+                    seq,
+                });
+            }
         }
         buf.clear();
     }
@@ -291,13 +365,13 @@ pub(crate) async fn ws_script_handler(
 }
 
 async fn handle_script_ws(mut socket: WebSocket, state: crate::AppState, id: String) {
-    let rx = {
+    let handle = {
         let running = state.script_state.running.lock().await;
-        running.get(&id).map(|handle| handle.output_tx.subscribe())
+        running.get(&id).cloned()
     };
 
-    let mut rx = match rx {
-        Some(r) => r,
+    let handle = match handle {
+        Some(h) => h,
         None => {
             let _ = socket
                 .send(Message::Text(
@@ -308,9 +382,45 @@ async fn handle_script_ws(mut socket: WebSocket, state: crate::AppState, id: Str
         }
     };
 
+    let mut rx = handle.output_tx.subscribe();
+
+    // 1. Send all historical messages to catch up
+    let hist_messages = {
+        let hist = handle.history.lock().await;
+        hist.clone()
+    };
+
+    for msg in hist_messages {
+        let serialized = serde_json::to_string(&msg).unwrap_or_default();
+        if socket.send(Message::Text(serialized)).await.is_err() {
+            return;
+        }
+    }
+
+    // 2. If the script is already completed, send done event and close immediately
+    if handle.completed.load(std::sync::atomic::Ordering::SeqCst) {
+        let _ = socket
+            .send(Message::Text(r#"{"event":"done"}"#.into()))
+            .await;
+        return;
+    }
+
+    // 3. Keep track of next expected sequence number to prevent double delivery
+    let mut next_seq = {
+        let hist = handle.history.lock().await;
+        hist.len()
+    };
+
+    // 4. Enter real-time forwarding loop
     loop {
         match rx.recv().await {
             Ok(output) => {
+                // If sequence number is already sent, skip it
+                if output.seq < next_seq {
+                    continue;
+                }
+                next_seq = output.seq + 1;
+
                 let msg = serde_json::to_string(&output).unwrap_or_default();
                 if socket.send(Message::Text(msg)).await.is_err() {
                     break;
