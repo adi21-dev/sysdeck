@@ -17,6 +17,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
             state.telemetry_tx,
             state.system_tx,
             state.tunnel_state.tx.clone(),
+            state.clipboard_tx,
         )
     })
 }
@@ -26,10 +27,12 @@ async fn handle_socket(
     telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
     system_tx: broadcast::Sender<String>,
     tunnel_tx: broadcast::Sender<Arc<TunnelEvent>>,
+    clipboard_tx: broadcast::Sender<String>,
 ) {
     let mut telemetry_rx = telemetry_tx.subscribe();
     let mut system_rx = system_tx.subscribe();
     let mut tunnel_rx = tunnel_tx.subscribe();
+    let mut clipboard_rx = clipboard_tx.subscribe();
 
     loop {
         tokio::select! {
@@ -74,6 +77,21 @@ async fn handle_socket(
                     Ok(event) => {
                         let msg = serde_json::to_string(&*event).unwrap_or_default();
                         if socket.send(Message::Text(msg)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            event = clipboard_rx.recv() => {
+                match event {
+                    Ok(text) => {
+                        let msg = json!({
+                            "event": "clipboard",
+                            "data": {"text": text},
+                        });
+                        if socket.send(Message::Text(msg.to_string())).await.is_err() {
                             break;
                         }
                     }

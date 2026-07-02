@@ -11,6 +11,7 @@ pub mod telemetry;
 pub mod tunnel;
 pub mod ws;
 pub mod hardware;
+pub mod input;
 pub mod network;
 
 use std::collections::HashMap;
@@ -57,6 +58,7 @@ pub use tunnel::TunnelState;
 pub struct AppState {
     pub telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
     pub system_tx: broadcast::Sender<String>,
+    pub clipboard_tx: broadcast::Sender<String>,
     pub db: Arc<Mutex<Connection>>,
     pub jwt_key: Arc<Vec<u8>>,
     pub lockout: Arc<LockoutState>,
@@ -610,6 +612,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/tunnel/status", get(tunnel::status_handler))
         .route("/api/tunnel/start", post(tunnel::start_handler))
         .route("/api/tunnel/stop", post(tunnel::stop_handler))
+        // Input — Mouse
+        .route("/api/input/mouse/move", post(input::mouse_move_handler))
+        .route("/api/input/mouse/click", post(input::mouse_click_handler))
+        .route("/api/input/mouse/scroll", post(input::mouse_scroll_handler))
+        .route("/api/input/mouse/drag", post(input::mouse_drag_handler))
+        // Input — Keyboard
+        .route("/api/input/keyboard/type", post(input::keyboard_type_handler))
+        .route("/api/input/keyboard/press", post(input::keyboard_press_handler))
+        .route("/api/input/keyboard/media", post(input::media_key_handler))
+        // Input — Clipboard
+        .route("/api/clipboard", get(input::clipboard_get_handler))
+        .route("/api/clipboard", post(input::clipboard_set_handler))
+        // Input — Screenshot
+        .route("/api/vision/screenshot", get(input::screenshot_handler))
+        // Input — Browser
+        .route("/api/browser/open", post(input::browser_open_handler))
+        .route("/api/browser/windows", get(input::browser_list_windows_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -123,6 +123,7 @@ async fn main() {
     // Create broadcast channels
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
     let (system_tx, _) = broadcast::channel::<String>(16);
+    let (clipboard_tx, _) = broadcast::channel::<String>(16);
 
     // Start telemetry engine
     nodedesk_agent::telemetry::start_engine(telemetry_tx.clone(), conn.clone());
@@ -204,11 +205,30 @@ async fn main() {
         }
     }
 
+    // Start clipboard polling task
+    let clipboard_tx_clone = clipboard_tx.clone();
+    tokio::spawn(async move {
+        let mut last = String::new();
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            let text = tokio::task::spawn_blocking(move || {
+                arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
+            }).await.unwrap_or(None);
+            if let Some(text) = text {
+                if text != last {
+                    last = text.clone();
+                    let _ = clipboard_tx_clone.send(text);
+                }
+            }
+        }
+    });
+
     let system_tx_clone = system_tx.clone();
 
     let app_state = AppState {
         telemetry_tx,
         system_tx,
+        clipboard_tx,
         db: conn,
         jwt_key,
         lockout,
