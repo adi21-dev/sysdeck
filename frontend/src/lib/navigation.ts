@@ -5,6 +5,7 @@ import {
   Smartphone,
   ScrollText,
   Settings,
+  MousePointer2,
   type LucideIcon,
 } from "lucide-react"
 
@@ -18,6 +19,7 @@ export const navItems: NavItem[] = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/files", icon: FolderOpen, label: "Files" },
   { to: "/scripts", icon: Terminal, label: "Scripts" },
+  { to: "/remote", icon: MousePointer2, label: "Remote Desktop" },
   { to: "/control-center", icon: Smartphone, label: "Control Center" },
   { to: "/audit", icon: ScrollText, label: "Audit" },
 ]

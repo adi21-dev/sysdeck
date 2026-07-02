@@ -14,6 +14,7 @@ import { ControlsPage } from "@/pages/Controls"
 import { ControlCenterPage } from "@/pages/ControlCenter"
 import { AuditPage } from "@/pages/Audit"
 import { SettingsPage } from "@/pages/Settings"
+import { RemoteDesktopPage } from "@/pages/RemoteDesktop"
 
 function RootRedirect() {
   const [status, setStatus] = useState<"loading" | "setup" | "login" | "dashboard">("loading")
@@ -56,6 +57,7 @@ function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/scripts" element={<ScriptsPage />} />
+            <Route path="/remote" element={<RemoteDesktopPage />} />
             <Route path="/controls" element={<ControlsPage />} />
             <Route path="/control-center" element={<ControlCenterPage />} />
             <Route path="/controls" element={<Navigate to="/control-center" replace />} />
