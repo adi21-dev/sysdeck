@@ -200,10 +200,10 @@ export function DashboardPage() {
                     <stop offset="95%" stopColor="hsl(142.1 76.2% 36.3%)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
-                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="var(--border)" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                 <Area type="monotone" dataKey="cpu" stroke="hsl(221.2 83.2% 53.3%)" fill="url(#cpuGrad)" name="CPU %" dot={false} strokeWidth={2} />
                 <Area type="monotone" dataKey="ram" stroke="hsl(142.1 76.2% 36.3%)" fill="url(#ramGrad)" name="RAM %" dot={false} strokeWidth={2} />
               </AreaChart>
@@ -226,10 +226,10 @@ export function DashboardPage() {
                     <stop offset="95%" stopColor="hsl(221.2 83.2% 53.3%)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
-                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="var(--border)" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <YAxis className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                 <Area type="monotone" dataKey="rx" stroke="hsl(142.1 76.2% 36.3%)" fill="url(#rxGrad)" name="Down (MB/s)" dot={false} strokeWidth={2} />
                 <Area type="monotone" dataKey="tx" stroke="hsl(221.2 83.2% 53.3%)" fill="url(#txGrad)" name="Up (MB/s)" dot={false} strokeWidth={2} />
               </AreaChart>
@@ -248,10 +248,10 @@ export function DashboardPage() {
                     <stop offset="95%" stopColor="hsl(40 100% 50%)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="hsl(var(--border))" />
-                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px" }} />
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="var(--border)" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                 <Area type="monotone" dataKey="battery" stroke="hsl(40 100% 50%)" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
