@@ -47,6 +47,10 @@ zxcvbn = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
+enigo = "0.2"
+xcap = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
 aes-gcm = "0.10"
 regex = "1"
 bytes = "1"
