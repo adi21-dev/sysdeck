@@ -6,15 +6,18 @@ import { Input } from "@/components/ui/input"
 
 const TerminalTab = lazy(() => import("./TerminalTab"))
 
-type Tab = "trackpad" | "keyboard" | "clipboard" | "vision" | "browser" | "windows" | "terminal"
+type Tab = "trackpad" | "keyboard" | "clipboard" | "vision" | "browser" | "windows" | "terminal" | "disks" | "processes" | "sessions"
 
 export function RemoteDesktopPage() {
   const [tab, setTab] = useState<Tab>("trackpad")
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Remote Desktop</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Remote Desktop</h1>
+        <LockButton />
+      </div>
       <div className="flex gap-2 flex-wrap">
-        {(["trackpad", "keyboard", "clipboard", "vision", "browser", "windows", "terminal"] as Tab[]).map((t) => (
+        {(["trackpad", "keyboard", "clipboard", "vision", "browser", "windows", "terminal", "disks", "processes", "sessions"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -37,6 +40,9 @@ export function RemoteDesktopPage() {
           <TerminalTab />
         </Suspense>
       </div>
+      {tab === "disks" && <DisksTab />}
+      {tab === "processes" && <ProcessesTab />}
+      {tab === "sessions" && <SessionsTab />}
     </div>
   )
 }
@@ -377,6 +383,163 @@ function BrowserTab() {
 interface WindowInfo {
   hwnd: number;
   title: string;
+}
+
+// ── Lock Screen ──
+
+function LockButton() {
+  const connected = useConnectionStore((s) => s.status === "connected")
+  const lock = useCallback(async () => {
+    await fetch("/api/power/execute", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "lock", confirmed: true}),
+    })
+  }, [])
+  return (
+    <Button onClick={lock} disabled={!connected} size="sm" variant="outline" className="ml-auto">
+      Lock Screen
+    </Button>
+  )
+}
+
+// ── Disks ──
+
+function DisksTab() {
+  const [disks, setDisks] = useState<{mount: string; total_gb: number; used_gb: number; free_gb: number; percent_used: number}[]>([])
+  const connected = useConnectionStore((s) => s.status === "connected")
+
+  const fetchDisks = useCallback(async () => {
+    if (!connected) return
+    const res = await fetch("/api/disks")
+    const json = await res.json()
+    if (json.success) setDisks(json.disks)
+  }, [connected])
+
+  useEffect(() => { fetchDisks() }, [fetchDisks])
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Storage Drives</h3>
+        <Button size="sm" variant="outline" onClick={fetchDisks} disabled={!connected}>Refresh</Button>
+      </div>
+      <div className="space-y-2">
+        {disks.map((d, i) => (
+          <div key={i} className="p-3 rounded-lg border">
+            <div className="flex justify-between mb-1">
+              <span className="text-sm font-medium">{d.mount}</span>
+              <span className="text-xs text-muted-foreground">{d.used_gb} GB / {d.total_gb} GB</span>
+            </div>
+            <div className="h-2 bg-muted rounded-full overflow-hidden">
+              <div className="h-full bg-primary rounded-full" style={{width: `${Math.min(d.percent_used, 100)}%`}} />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{d.free_gb} GB free — {d.percent_used}% used</p>
+          </div>
+        ))}
+        {disks.length === 0 && <p className="text-sm text-muted-foreground">No disk info available</p>}
+      </div>
+    </Card>
+  )
+}
+
+// ── Processes ──
+
+function ProcessesTab() {
+  const [processes, setProcesses] = useState<{pid: number; name: string; cpu: number; memory_mb: number}[]>([])
+  const connected = useConnectionStore((s) => s.status === "connected")
+
+  const fetchProcs = useCallback(async () => {
+    if (!connected) return
+    const res = await fetch("/api/processes")
+    const json = await res.json()
+    if (json.success) setProcesses(json.processes)
+  }, [connected])
+
+  useEffect(() => { fetchProcs() }, [fetchProcs])
+
+  const kill = async (pid: number) => {
+    const res = await fetch("/api/processes/kill", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({pid}),
+    })
+    const json = await res.json()
+    if (json.success) fetchProcs()
+  }
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Top Processes (by CPU)</h3>
+        <Button size="sm" variant="outline" onClick={fetchProcs} disabled={!connected}>Refresh</Button>
+      </div>
+      <div className="max-h-80 overflow-y-auto space-y-1">
+        {processes.map((p, i) => (
+          <div key={p.pid} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
+            <span className="text-xs text-muted-foreground w-6">{i + 1}</span>
+            <span className="flex-1 truncate">{p.name}</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{p.cpu.toFixed(1)}% CPU</span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">{p.memory_mb} MB</span>
+            <button onClick={() => kill(p.pid)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">Kill</button>
+          </div>
+        ))}
+        {processes.length === 0 && <p className="text-sm text-muted-foreground">No process data</p>}
+      </div>
+    </Card>
+  )
+}
+
+// ── Sessions ──
+
+function SessionsTab() {
+  const [sessions, setSessions] = useState<{session_id: number; username: string; state: string}[]>([])
+  const connected = useConnectionStore((s) => s.status === "connected")
+
+  const fetchSessions = useCallback(async () => {
+    if (!connected) return
+    const res = await fetch("/api/sessions")
+    const json = await res.json()
+    if (json.success) setSessions(json.sessions)
+  }, [connected])
+
+  useEffect(() => { fetchSessions() }, [fetchSessions])
+
+  const act = async (session_id: number, action: string) => {
+    const res = await fetch("/api/sessions/action", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({session_id, action}),
+    })
+    const json = await res.json()
+    if (json.success) fetchSessions()
+  }
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">User Sessions</h3>
+        <Button size="sm" variant="outline" onClick={fetchSessions} disabled={!connected}>Refresh</Button>
+      </div>
+      <div className="space-y-2">
+        {sessions.map((s) => (
+          <div key={s.session_id} className="flex items-center justify-between p-3 rounded-lg border">
+            <div>
+              <p className="text-sm font-medium">{s.username || "(no user)"}</p>
+              <p className="text-xs text-muted-foreground">Session {s.session_id} — {s.state}</p>
+            </div>
+            <div className="flex gap-2">
+              {s.state !== "Disconnected" && (
+                <Button size="sm" variant="outline" onClick={() => act(s.session_id, "disconnect")}>Disconnect</Button>
+              )}
+              <Button size="sm" variant="destructive" onClick={() => act(s.session_id, "logoff")}>Logoff</Button>
+            </div>
+          </div>
+        ))}
+        {sessions.length === 0 && <p className="text-sm text-muted-foreground">No sessions found</p>}
+      </div>
+    </Card>
+  )
 }
 
 function WindowsTab() {

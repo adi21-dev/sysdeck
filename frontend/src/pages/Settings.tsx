@@ -16,6 +16,79 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
+export function WolSection() {
+  const [macs, setMacs] = useState<{label: string; mac: string}[]>([])
+  const [label, setLabel] = useState("")
+  const [mac, setMac] = useState("")
+  const [waking, setWaking] = useState<string | null>(null)
+
+  const fetchMacs = () => {
+    fetch("/api/wol/macs").then(r => r.json()).then(d => {
+      if (d.success) setMacs(d.macs || [])
+    }).catch(() => {})
+  }
+
+  useEffect(() => { fetchMacs() }, [])
+
+  const addMac = async () => {
+    if (!label.trim() || !mac.trim()) return
+    const res = await fetch("/api/wol/macs", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({label: label.trim(), mac: mac.trim()}),
+    })
+    const d = await res.json()
+    if (d.success) { setMacs(d.macs); setLabel(""); setMac("") }
+  }
+
+  const deleteMac = async (m: string) => {
+    const res = await fetch("/api/wol/macs/delete", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mac: m}),
+    })
+    const d = await res.json()
+    if (d.success) setMacs(d.macs)
+  }
+
+  const wake = async (m: {label: string; mac: string}) => {
+    setWaking(m.mac)
+    await fetch("/api/wol/wake", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mac: m.mac}),
+    })
+    setTimeout(() => setWaking(null), 2000)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Input placeholder="Label" value={label} onChange={e => setLabel(e.target.value)} className="flex-1" />
+        <Input placeholder="XX:XX:XX:XX:XX:XX" value={mac} onChange={e => setMac(e.target.value)} className="w-44 font-mono text-xs" />
+        <Button size="sm" onClick={addMac} disabled={!label.trim() || !mac.trim()}>Save</Button>
+      </div>
+      <div className="space-y-2">
+        {macs.length === 0 && <p className="text-sm text-muted-foreground">No saved MAC addresses</p>}
+        {macs.map((m, i) => (
+          <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+            <div>
+              <p className="text-sm font-medium">{m.label}</p>
+              <p className="text-xs text-muted-foreground font-mono">{m.mac}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => wake(m)} disabled={waking === m.mac}>
+                {waking === m.mac ? "Sent" : "Wake"}
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteMac(m.mac)}>×</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -487,6 +560,11 @@ export function SettingsPage() {
             {relayEnabled ? "On" : "Off"}
           </Button>
         </div>
+      </div>
+
+      <div className="rounded-xl border bg-card p-6">
+        <h3 className="font-semibold mb-4">Wake-on-LAN</h3>
+        <WolSection />
       </div>
 
       <div className="rounded-xl border bg-card p-6">

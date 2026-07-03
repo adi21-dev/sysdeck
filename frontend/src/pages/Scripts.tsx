@@ -13,6 +13,13 @@ const PREDEFINED = [
   { label: "Ping Test", type: "cmd", content: "ping 8.8.8.8 -n 10" },
 ]
 
+const WINGET = [
+  { label: "List Installed", content: "winget list" },
+  { label: "Update All", content: "winget upgrade --all" },
+  { label: "List Upgrades", content: "winget upgrade" },
+  { label: "Export JSON", content: "winget export -o packages.json" },
+]
+
 export function ScriptsPage() {
   const {
     mode, scriptType, content, predefined, running,
@@ -177,6 +184,18 @@ export function ScriptsPage() {
                   <option key={p.label} value={p.label}>{p.label}</option>
                 ))}
               </select>
+              <div className="flex gap-1 flex-wrap">
+                {WINGET.map((w) => (
+                  <button
+                    key={w.label}
+                    onClick={() => { setPredefined("Custom"); setScriptType("cmd"); setContent(w.content) }}
+                    className="px-2 py-1 rounded bg-muted text-xs hover:bg-muted/80"
+                    title={w.content}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
               <select
                 value={scriptType}
                 onChange={(e) => setScriptType(e.target.value as "powershell" | "cmd")}

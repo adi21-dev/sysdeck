@@ -1,19 +1,23 @@
 pub mod audit;
 pub mod auth;
 pub mod db;
+pub mod disks;
 pub mod embed;
 pub mod file_manager;
 pub mod hardware;
 pub mod input;
 pub mod network;
 pub mod power;
+pub mod process;
 pub mod script;
+pub mod sessions;
 pub mod settings;
 pub mod setup;
 pub mod telemetry;
 pub mod terminal;
 pub mod tunnel;
 pub mod windows;
+pub mod wol;
 pub mod ws;
 
 use std::collections::HashMap;
@@ -665,6 +669,19 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/windows/close", post(windows::close_handler))
         .route("/api/windows/minimize", post(windows::minimize_handler))
         .route("/api/windows/restore", post(windows::restore_handler))
+        // Storage & Drives
+        .route("/api/disks", get(disks::list_handler))
+        // Processes
+        .route("/api/processes", get(process::list_handler))
+        .route("/api/processes/kill", post(process::kill_handler))
+        // User Sessions
+        .route("/api/sessions", get(sessions::list_handler))
+        .route("/api/sessions/action", post(sessions::action_handler))
+        // Wake-on-LAN
+        .route("/api/wol/wake", post(wol::wake_handler))
+        .route("/api/wol/macs", get(wol::list_macs_handler))
+        .route("/api/wol/macs", post(wol::save_mac_handler))
+        .route("/api/wol/macs/delete", post(wol::delete_mac_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

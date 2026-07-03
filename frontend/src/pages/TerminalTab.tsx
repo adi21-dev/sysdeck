@@ -2,7 +2,6 @@ import { useRef, useEffect } from "react"
 import { Terminal } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import "@xterm/xterm/css/xterm.css"
-import { Card } from "@/components/ui/card"
 import { useConnectionStore } from "@/lib/store"
 
 export default function TerminalTab() {
@@ -77,8 +76,6 @@ export default function TerminalTab() {
   }, [connected])
 
   return (
-    <Card className="p-0 overflow-hidden">
-      <div ref={termRef} className="h-[calc(100vh-12rem)] min-h-48" />
-    </Card>
+    <div ref={termRef} className="h-[calc(100vh-12rem)] min-h-48 rounded-xl border" />
   )
 }
