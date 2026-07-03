@@ -57,6 +57,8 @@ export function DashboardPage() {
       rx: +(t.net_rx_bps / 1024 / 1024).toFixed(2),
       tx: +(t.net_tx_bps / 1024 / 1024).toFixed(2),
       battery: t.battery_percent ?? null,
+      temperature_cpu: t.temperature_cpu ?? null,
+      temperature_gpu: t.temperature_gpu ?? null,
     }))
   }, [historical, liveHistory, range])
 
@@ -64,7 +66,8 @@ export function DashboardPage() {
   const ramPct = current ? +((current.ram_used / current.ram_total) * 100).toFixed(1) : null
   const ramUsed = current ? formatBytes(current.ram_used) : null
   const ramTotal = current ? formatBytes(current.ram_total) : null
-  const temp = current?.temperature ?? null
+  const tempCpu = current?.temperature_cpu ?? null
+  const tempGpu = current?.temperature_gpu ?? null
   const diskUsed = current ? formatBytes(current.disk_used) : null
   const diskTotal = current ? formatBytes(current.disk_total) : null
   const diskPct = current ? +((current.disk_used / current.disk_total) * 100).toFixed(0) : null
@@ -115,16 +118,20 @@ export function DashboardPage() {
         </div>
 
         <div className="rounded-xl border bg-card p-5">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Thermometer className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">Temperature</span>
-            </div>
-            <span className="text-2xl font-bold">{temp != null ? `${temp.toFixed(0)}°C` : "—"}</span>
+          <div className="flex items-center gap-2 mb-3">
+            <Thermometer className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium text-muted-foreground">Temperature</span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {temp != null ? (temp > 70 ? "High — check cooling" : "Normal operating range") : "No data"}
-          </p>
+          <div className="flex justify-between">
+            <div>
+              <span className="text-xs text-muted-foreground">CPU</span>
+              <p className="text-xl font-bold">{tempCpu != null ? `${tempCpu.toFixed(0)}°C` : "—"}</p>
+            </div>
+            <div className="text-right">
+              <span className="text-xs text-muted-foreground">GPU</span>
+              <p className="text-xl font-bold">{tempGpu != null ? `${tempGpu.toFixed(0)}°C` : "—"}</p>
+            </div>
+          </div>
         </div>
 
         <div className="rounded-xl border bg-card p-5">
@@ -253,6 +260,32 @@ export function DashboardPage() {
                 <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
                 <Tooltip contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                 <Area type="monotone" dataKey="battery" stroke="hsl(40 100% 50%)" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls strokeWidth={2} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-sm font-semibold mb-4">Temperature</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="tempCpuGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(0 100% 50%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(0 100% 50%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="tempGpuGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(200 100% 50%)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="hsl(200 100% 50%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" stroke="var(--border)" />
+                <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <YAxis domain={['auto', 'auto']} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--muted-foreground)" />
+                <Tooltip contentStyle={{ fontSize: 12, background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }} />
+                <Area type="monotone" dataKey="temperature_cpu" stroke="hsl(0 100% 50%)" fill="url(#tempCpuGrad)" name="CPU (°C)" dot={false} connectNulls strokeWidth={2} />
+                <Area type="monotone" dataKey="temperature_gpu" stroke="hsl(200 100% 50%)" fill="url(#tempGpuGrad)" name="GPU (°C)" dot={false} connectNulls strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

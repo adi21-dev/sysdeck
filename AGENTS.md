@@ -27,7 +27,7 @@ npm run lint                      # oxlint --jsx-a11y-plugin
 - Router: `.with_state()` before `.layer()` or `service_fn_with_state` won't compile with `axum::serve`.
 - DPAPI uses raw `extern "system"` FFI with `#[repr(C)] Blob` (the `windows` crate `DATA_BLOB` wasn't found at expected path).
 - Tests use in-memory SQLite. Pattern: `test_app_with_seeded(seed: impl FnOnce(&Connection))`. Helpers in `tests/common/mod.rs`.
-- Pre-existing test failure: `test_set_audio_device` (no real audio device to switch to on this machine).
+- Pre-existing test failure: `test_set_audio_device` (no real audio device to switch to on this machine, or `SetDefaultEndpoint` fails with `0x80004005`).
 
 ### Auth
 
@@ -53,7 +53,8 @@ npm run lint                      # oxlint --jsx-a11y-plugin
 
 - `sysinfo` polling on a dedicated OS thread, sends snapshots over `mpsc` to a tokio task that broadcasts via `broadcast::Sender<Arc<TelemetrySnapshot>>` every 1s.
 - SQLite persist only every 60s.
-- Fields: `timestamp`, `cpu_usage`, `ram_used`/`ram_total`, `net_rx_bps`/`net_tx_bps`, `temperature` (Option), `disk_used`/`disk_total`, `battery_percent`/`battery_charging` (always None currently).
+- Fields: `timestamp`, `cpu_usage`, `ram_used`/`ram_total`, `net_rx_bps`/`net_tx_bps`, `temperature` (Option), `disk_used`/`disk_total`, `battery_percent`/`battery_charging`.
+- Temperature on Windows falls back to WMI (`MSAcpi_ThermalZoneTemperature` / `Win32_PerfFormattedData_Counters_ThermalZoneInformation`) via PowerShell when `sysinfo::Components` finds no sensors. Batteries use `GetSystemPowerStatus` FFI. Both polled every 30s, both run on the first tick (tick_1s=0 triggers all periodic checks).
 
 ### Setup Wizard
 

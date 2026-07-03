@@ -3,8 +3,95 @@ use std::time::Duration;
 
 use sysinfo::{Components, Disks, Networks, System};
 use tokio::sync::{broadcast, mpsc, Mutex};
+use tracing;
 
 use crate::db::{self, TelemetrySnapshot};
+
+#[cfg(windows)]
+fn raw_to_celsius(v: f64) -> Option<f32> {
+    let values = [v, v - 273.15, v / 10.0, v / 10.0 - 273.15];
+    let result = values
+        .into_iter()
+        .find(|&c| (0.0..=100.0).contains(&c))
+        .map(|c| ((c * 10.0).round() / 10.0) as f32);
+    if result.is_none() {
+        tracing::debug!(raw = v, ?values, "unconvertible thermal value");
+    }
+    result
+}
+
+#[cfg(windows)]
+fn extract_zones(text: &str) -> Vec<(&str, f32)> {
+    text.lines()
+        .filter_map(|l| {
+            let (label, val_str) = l.split_once('=')?;
+            let v: f64 = val_str.trim().parse().ok()?;
+            let c = raw_to_celsius(v)?;
+            Some((label, c))
+        })
+        .collect()
+}
+
+#[cfg(windows)]
+fn pick_zones(values: &[(&str, f32)]) -> (Option<f32>, Option<f32>) {
+    let gpu = values
+        .iter()
+        .find(|(l, _)| l.to_lowercase().contains("gpu") || l.to_lowercase().contains("gfx"))
+        .or_else(|| values.get(1))
+        .map(|(_, c)| *c);
+    let cpu = values
+        .iter()
+        .find(|(l, _)| !l.to_lowercase().contains("gpu") && !l.to_lowercase().contains("gfx"))
+        .or_else(|| values.first())
+        .map(|(_, c)| *c);
+    (cpu, gpu)
+}
+
+#[cfg(windows)]
+fn get_wmi_temperatures() -> (Option<f32>, Option<f32>) {
+    // ponytail: try both WMI sources, merge results — one may have GPU the other doesn't
+    let queries = [
+        ("Win32_ThermalZoneInformation", "Get-CimInstance Win32_PerfFormattedData_Counters_ThermalZoneInformation | ForEach-Object { \"$($_.Name)=$($_.Temperature)\" }"),
+        ("MSAcpi_ThermalZoneTemperature", "Get-CimInstance -Namespace Root/WMI -ClassName MSAcpi_ThermalZoneTemperature | ForEach-Object { \"$($_.InstanceName)=$($_.CurrentTemperature)\" }"),
+        // ponytail: nvidia-smi is the most reliable GPU temp source on laptops with NVIDIA GPUs
+        ("nvidia-smi", "$t = & nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader 2>$null; if ($t) { \"GPU=$t\" }"),
+    ];
+    let mut cpu = None;
+    let mut gpu = None;
+    for (source, cmd) in &queries {
+        tracing::debug!(source, "querying WMI thermal zones");
+        let output = match std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", cmd])
+            .output()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(source, error = %e, "PowerShell command failed");
+                continue;
+            }
+        };
+        let text = match std::str::from_utf8(&output.stdout) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::debug!(source, error = %e, "non-UTF8 stdout");
+                continue;
+            }
+        };
+        let values = extract_zones(text);
+        tracing::debug!(source, count = values.len(), raw = %text.lines().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" | "), "WMI thermal zones parsed");
+        if values.is_empty() {
+            continue;
+        }
+        let (src_cpu, src_gpu) = pick_zones(&values);
+        cpu = cpu.or(src_cpu);
+        gpu = gpu.or(src_gpu);
+        tracing::info!(source, src_cpu, src_gpu, "WMI zone readings");
+    }
+    if cpu.is_none() && gpu.is_none() {
+        tracing::warn!("all WMI temperature sources returned no data");
+    }
+    (cpu, gpu)
+}
 
 pub fn start_engine(
     tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
@@ -19,10 +106,11 @@ pub fn start_engine(
         let mut disks = Disks::new_with_refreshed_list();
         let mut tick_1s = 0u64;
         let mut last_battery = (None, None);
+        #[cfg(windows)]
+        let mut last_wmi_temps: (Option<f32>, Option<f32>) = (None, None);
 
         loop {
             std::thread::sleep(Duration::from_secs(1));
-            tick_1s += 1;
 
             system.refresh_cpu_usage();
             system.refresh_memory();
@@ -38,20 +126,52 @@ pub fn start_engine(
             if tick_1s.is_multiple_of(5) {
                 components.refresh();
             }
-            // ponytail: prefer CPU/package-labeled sensors, fallback to any non-fan, then any
-            let temperature = components
+
+            let mut temperature_cpu = components
                 .iter()
                 .find(|c| {
                     let l = c.label().to_lowercase();
-                    l.contains("cpu") || l.contains("package") || l.contains("core")
+                    (l.contains("cpu") || l.contains("package") || l.contains("core"))
+                        && !l.contains("gpu")
                 })
                 .or_else(|| {
-                    components
-                        .iter()
-                        .find(|c| !c.label().to_lowercase().contains("fan"))
+                    components.iter().find(|c| {
+                        let l = c.label().to_lowercase();
+                        !l.contains("fan") && !l.contains("gpu")
+                    })
                 })
-                .or_else(|| components.iter().next())
-                .map(|c| c.temperature());
+                .map(|c| {
+                    tracing::debug!(label = %c.label(), temp = c.temperature(), "sysinfo component");
+                    c.temperature()
+                });
+
+            let mut temperature_gpu = components
+                .iter()
+                .find(|c| {
+                    let l = c.label().to_lowercase();
+                    l.contains("gpu") || l.contains("gfx")
+                })
+                .map(|c| {
+                    tracing::debug!(label = %c.label(), temp = c.temperature(), "sysinfo GPU component");
+                    c.temperature()
+                });
+
+            // ponytail: sysinfo rarely finds GPU sensors on Windows; WMI fills gaps
+            #[cfg(windows)]
+            {
+                if tick_1s.is_multiple_of(30) {
+                    last_wmi_temps = get_wmi_temperatures();
+                }
+                let before_cpu = temperature_cpu;
+                let before_gpu = temperature_gpu;
+                temperature_cpu = temperature_cpu.or(last_wmi_temps.0);
+                temperature_gpu = temperature_gpu.or(last_wmi_temps.1);
+                if (before_cpu != temperature_cpu || before_gpu != temperature_gpu)
+                    && tick_1s.is_multiple_of(30)
+                {
+                    tracing::debug!(before_cpu, before_gpu, cpu = temperature_cpu, gpu = temperature_gpu, "WMI filled temperature gaps");
+                }
+            }
 
             if tick_1s.is_multiple_of(10) {
                 disks.refresh();
@@ -81,7 +201,8 @@ pub fn start_engine(
                 ram_total,
                 net_rx_bps,
                 net_tx_bps,
-                temperature,
+                temperature_cpu,
+                temperature_gpu,
                 disk_used,
                 disk_total,
                 battery_percent,
@@ -91,6 +212,8 @@ pub fn start_engine(
             if internal_tx.blocking_send(snapshot).is_err() {
                 break;
             }
+
+            tick_1s += 1;
         }
     });
 

@@ -9,7 +9,8 @@ pub struct TelemetrySnapshot {
     pub ram_total: u64,
     pub net_rx_bps: u64,
     pub net_tx_bps: u64,
-    pub temperature: Option<f32>,
+    pub temperature_cpu: Option<f32>,
+    pub temperature_gpu: Option<f32>,
     pub disk_used: u64,
     pub disk_total: u64,
     pub battery_percent: Option<f32>,
@@ -27,6 +28,7 @@ pub fn init_telemetry_table(conn: &Connection) -> Result<()> {
             net_rx_bps INTEGER NOT NULL,
             net_tx_bps INTEGER NOT NULL,
             temperature REAL,
+            temperature_gpu REAL,
             disk_used INTEGER NOT NULL,
             disk_total INTEGER NOT NULL,
             battery_percent REAL,
@@ -38,8 +40,8 @@ pub fn init_telemetry_table(conn: &Connection) -> Result<()> {
 
 pub fn insert_telemetry(conn: &Connection, snap: &TelemetrySnapshot) -> Result<()> {
     conn.execute(
-        "INSERT INTO telemetry (timestamp, cpu_usage, ram_used, ram_total, net_rx_bps, net_tx_bps, temperature, disk_used, disk_total, battery_percent, battery_charging)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO telemetry (timestamp, cpu_usage, ram_used, ram_total, net_rx_bps, net_tx_bps, temperature, temperature_gpu, disk_used, disk_total, battery_percent, battery_charging)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             snap.timestamp,
             snap.cpu_usage,
@@ -47,7 +49,8 @@ pub fn insert_telemetry(conn: &Connection, snap: &TelemetrySnapshot) -> Result<(
             snap.ram_total as i64,
             snap.net_rx_bps as i64,
             snap.net_tx_bps as i64,
-            snap.temperature,
+            snap.temperature_cpu,
+            snap.temperature_gpu,
             snap.disk_used as i64,
             snap.disk_total as i64,
             snap.battery_percent,
@@ -133,7 +136,7 @@ pub fn insert_audit_log(
 
 pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<TelemetrySnapshot>> {
     let mut stmt = conn.prepare(
-        "SELECT timestamp, cpu_usage, ram_used, ram_total, net_rx_bps, net_tx_bps, temperature, disk_used, disk_total, battery_percent, battery_charging
+        "SELECT timestamp, cpu_usage, ram_used, ram_total, net_rx_bps, net_tx_bps, temperature, temperature_gpu, disk_used, disk_total, battery_percent, battery_charging
          FROM telemetry
          WHERE timestamp >= ?1
          ORDER BY timestamp ASC
@@ -148,11 +151,12 @@ pub fn query_telemetry_history(conn: &Connection, since_ts: i64) -> Result<Vec<T
             ram_total: row.get::<_, i64>(3)? as u64,
             net_rx_bps: row.get::<_, i64>(4)? as u64,
             net_tx_bps: row.get::<_, i64>(5)? as u64,
-            temperature: row.get(6)?,
-            disk_used: row.get::<_, i64>(7)? as u64,
-            disk_total: row.get::<_, i64>(8)? as u64,
-            battery_percent: row.get(9)?,
-            battery_charging: row.get::<_, Option<i64>>(10)?.map(|v| v != 0),
+            temperature_cpu: row.get(6)?,
+            temperature_gpu: row.get(7)?,
+            disk_used: row.get::<_, i64>(8)? as u64,
+            disk_total: row.get::<_, i64>(9)? as u64,
+            battery_percent: row.get(10)?,
+            battery_charging: row.get::<_, Option<i64>>(11)?.map(|v| v != 0),
         })
     })?;
 
@@ -279,7 +283,8 @@ mod tests {
             ram_total: 16000000000,
             net_rx_bps: 1000000,
             net_tx_bps: 500000,
-            temperature: Some(65.0),
+            temperature_cpu: Some(65.0),
+            temperature_gpu: None,
             disk_used: 200000000000,
             disk_total: 500000000000,
             battery_percent: None,
@@ -310,7 +315,8 @@ mod tests {
             ram_total: 0,
             net_rx_bps: 0,
             net_tx_bps: 0,
-            temperature: None,
+            temperature_cpu: None,
+            temperature_gpu: None,
             disk_used: 0,
             disk_total: 0,
             battery_percent: None,

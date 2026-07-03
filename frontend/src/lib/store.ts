@@ -7,7 +7,8 @@ interface Telemetry {
   ram_total: number
   net_rx_bps: number
   net_tx_bps: number
-  temperature: number | null
+  temperature_cpu: number | null
+  temperature_gpu: number | null
   disk_used: number
   disk_total: number
   battery_percent: number | null
