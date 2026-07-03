@@ -12,7 +12,7 @@ use nodedesk_agent::db::{self, TelemetrySnapshot};
 use nodedesk_agent::tunnel::TunnelStatus;
 use nodedesk_agent::{
     build_router, find_available_port, get_data_dir, init_db, init_dirs, spawn_tray, AppState,
-    LockoutState, PowerState, ScriptState, SetupManager, TrayCommand, TunnelState,
+    LockoutState, PowerState, ScriptState, SetupManager, TerminalState, TrayCommand, TunnelState,
 };
 
 #[cfg(target_os = "windows")]
@@ -134,6 +134,7 @@ async fn main() {
     let rate_limiter = auth::create_rate_limiter();
     let power_state = Arc::new(PowerState::new());
     let script_state = Arc::new(ScriptState::new());
+    let terminal_state = Arc::new(TerminalState::default());
     let (tunnel_state, _tunnel_rx) = TunnelState::new(&get_data_dir(), port);
     let tunnel_state = Arc::new(tunnel_state);
 
@@ -246,6 +247,7 @@ async fn main() {
         rate_limiter,
         power_state,
         script_state,
+        terminal_state,
         tunnel_state: tunnel_state.clone(),
         port,
         setup_token,

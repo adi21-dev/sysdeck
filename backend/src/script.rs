@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
-use axum::http::HeaderMap;
-use axum::response::{IntoResponse, Json};
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
@@ -90,7 +90,52 @@ pub(crate) async fn execute_handler(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
     Json(req): Json<ExecuteRequest>,
-) -> Json<serde_json::Value> {
+) -> Response {
+    // Auth: accept X-Api-Key (webhook) or JWT cookie (UI)
+    let api_key = headers
+        .get("X-Api-Key")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    match api_key {
+        Some(ref key) => {
+            let conn = state.db.lock().await;
+            let stored = db::get_setting(&conn, "webhook_api_key").unwrap_or_default();
+            drop(conn);
+            if key != &stored {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"success": false, "message": "Invalid API key"})),
+                )
+                    .into_response();
+            }
+        }
+        None => {
+            let cookie_str = headers
+                .get(header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            let authenticated = match cookie_str {
+                Some(ref c) => match auth::parse_cookie(c, "token") {
+                    Some(t) => {
+                        let conn = state.db.lock().await;
+                        let valid = auth::check_access_token(t, &state.jwt_key, &conn);
+                        drop(conn);
+                        valid
+                    }
+                    None => false,
+                },
+                None => false,
+            };
+            if !authenticated {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"success": false, "message": "Unauthorized"})),
+                )
+                    .into_response();
+            }
+        }
+    }
+
     let id = Uuid::new_v4().to_string();
     let (output_tx, _) = broadcast::channel::<ScriptOutput>(10000);
     let ip = auth::client_ip_from_headers(&headers);
@@ -122,7 +167,8 @@ pub(crate) async fn execute_handler(
                 "stderr": result.stderr,
                 "truncated": result.truncated,
             }
-        }));
+        }))
+        .into_response();
     }
 
     {
@@ -159,7 +205,7 @@ pub(crate) async fn execute_handler(
         running.remove(&id_clone);
     });
 
-    Json(json!({"success": true, "id": id, "message": "Script started"}))
+    Json(json!({"success": true, "id": id, "message": "Script started"})).into_response()
 }
 
 async fn run_script(

@@ -7,6 +7,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use uuid::Uuid;
 use zip::write::FileOptions;
 
 use crate::auth;
@@ -452,4 +453,21 @@ pub async fn set_port_handler(
     Json(
         json!({"success": true, "new_port": body.port, "message": "Port will change on next restart"}),
     )
+}
+
+pub async fn get_webhook_key_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let db_lock = state.db.lock().await;
+    let key = db::get_setting(&db_lock, "webhook_api_key").unwrap_or_default();
+    drop(db_lock);
+    Json(json!({"success": true, "key": key}))
+}
+
+pub async fn rotate_webhook_key_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let key = Uuid::new_v4().to_string();
+    let db_lock = state.db.lock().await;
+    let _ = db::set_setting(&db_lock, "webhook_api_key", &key);
+    let _ = db::insert_audit_log(&db_lock, "webhook_key_rotated", None, None);
+    drop(db_lock);
+    tracing::info!("Webhook API key rotated");
+    Json(json!({"success": true, "key": key}))
 }

@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react"
 import { useConnectionStore, useToastStore } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-type Tab = "trackpad" | "keyboard" | "clipboard" | "vision" | "browser"
+const TerminalTab = lazy(() => import("./TerminalTab"))
+
+type Tab = "trackpad" | "keyboard" | "clipboard" | "vision" | "browser" | "windows" | "terminal"
 
 export function RemoteDesktopPage() {
   const [tab, setTab] = useState<Tab>("trackpad")
@@ -12,7 +14,7 @@ export function RemoteDesktopPage() {
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Remote Desktop</h1>
       <div className="flex gap-2 flex-wrap">
-        {(["trackpad", "keyboard", "clipboard", "vision", "browser"] as Tab[]).map((t) => (
+        {(["trackpad", "keyboard", "clipboard", "vision", "browser", "windows", "terminal"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -29,6 +31,12 @@ export function RemoteDesktopPage() {
       {tab === "clipboard" && <ClipboardTab />}
       {tab === "vision" && <VisionTab />}
       {tab === "browser" && <BrowserTab />}
+      {tab === "windows" && <WindowsTab />}
+      <div className={tab === "terminal" ? "" : "hidden"}>
+        <Suspense fallback={<Card className="h-[calc(100vh-12rem)] flex items-center justify-center text-muted-foreground">Loading terminal...</Card>}>
+          <TerminalTab />
+        </Suspense>
+      </div>
     </div>
   )
 }
@@ -363,3 +371,58 @@ function BrowserTab() {
     </Card>
   )
 }
+
+// ── Windows ──
+
+interface WindowInfo {
+  hwnd: number;
+  title: string;
+}
+
+function WindowsTab() {
+  const [windows, setWindows] = useState<WindowInfo[]>([])
+  const connected = useConnectionStore((s) => s.status === "connected")
+
+  const refresh = useCallback(async () => {
+    if (!connected) return
+    const res = await fetch("/api/windows")
+    const json = await res.json()
+    if (json.success) setWindows(json.windows)
+  }, [connected])
+
+  useEffect(() => {
+    refresh()
+    const id = setInterval(refresh, 2000)
+    return () => clearInterval(id)
+  }, [refresh])
+
+  const act = useCallback(async (action: string, hwnd: number) => {
+    await fetch(`/api/windows/${action}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hwnd }),
+    })
+    refresh()
+  }, [refresh])
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">Open Windows ({windows.length})</h3>
+        <Button size="sm" variant="outline" onClick={refresh} disabled={!connected}>Refresh</Button>
+      </div>
+      <div className="max-h-80 overflow-y-auto space-y-1">
+        {windows.map((w) => (
+          <div key={w.hwnd} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
+            <span className="flex-1 truncate">{w.title}</span>
+            <button onClick={() => act("focus", w.hwnd)} className="px-2 py-0.5 bg-primary text-primary-foreground rounded text-xs">Focus</button>
+            <button onClick={() => act("minimize", w.hwnd)} className="px-2 py-0.5 bg-muted-foreground/20 rounded text-xs">Min</button>
+            <button onClick={() => act("close", w.hwnd)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">X</button>
+          </div>
+        ))}
+        {windows.length === 0 && <p className="text-sm text-muted-foreground">No windows found</p>}
+      </div>
+    </Card>
+  )
+}
+

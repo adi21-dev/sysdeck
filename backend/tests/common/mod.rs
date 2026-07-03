@@ -13,7 +13,7 @@ use nodedesk_agent::auth::LockoutState;
 use nodedesk_agent::db::{self, TelemetrySnapshot};
 use nodedesk_agent::get_data_dir;
 use nodedesk_agent::setup::SetupManager;
-use nodedesk_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TunnelState};
+use nodedesk_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState};
 
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
 
@@ -83,6 +83,7 @@ fn test_app_inner(
         rate_limiter,
         power_state,
         script_state,
+        terminal_state: Arc::new(TerminalState::default()),
         tunnel_state: Arc::new(tunnel_state),
         port: 3939,
         setup_token: Arc::new("test-setup-token-123".to_string()),

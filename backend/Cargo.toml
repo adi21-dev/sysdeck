@@ -56,12 +56,14 @@ aes-gcm = "0.10"
 
 bytes = "1"
 dirs = "5"
+portable-pty = "0.9.0"
 
 # Windows message pump for tray icon
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Com",
     "Win32_Media_Audio",
     "Win32_NetworkManagement_IpHelper",

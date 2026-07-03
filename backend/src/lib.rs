@@ -11,7 +11,9 @@ pub mod script;
 pub mod settings;
 pub mod setup;
 pub mod telemetry;
+pub mod terminal;
 pub mod tunnel;
+pub mod windows;
 pub mod ws;
 
 use std::collections::HashMap;
@@ -50,6 +52,7 @@ pub use auth::{admin_check_handler, admin_middleware, IpRateLimiter, LockoutStat
 pub use db::TelemetrySnapshot;
 pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
 pub use script::ScriptState;
+pub use terminal::TerminalState;
 pub use setup::SetupManager;
 
 pub use tunnel::TunnelState;
@@ -66,6 +69,7 @@ pub struct AppState {
     pub rate_limiter: Arc<IpRateLimiter>,
     pub power_state: Arc<PowerState>,
     pub script_state: Arc<ScriptState>,
+    pub terminal_state: Arc<TerminalState>,
     pub tunnel_state: Arc<TunnelState>,
     pub port: u16,
     pub setup_token: Arc<String>,
@@ -531,6 +535,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/settings/relay",
             get(settings::get_relay_handler).post(settings::set_relay_handler),
         )
+        .route(
+            "/api/settings/webhook-key",
+            get(settings::get_webhook_key_handler).post(settings::rotate_webhook_key_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::admin_middleware,
@@ -648,6 +656,15 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/vision/screenshot", get(input::screenshot_handler))
         // Input — Browser
         .route("/api/browser/open", post(input::browser_open_handler))
+        // Terminal
+        .route("/api/terminal/create", post(terminal::create_handler))
+        .route("/ws/terminal/:id", get(terminal::ws_terminal_handler))
+        // Window Management
+        .route("/api/windows", get(windows::list_handler))
+        .route("/api/windows/focus", post(windows::focus_handler))
+        .route("/api/windows/close", post(windows::close_handler))
+        .route("/api/windows/minimize", post(windows::minimize_handler))
+        .route("/api/windows/restore", post(windows::restore_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

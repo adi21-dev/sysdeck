@@ -686,7 +686,7 @@ pub struct AuthCheckResponse {
     authenticated: bool,
 }
 
-fn check_access_token(token_str: &str, jwt_key: &[u8], conn: &rusqlite::Connection) -> bool {
+pub(crate) fn check_access_token(token_str: &str, jwt_key: &[u8], conn: &rusqlite::Connection) -> bool {
     match verify_jwt(token_str, jwt_key) {
         Ok(claims) => {
             let session_ok = verify_session(conn, &claims.jti).unwrap_or(false);
@@ -919,6 +919,7 @@ pub async fn auth_middleware(
         || path == "/api/auth/check"
         || path == "/api/auth/refresh"
         || path == "/api/admin/check"
+        || path == "/api/scripts/execute"
     {
         tracing::debug!(path, method, "Auth middleware skip");
         return next.run(req).await;
