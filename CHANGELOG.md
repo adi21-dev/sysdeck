@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Startup Console**: Added descriptive instructions and use-case details about the generated setup key in the startup console banner.
 - **Documentation**: Documented the Setup Key generation and its verification purposes in the main README.md file.
 
+### Fixed
+- **Windows Console Flashing**: Resolved an issue where multiple empty Command Prompt/PowerShell terminal windows flashed on the screen on Windows during startup and periodic background operations (telemetry WMI polling, network/hardware status checks, registry queries, and Cloudflare tunnel spawning) by forcing child processes to spawn silently with the `CREATE_NO_WINDOW` process creation flag.
+
 ## [1.0.1] - 2026-07-03
 
 ### Fixed

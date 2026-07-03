@@ -2,7 +2,6 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -82,7 +81,7 @@ pub struct ScheduledPowerRequest {
 
 #[allow(dead_code)]
 fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(cmd)
+    let output = crate::new_command(cmd)
         .args(args)
         .output()
         .map_err(|e| format!("Failed to execute {}: {}", cmd, e))?;
@@ -99,7 +98,7 @@ fn run_powershell(script: &str) -> Result<String, String> {
     use std::io::Write;
     use std::process::Stdio;
 
-    let mut child = Command::new("powershell")
+    let mut child = crate::new_command("powershell")
         .args(["-NoProfile", "-Command", "-"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1130,7 +1129,7 @@ pub async fn schedule_power_handler(
                         crate::power::PowerAction::Restart => "/r",
                         _ => "/s",
                     };
-                    let _ = Command::new("shutdown")
+                    let _ = crate::new_command("shutdown")
                         .args([flag, "/f", "/t", "1"])
                         .spawn();
                 } else {

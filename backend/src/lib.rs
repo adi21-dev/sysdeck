@@ -79,6 +79,25 @@ pub struct AppState {
     pub setup_token: Arc<String>,
 }
 
+pub fn new_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+pub fn new_tokio_command<S: AsRef<std::ffi::OsStr>>(program: S) -> tokio::process::Command {
+    let mut cmd = tokio::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 pub fn get_data_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -212,7 +231,7 @@ pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
 fn is_startup_enabled() -> bool {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("reg")
+        new_command("reg")
             .args([
                 "query",
                 "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
@@ -234,7 +253,7 @@ fn set_startup(enabled: bool) {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
         if enabled {
-            let _ = std::process::Command::new("reg")
+            let _ = new_command("reg")
                 .args([
                     "add",
                     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
@@ -248,7 +267,7 @@ fn set_startup(enabled: bool) {
                 ])
                 .output();
         } else {
-            let _ = std::process::Command::new("reg")
+            let _ = new_command("reg")
                 .args([
                     "delete",
                     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",

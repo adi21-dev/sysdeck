@@ -60,7 +60,7 @@ fn get_wmi_temperatures() -> (Option<f32>, Option<f32>) {
     let mut gpu = None;
     for (source, cmd) in &queries {
         tracing::debug!(source, "querying WMI thermal zones");
-        let output = match std::process::Command::new("powershell")
+        let output = match crate::new_command("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", cmd])
             .output()
         {

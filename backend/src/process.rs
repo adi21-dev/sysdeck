@@ -48,7 +48,7 @@ pub async fn kill_handler(Json(body): Json<KillBody>) -> impl IntoResponse {
     #[cfg(target_os = "windows")]
     {
         let pid = body.pid;
-        match std::process::Command::new("taskkill")
+        match crate::new_command("taskkill")
             .args(["/PID", &pid.to_string(), "/F"])
             .output()
         {

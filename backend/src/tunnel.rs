@@ -9,7 +9,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::AppState;
@@ -260,7 +259,7 @@ async fn run_tunnel_loop(
             None => return,
         };
 
-        let mut child = match Command::new(&state.exe_path)
+        let mut child = match crate::new_tokio_command(&state.exe_path)
             .args([
                 "tunnel",
                 "--no-autoupdate",
