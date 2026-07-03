@@ -46,7 +46,11 @@ export function Sidebar() {
           <span className="hidden dark:block">Light Mode</span>
         </button>
         <button
-          onClick={() => { useAuthStore.getState().setAuthenticated(false); navigate("/login") }}
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+            useAuthStore.getState().setAuthenticated(false)
+            navigate("/login")
+          }}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
         >
           <LogOut className="h-4 w-4" />

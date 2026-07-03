@@ -9,6 +9,7 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use axum::body::Body;
 use axum::extract::Request;
 use axum::extract::State;
 use axum::http::{header, HeaderValue, StatusCode};
@@ -31,7 +32,8 @@ use crate::AppState;
 
 // --- Constants ---
 
-const JWT_EXPIRY_SECS: i64 = 90 * 24 * 3600;
+const JWT_EXPIRY_SECS: i64 = 900;
+const REFRESH_TOKEN_EXPIRY_SECS: i64 = 7 * 24 * 3600;
 const LOCKOUT_THRESHOLD: u32 = 5;
 const LOCKOUT_DURATION: Duration = Duration::from_secs(15 * 60);
 const RATE_LIMIT_REQUESTS: u32 = 60;
@@ -80,8 +82,7 @@ fn derive_machine_id_key() -> Result<[u8; 32], String> {
 
 /// AES-256-GCM encrypt plaintext, returning `[12-byte nonce][ciphertext]`.
 fn encrypt_aes_gcm(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
-    let cipher =
-        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
     let mut nonce_bytes = [0u8; 12];
     rand::thread_rng().fill(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -99,8 +100,7 @@ fn decrypt_aes_gcm(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
     if data.len() < 12 {
         return Err("Invalid encrypted data: too short".to_string());
     }
-    let cipher =
-        Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| format!("Invalid AES key: {}", e))?;
     let (nonce_bytes, ciphertext) = data.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
     cipher
@@ -257,9 +257,10 @@ pub struct JwtClaims {
     pub exp: usize,
     pub iat: usize,
     pub jti: String,
+    pub token_version: i64,
 }
 
-pub fn create_jwt(jti: &str, key: &[u8]) -> Result<String, String> {
+pub fn create_jwt(jti: &str, key: &[u8], token_version: i64) -> Result<String, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -271,6 +272,7 @@ pub fn create_jwt(jti: &str, key: &[u8]) -> Result<String, String> {
         exp,
         iat: now,
         jti: jti.to_string(),
+        token_version,
     };
 
     encode(&Header::default(), &claims, &EncodingKey::from_secret(key))
@@ -289,17 +291,31 @@ pub fn verify_jwt(token: &str, key: &[u8]) -> Result<JwtClaims, String> {
 
 // --- Session Management ---
 
-pub fn create_session(conn: &rusqlite::Connection, user_id: i64) -> Result<String, String> {
+pub fn generate_refresh_token() -> (String, String) {
+    let raw = Uuid::new_v4().to_string();
+    let hash = hex::encode(Sha256::digest(raw.as_bytes()));
+    (raw, hash)
+}
+
+pub fn hash_refresh_token(raw: &str) -> String {
+    hex::encode(Sha256::digest(raw.as_bytes()))
+}
+
+pub fn create_session(
+    conn: &rusqlite::Connection,
+    user_id: i64,
+    refresh_token_hash: &str,
+) -> Result<String, String> {
     let jti = Uuid::new_v4().to_string();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as i64;
-    let expires = now + JWT_EXPIRY_SECS;
+    let expires = now + REFRESH_TOKEN_EXPIRY_SECS;
 
     conn.execute(
-        "INSERT INTO sessions (user_id, token_jti, created_at, expires_at) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![user_id, jti, now, expires],
+        "INSERT INTO sessions (user_id, token_jti, refresh_token_hash, created_at, expires_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![user_id, jti, refresh_token_hash, now, expires],
     )
     .map_err(|e| format!("Failed to create session: {}", e))?;
 
@@ -323,10 +339,113 @@ pub fn verify_session(conn: &rusqlite::Connection, jti: &str) -> Result<bool, St
     Ok(count > 0)
 }
 
+pub fn verify_refresh_token(
+    conn: &rusqlite::Connection,
+    hash: &str,
+) -> Result<Option<String>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let result = conn.query_row(
+        "SELECT token_jti FROM sessions WHERE refresh_token_hash = ?1 AND expires_at > ?2 LIMIT 1",
+        rusqlite::params![hash, now],
+        |row| row.get::<_, String>(0),
+    );
+    match result {
+        Ok(jti) => Ok(Some(jti)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Failed to query refresh token: {}", e)),
+    }
+}
+
+pub fn rotate_refresh_token(
+    conn: &rusqlite::Connection,
+    jti: &str,
+    new_hash: &str,
+) -> Result<(), String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let expires = now + REFRESH_TOKEN_EXPIRY_SECS;
+
+    conn.execute(
+        "UPDATE sessions SET refresh_token_hash = ?1, expires_at = ?2 WHERE token_jti = ?3",
+        rusqlite::params![new_hash, expires, jti],
+    )
+    .map_err(|e| format!("Failed to rotate refresh token: {}", e))?;
+    Ok(())
+}
+
+pub fn get_token_version(conn: &rusqlite::Connection, user_id: i64) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT token_version FROM users WHERE id = ?1",
+        rusqlite::params![user_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map_err(|e| format!("Failed to get token_version: {}", e))
+}
+
+pub fn bump_token_version(conn: &rusqlite::Connection, user_id: i64) -> Result<(), String> {
+    conn.execute(
+        "UPDATE users SET token_version = token_version + 1, updated_at = ?1 WHERE id = ?2",
+        rusqlite::params![
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+            user_id
+        ],
+    )
+    .map_err(|e| format!("Failed to bump token_version: {}", e))?;
+    Ok(())
+}
+
 pub fn revoke_all_sessions(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute("DELETE FROM sessions", [])
         .map_err(|e| format!("Failed to revoke sessions: {}", e))?;
     Ok(())
+}
+
+pub fn revoke_session(conn: &rusqlite::Connection, jti: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM sessions WHERE token_jti = ?1",
+        rusqlite::params![jti],
+    )
+    .map_err(|e| format!("Failed to revoke session: {}", e))?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SessionInfo {
+    pub jti: String,
+    pub created_at: i64,
+    pub expires_at: i64,
+}
+
+pub fn list_sessions(
+    conn: &rusqlite::Connection,
+    user_id: i64,
+) -> Result<Vec<SessionInfo>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT token_jti, created_at, expires_at FROM sessions WHERE user_id = ?1 ORDER BY created_at DESC"
+    ).map_err(|e| format!("Failed to prepare session list: {}", e))?;
+
+    let sessions = stmt
+        .query_map(rusqlite::params![user_id], |row| {
+            Ok(SessionInfo {
+                jti: row.get(0)?,
+                created_at: row.get(1)?,
+                expires_at: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("Failed to query sessions: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(sessions)
 }
 
 // --- Account Lockout ---
@@ -501,9 +620,21 @@ pub async fn login_handler(
     }
 
     state.lockout.clear_failures(user_id);
+
+    let token_version = {
+        let conn = state.db.lock().await;
+        let tv = get_token_version(&conn, user_id);
+        drop(conn);
+        match tv {
+            Ok(v) => v,
+            Err(e) => return login_err(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        }
+    };
+
+    let (raw_refresh, hashed_refresh) = generate_refresh_token();
     let jti = {
         let conn = state.db.lock().await;
-        let result = create_session(&conn, user_id);
+        let result = create_session(&conn, user_id, &hashed_refresh);
         drop(conn);
         match result {
             Ok(j) => j,
@@ -516,7 +647,7 @@ pub async fn login_handler(
         }
     };
 
-    let token = match create_jwt(&jti, &state.jwt_key) {
+    let token = match create_jwt(&jti, &state.jwt_key, token_version) {
         Ok(t) => t,
         Err(e) => {
             return login_err(
@@ -533,22 +664,29 @@ pub async fn login_handler(
     }
 
     let is_secure = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
-    let cookie = format!(
-        "token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path={}",
-        token,
-        JWT_EXPIRY_SECS,
-        if is_secure { "/; Secure" } else { "/" },
+    let secure_flag = if is_secure { "; Secure" } else { "" };
+    let access_cookie = format!(
+        "token={}; HttpOnly; SameSite=Lax; Max-Age={}; Path=/{secure_flag}",
+        token, JWT_EXPIRY_SECS,
+    );
+    let refresh_cookie = format!(
+        "refresh_token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
+        raw_refresh, REFRESH_TOKEN_EXPIRY_SECS,
     );
 
-    (
-        StatusCode::OK,
-        [("Set-Cookie", cookie.as_str())],
-        Json(LoginResponse {
-            success: true,
-            message: "Login successful".to_string(),
-        }),
-    )
-        .into_response()
+    let body = serde_json::to_string(&LoginResponse {
+        success: true,
+        message: "Login successful".to_string(),
+    })
+    .unwrap();
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::SET_COOKIE, &access_cookie)
+        .header(header::SET_COOKIE, &refresh_cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .unwrap()
 }
 
 // --- Auth Check Handler ---
@@ -556,6 +694,20 @@ pub async fn login_handler(
 #[derive(Serialize)]
 pub struct AuthCheckResponse {
     authenticated: bool,
+}
+
+fn check_access_token(token_str: &str, jwt_key: &[u8], conn: &rusqlite::Connection) -> bool {
+    match verify_jwt(token_str, jwt_key) {
+        Ok(claims) => {
+            let session_ok = verify_session(conn, &claims.jti).unwrap_or(false);
+            if !session_ok {
+                return false;
+            }
+            let tv = get_token_version(conn, 1).unwrap_or(0);
+            tv == claims.token_version
+        }
+        Err(_) => false,
+    }
 }
 
 pub async fn auth_check_handler(
@@ -572,13 +724,10 @@ pub async fn auth_check_handler(
         Some(c) => {
             let token = parse_cookie(&c, "token");
             match token {
-                Some(t) => match verify_jwt(t, &state.jwt_key) {
-                    Ok(claims) => {
-                        let conn = state.db.lock().await;
-                        verify_session(&conn, &claims.jti).unwrap_or(false)
-                    }
-                    Err(_) => false,
-                },
+                Some(t) => {
+                    let conn = state.db.lock().await;
+                    check_access_token(t, &state.jwt_key, &conn)
+                }
                 None => false,
             }
         }
@@ -586,6 +735,157 @@ pub async fn auth_check_handler(
     };
 
     Json(AuthCheckResponse { authenticated })
+}
+
+// --- Refresh Handler ---
+
+#[derive(Serialize)]
+pub struct RefreshResponse {
+    success: bool,
+}
+
+pub async fn refresh_handler(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+) -> Response {
+    let cookie_str = req
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let raw_refresh = cookie_str
+        .as_deref()
+        .and_then(|c| parse_cookie(c, "refresh_token"));
+
+    let Some(raw) = raw_refresh else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(RefreshResponse { success: false }),
+        )
+            .into_response();
+    };
+
+    let hash = hash_refresh_token(raw);
+
+    let refresh_result = {
+        let conn = state.db.lock().await;
+        verify_refresh_token(&conn, &hash)
+    };
+    let jti = match refresh_result {
+        Ok(Some(j)) => j,
+        Ok(None) => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(RefreshResponse { success: false }),
+            )
+                .into_response();
+        }
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(RefreshResponse { success: false }),
+            )
+                .into_response();
+        }
+    };
+
+    // Rotate refresh token
+    let (new_raw, new_hash) = generate_refresh_token();
+    {
+        let conn = state.db.lock().await;
+        if rotate_refresh_token(&conn, &jti, &new_hash).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(RefreshResponse { success: false }),
+            )
+                .into_response();
+        }
+    }
+
+    // Issue new access token
+    let token_version = {
+        let conn = state.db.lock().await;
+        get_token_version(&conn, 1).unwrap_or(1)
+    };
+    let access_token = match create_jwt(&jti, &state.jwt_key, token_version) {
+        Ok(t) => t,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(RefreshResponse { success: false }),
+            )
+                .into_response();
+        }
+    };
+
+    let is_secure =
+        req.headers().contains_key("cf-connecting-ip") || req.headers().contains_key("cf-ray");
+    let secure_flag = if is_secure { "; Secure" } else { "" };
+
+    let access_cookie = format!(
+        "token={}; HttpOnly; SameSite=Lax; Max-Age={}; Path=/{secure_flag}",
+        access_token, JWT_EXPIRY_SECS,
+    );
+    let refresh_cookie = format!(
+        "refresh_token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
+        new_raw, REFRESH_TOKEN_EXPIRY_SECS,
+    );
+
+    let body = serde_json::to_string(&RefreshResponse { success: true }).unwrap();
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::SET_COOKIE, &access_cookie)
+        .header(header::SET_COOKIE, &refresh_cookie)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body))
+        .unwrap()
+}
+
+// --- Logout Handler ---
+
+pub async fn logout_handler(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+) -> Response {
+    let cookie_str = req
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let token = cookie_str.as_deref().and_then(|c| parse_cookie(c, "token"));
+
+    match token {
+        Some(token_str) => match verify_jwt(token_str, &state.jwt_key) {
+            Ok(claims) => {
+                let conn = state.db.lock().await;
+                let _ = revoke_session(&conn, &claims.jti);
+                let _ = db::insert_audit_log(&conn, "logout", Some("User logged out"), None);
+                drop(conn);
+
+                let access_cookie = "token=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/";
+                let refresh_cookie =
+                    "refresh_token=; HttpOnly; SameSite=Strict; Max-Age=0; Path=/api/auth/refresh";
+
+                let body = serde_json::to_string(&LoginResponse {
+                    success: true,
+                    message: "Logged out".to_string(),
+                })
+                .unwrap();
+
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::SET_COOKIE, access_cookie)
+                    .header(header::SET_COOKIE, refresh_cookie)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap()
+            }
+            Err(_) => login_err(StatusCode::UNAUTHORIZED, "Invalid token"),
+        },
+        None => login_err(StatusCode::UNAUTHORIZED, "No auth token"),
+    }
 }
 
 // --- Auth Middleware ---
@@ -618,6 +918,7 @@ pub async fn auth_middleware(
         || path.starts_with("/api/setup")
         || path == "/"
         || path == "/api/auth/check"
+        || path == "/api/auth/refresh"
         || path == "/api/admin/check"
     {
         return next.run(req).await;
@@ -636,7 +937,13 @@ pub async fn auth_middleware(
             Ok(claims) => {
                 let valid = {
                     let conn = state.db.lock().await;
-                    verify_session(&conn, &claims.jti).unwrap_or(false)
+                    let session_ok = verify_session(&conn, &claims.jti).unwrap_or(false);
+                    if !session_ok {
+                        false
+                    } else {
+                        let tv = get_token_version(&conn, 1).unwrap_or(0);
+                        tv == claims.token_version
+                    }
                 };
                 if valid {
                     next.run(req).await
@@ -650,7 +957,7 @@ pub async fn auth_middleware(
     }
 }
 
-fn parse_cookie<'a>(cookie_str: &'a str, name: &str) -> Option<&'a str> {
+pub(crate) fn parse_cookie<'a>(cookie_str: &'a str, name: &str) -> Option<&'a str> {
     cookie_str.split(';').find_map(|c| {
         let c = c.trim();
         c.strip_prefix(&format!("{}=", name))
@@ -670,6 +977,7 @@ pub async fn rate_limit_middleware(
         || path.starts_with("/setup")
         || path.starts_with("/api/setup")
         || path == "/api/auth/check"
+        || path == "/api/auth/refresh"
     {
         return next.run(req).await;
     }
@@ -836,15 +1144,16 @@ mod tests {
 
     #[test]
     fn test_jwt_create_verify() {
-        let token = create_jwt("test-jti", JWT_KEY).unwrap();
+        let token = create_jwt("test-jti", JWT_KEY, 1).unwrap();
         let claims = verify_jwt(&token, JWT_KEY).unwrap();
         assert_eq!(claims.sub, "1");
         assert_eq!(claims.jti, "test-jti");
+        assert_eq!(claims.token_version, 1);
     }
 
     #[test]
     fn test_jwt_invalid_signature() {
-        let token = create_jwt("test-jti", JWT_KEY).unwrap();
+        let token = create_jwt("test-jti", JWT_KEY, 1).unwrap();
         let wrong_key = b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         assert!(verify_jwt(&token, wrong_key).is_err());
     }
@@ -862,6 +1171,7 @@ mod tests {
             exp: 100000,
             iat: 1000,
             jti: "expired-jti".to_string(),
+            token_version: 1,
         };
         let token = encode(
             &Header::default(),
@@ -874,14 +1184,18 @@ mod tests {
 
     // --- Sessions ---
 
+    fn test_session(conn: &Connection) -> String {
+        create_session(conn, 1, "test_refresh_hash").unwrap()
+    }
+
     #[test]
     fn test_create_session() {
         let conn = test_conn();
         conn.execute(
-            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            "INSERT INTO users (password_hash, totp_secret, token_version, created_at, updated_at) VALUES ('hash', 'secret', 1, 1000, 1000)",
             [],
         ).unwrap();
-        let jti = create_session(&conn, 1).unwrap();
+        let jti = test_session(&conn);
         assert!(!jti.is_empty());
         assert!(Uuid::parse_str(&jti).is_ok());
     }
@@ -890,10 +1204,10 @@ mod tests {
     fn test_verify_valid_session() {
         let conn = test_conn();
         conn.execute(
-            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            "INSERT INTO users (password_hash, totp_secret, token_version, created_at, updated_at) VALUES ('hash', 'secret', 1, 1000, 1000)",
             [],
         ).unwrap();
-        let jti = create_session(&conn, 1).unwrap();
+        let jti = test_session(&conn);
         assert!(verify_session(&conn, &jti).unwrap());
     }
 
@@ -907,10 +1221,10 @@ mod tests {
     fn test_revoke_all_sessions() {
         let conn = test_conn();
         conn.execute(
-            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            "INSERT INTO users (password_hash, totp_secret, token_version, created_at, updated_at) VALUES ('hash', 'secret', 1, 1000, 1000)",
             [],
         ).unwrap();
-        create_session(&conn, 1).unwrap();
+        test_session(&conn);
         revoke_all_sessions(&conn).unwrap();
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
@@ -922,11 +1236,11 @@ mod tests {
     fn test_multiple_sessions_for_same_user() {
         let conn = test_conn();
         conn.execute(
-            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            "INSERT INTO users (password_hash, totp_secret, token_version, created_at, updated_at) VALUES ('hash', 'secret', 1, 1000, 1000)",
             [],
         ).unwrap();
-        let jti1 = create_session(&conn, 1).unwrap();
-        let jti2 = create_session(&conn, 1).unwrap();
+        let jti1 = test_session(&conn);
+        let jti2 = test_session(&conn);
         assert_ne!(jti1, jti2);
         assert!(verify_session(&conn, &jti1).unwrap());
         assert!(verify_session(&conn, &jti2).unwrap());
@@ -936,7 +1250,7 @@ mod tests {
     fn test_expired_session() {
         let conn = test_conn();
         conn.execute(
-            "INSERT INTO users (password_hash, totp_secret, created_at, updated_at) VALUES ('hash', 'secret', 1000, 1000)",
+            "INSERT INTO users (password_hash, totp_secret, token_version, created_at, updated_at) VALUES ('hash', 'secret', 1, 1000, 1000)",
             [],
         ).unwrap();
         let jti = Uuid::new_v4().to_string();

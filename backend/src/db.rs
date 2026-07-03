@@ -59,10 +59,11 @@ pub fn insert_telemetry(conn: &Connection, snap: &TelemetrySnapshot) -> Result<(
 
 pub fn init_auth_tables(conn: &Connection) -> Result<()> {
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS users (
+        "        CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             password_hash TEXT NOT NULL,
             totp_secret TEXT NOT NULL,
+            token_version INTEGER NOT NULL DEFAULT 1,
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
         );
@@ -76,6 +77,7 @@ pub fn init_auth_tables(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             token_jti TEXT NOT NULL UNIQUE,
+            refresh_token_hash TEXT,
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)

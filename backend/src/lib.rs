@@ -354,7 +354,7 @@ pub fn spawn_tray(
         #[cfg(target_os = "windows")]
         fn pump_messages() {
             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                DispatchMessageW, PeekMessageW, PM_REMOVE, TranslateMessage,
+                DispatchMessageW, PeekMessageW, TranslateMessage, PM_REMOVE,
             };
             unsafe {
                 let mut msg = std::mem::zeroed();
@@ -532,6 +532,14 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/settings/revoke-all",
             post(settings::revoke_all_handler),
+        )
+        .route(
+            "/api/settings/sessions",
+            get(settings::list_sessions_handler),
+        )
+        .route(
+            "/api/settings/sessions/revoke",
+            post(settings::revoke_session_handler),
         )
         .route("/api/settings/export-db", get(settings::export_db_handler))
         .route(

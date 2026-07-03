@@ -50,12 +50,26 @@ export function SettingsPage() {
   // Port
   const [port, setPort] = useState("3939")
 
+  // Sessions
+  const [sessions, setSessions] = useState<any[]>([])
+  const [currentJti, setCurrentJti] = useState<string | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<{ jti: string; type: "one" | "all" } | null>(null)
+
   // Revoke dialog
   const [showRevokeDialog, setShowRevokeDialog] = useState(false)
 
   // Tunnel
   const tunnel = useTunnelStore()
   const [tunnelLoading, setTunnelLoading] = useState(false)
+
+  const fetchSessions = () => {
+    fetch("/api/settings/sessions").then((r) => r.json()).then((d) => {
+      if (d.success) {
+        setSessions(d.sessions || [])
+        setCurrentJti(d.current_jti || null)
+      }
+    }).catch(() => {})
+  }
 
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
@@ -70,6 +84,7 @@ export function SettingsPage() {
     fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
       if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null, error: d.error ?? null })
     }).catch(() => {})
+    fetchSessions()
   }, [])
 
   const showError = (msg: string) => { setError(msg); setSuccess(null) }
@@ -144,18 +159,32 @@ export function SettingsPage() {
     } catch { showError("Network error") }
   }
 
-  const handleRevokeAll = async () => {
+  const handleRevoke = async () => {
+    if (!revokeTarget) return
+    const { jti, type } = revokeTarget
+    const url = type === "all" ? "/api/settings/revoke-all" : "/api/settings/sessions/revoke"
+    const body = type === "all" ? undefined : JSON.stringify({ jti })
     try {
-      const res = await fetch("/api/settings/revoke-all", { method: "POST" })
+      const res = await fetch(url, {
+        method: "POST",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body,
+      })
       const data = await res.json()
       if (data.success) {
-        showSuccess("All sessions revoked. You will be logged out.")
-        setTimeout(() => { window.location.href = "/login" }, 1500)
+        if (type === "all" || jti === currentJti) {
+          showSuccess("Session revoked. You will be logged out.")
+          setTimeout(() => { window.location.href = "/login" }, 1500)
+        } else {
+          showSuccess("Session revoked")
+          fetchSessions()
+        }
       } else {
         showError(data.message || "Failed")
       }
     } catch { showError("Network error") }
     setShowRevokeDialog(false)
+    setRevokeTarget(null)
   }
 
   const handleBrowseFolder = () => {
@@ -348,18 +377,39 @@ export function SettingsPage() {
       <div className="rounded-xl border bg-card p-6">
         <h3 className="font-semibold mb-4">Active Sessions</h3>
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 rounded-lg border">
-            <div className="flex items-center gap-3">
-              <Monitor className="w-5 h-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium">Current Session</p>
-                <p className="text-xs text-muted-foreground">Active now</p>
+          {sessions.length === 0 && (
+            <p className="text-sm text-muted-foreground">No active sessions</p>
+          )}
+          {sessions.map((s: any) => (
+            <div key={s.jti} className="flex items-center justify-between p-3 rounded-lg border">
+              <div className="flex items-center gap-3">
+                <Monitor className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">
+                    {s.jti.slice(0, 8)}...
+                    {s.jti === currentJti && (
+                      <span className="text-xs text-green-600 dark:text-green-400 font-medium ml-2">Current</span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(s.created_at * 1000).toLocaleString()}
+                  </p>
+                </div>
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setRevokeTarget({ jti: s.jti, type: "one" }); setShowRevokeDialog(true) }}
+              >
+                Revoke
+              </Button>
             </div>
-            <span className="text-xs text-green-600 dark:text-green-400 font-medium">Current</span>
-          </div>
+          ))}
         </div>
-        <Button onClick={() => setShowRevokeDialog(true)} size="sm" variant="destructive" className="mt-4">
+        <Button
+          onClick={() => { setRevokeTarget({ jti: "", type: "all" }); setShowRevokeDialog(true) }}
+          size="sm" variant="destructive" className="mt-4"
+        >
           <Shield className="h-4 w-4 mr-1" /> Revoke All Sessions
         </Button>
       </div>
@@ -470,17 +520,21 @@ export function SettingsPage() {
 
       <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 
-      <AlertDialog open={showRevokeDialog} onOpenChange={setShowRevokeDialog}>
+      <AlertDialog open={showRevokeDialog} onOpenChange={(o) => { setShowRevokeDialog(o); if (!o) setRevokeTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke All Devices</AlertDialogTitle>
+            <AlertDialogTitle>{revokeTarget?.type === "all" ? "Revoke All Devices" : "Revoke Session"}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will log out all active sessions, including your current one. You will need to sign in again.
+              {revokeTarget?.type === "all"
+                ? "This will log out all active sessions, including your current one. You will need to sign in again."
+                : "This will log out the selected session."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRevokeAll} className="bg-destructive hover:bg-destructive/90">Revoke All</AlertDialogAction>
+            <AlertDialogAction onClick={handleRevoke} className="bg-destructive hover:bg-destructive/90">
+              {revokeTarget?.type === "all" ? "Revoke All" : "Revoke"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

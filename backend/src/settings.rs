@@ -204,6 +204,58 @@ pub async fn revoke_all_handler(State(state): State<AppState>) -> Response {
     }
 }
 
+pub async fn list_sessions_handler(
+    State(state): State<AppState>,
+    req: axum::extract::Request,
+) -> Response {
+    let current_jti = req
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|c| auth::parse_cookie(c, "token"))
+        .and_then(|t| auth::verify_jwt(t, &state.jwt_key).ok())
+        .map(|claims| claims.jti);
+
+    let db_lock = state.db.lock().await;
+    let sessions = auth::list_sessions(&db_lock, 1).unwrap_or_default();
+    drop(db_lock);
+
+    Json(json!({
+        "success": true,
+        "sessions": sessions,
+        "current_jti": current_jti,
+    }))
+    .into_response()
+}
+
+#[derive(Deserialize)]
+pub struct RevokeSessionBody {
+    jti: String,
+}
+
+pub async fn revoke_session_handler(
+    State(state): State<AppState>,
+    Json(body): Json<RevokeSessionBody>,
+) -> Response {
+    let db_lock = state.db.lock().await;
+    match auth::revoke_session(&db_lock, &body.jti) {
+        Ok(_) => {
+            let _ = crate::db::insert_audit_log(
+                &db_lock,
+                "session_revoked",
+                Some(&format!("Session {} revoked", &body.jti[..8])),
+                None,
+            );
+            drop(db_lock);
+            ok_json("Session revoked").into_response()
+        }
+        Err(e) => {
+            drop(db_lock);
+            err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response()
+        }
+    }
+}
+
 pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
     let db_path = crate::get_db_path();
     let file = match tokio::fs::File::open(&db_path).await {

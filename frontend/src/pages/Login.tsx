@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent } from "react"
+import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { Monitor, AlertTriangle } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
@@ -7,9 +7,25 @@ export function LoginPage() {
   const [password, setPassword] = useState("")
   const [totp, setTotp] = useState(["", "", "", "", "", ""])
   const [error, setError] = useState("")
+  const [checking, setChecking] = useState(true)
   const navigate = useNavigate()
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
   const inputsRef = useRef<(HTMLInputElement | null)[]>([])
+
+  useEffect(() => {
+    fetch("/api/auth/check")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) {
+          setAuthenticated(true)
+          navigate("/dashboard", { replace: true })
+        }
+        setChecking(false)
+      })
+      .catch(() => setChecking(false))
+  }, [navigate, setAuthenticated])
+
+  if (checking) return null
 
   const handleTotpChange = (index: number, value: string) => {
     if (value.length > 1) return

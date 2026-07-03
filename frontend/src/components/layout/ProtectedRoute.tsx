@@ -19,15 +19,28 @@ export function ProtectedRoute() {
       setChecking(false)
       return
     }
-    fetch("/api/auth/check")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.authenticated) {
+
+    async function checkAuth() {
+      const res = await fetch("/api/auth/check")
+      const data = await res.json()
+      if (data.authenticated) {
+        setAuthenticated(true)
+        setChecking(false)
+        return
+      }
+      // Auth check failed — try refresh before giving up
+      const refreshRes = await fetch("/api/auth/refresh", { method: "POST" })
+      if (refreshRes.ok) {
+        const retryRes = await fetch("/api/auth/check")
+        const retryData = await retryRes.json()
+        if (retryData.authenticated) {
           setAuthenticated(true)
         }
-        setChecking(false)
-      })
-      .catch(() => setChecking(false))
+      }
+      setChecking(false)
+    }
+
+    checkAuth()
   }, [isAuthenticated, setAuthenticated, setLocal])
 
   if (checking) return null

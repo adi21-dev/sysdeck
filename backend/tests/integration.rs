@@ -424,7 +424,13 @@ async fn test_power_execute_records_action_in_mock() {
         .unwrap();
     let resp = login_request(&mut router, "TestP@ss123", &code).await;
     assert_eq!(resp.status(), 200);
-    let cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap().to_string();
+    let cookie = resp
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
     let resp = authed_post_json(
         &mut router,
@@ -458,18 +464,25 @@ async fn test_audit_logs_unauthenticated() {
 #[tokio::test]
 async fn test_audit_logs_authenticated() {
     let (mut router, secret) = test_app_with_user();
-    let cookie = login_and_cookie(&mut router, &secret).await;
+    let _cookie = login_and_cookie(&mut router, &secret).await;
     let code = nodedesk_agent::auth::create_totp(secret.clone())
         .generate_current()
         .unwrap();
-    // Perform a login to generate an audit entry
-    let _ = login_request(&mut router, "TestP@ss123", &code).await;
+    // Perform a second login to generate another audit entry;
+    // the second login revokes the first session, so use the new cookie.
+    let resp2 = login_request(&mut router, "TestP@ss123", &code).await;
+    let cookie2 = resp2
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
-    let resp = authed_get(&mut router, "/api/audit/logs", &cookie).await;
+    let resp = authed_get(&mut router, "/api/audit/logs", &cookie2).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert!(data["entries"].is_array());
-    // Should have at least 2 entries: login_success from login_and_cookie + login_success from above
     assert!(data["entries"].as_array().unwrap().len() >= 1);
 }
 
