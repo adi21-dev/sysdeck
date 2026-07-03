@@ -457,6 +457,13 @@ async fn handle_script_ws(mut socket: WebSocket, state: crate::AppState, id: Str
                 if socket.send(Message::Text(msg)).await.is_err() {
                     break;
                 }
+                // ponytail: system message = process exited/killed, close WS immediately
+                if output.stream == "system" {
+                    let _ = socket
+                        .send(Message::Text(r#"{"event":"done"}"#.into()))
+                        .await;
+                    break;
+                }
             }
             Err(broadcast::error::RecvError::Closed) => {
                 let _ = socket
