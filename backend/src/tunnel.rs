@@ -139,7 +139,7 @@ impl TunnelState {
 
 async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> {
     let client = reqwest::Client::builder()
-        .user_agent("nodedesk-agent/0.1")
+        .user_agent("sysdeck-agent/0.1")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 

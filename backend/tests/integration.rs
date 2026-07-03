@@ -2,7 +2,7 @@ mod common;
 
 use axum::http::StatusCode;
 use common::*;
-use nodedesk_agent::auth;
+use sysdeck_agent::auth;
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -330,10 +330,10 @@ async fn test_file_list_unauthenticated() {
 
 #[tokio::test]
 async fn test_file_list_authenticated() {
-    let secret = nodedesk_agent::auth::generate_totp_secret();
+    let secret = sysdeck_agent::auth::generate_totp_secret();
     let (mut router, _state) = test_app_with_seeded(|conn| {
         seed_user(conn, "TestP@ss123", &secret);
-        nodedesk_agent::db::set_setting(conn, "allowed_paths", r#"["C:\\Users"]"#).unwrap();
+        sysdeck_agent::db::set_setting(conn, "allowed_paths", r#"["C:\\Users"]"#).unwrap();
     });
     let cookie = login_and_cookie(&mut router, &secret).await;
 
@@ -406,11 +406,11 @@ async fn test_power_execute_requires_confirmation() {
 #[tokio::test]
 #[ignore = "dangerous: would actually trigger power action"]
 async fn test_power_execute_records_action_in_mock() {
-    let totp_secret = nodedesk_agent::auth::generate_totp_secret();
+    let totp_secret = sysdeck_agent::auth::generate_totp_secret();
     let (mut router, _state, mock) = test_app_with_mock(|conn| {
         seed_user(conn, "TestP@ss123", &totp_secret);
     });
-    let code = nodedesk_agent::auth::create_totp(totp_secret)
+    let code = sysdeck_agent::auth::create_totp(totp_secret)
         .generate_current()
         .unwrap();
     let resp = login_request(&mut router, "TestP@ss123", &code).await;
@@ -435,7 +435,7 @@ async fn test_power_execute_records_action_in_mock() {
     tokio::time::sleep(std::time::Duration::from_secs(6)).await;
 
     let last = mock.last_action.lock().unwrap();
-    assert_eq!(*last, Some(nodedesk_agent::PowerAction::Shutdown));
+    assert_eq!(*last, Some(sysdeck_agent::PowerAction::Shutdown));
 }
 
 // ============================================================
@@ -456,7 +456,7 @@ async fn test_audit_logs_unauthenticated() {
 async fn test_audit_logs_authenticated() {
     let (mut router, secret) = test_app_with_user();
     let _cookie = login_and_cookie(&mut router, &secret).await;
-    let code = nodedesk_agent::auth::create_totp(secret.clone())
+    let code = sysdeck_agent::auth::create_totp(secret.clone())
         .generate_current()
         .unwrap();
     // Perform a second login to generate another audit entry;

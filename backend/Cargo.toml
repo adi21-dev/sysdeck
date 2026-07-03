@@ -1,15 +1,15 @@
 [package]
-name = "nodedesk-agent"
+name = "sysdeck-agent"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
 
 [lib]
-name = "nodedesk_agent"
+name = "sysdeck_agent"
 path = "src/lib.rs"
 
 [[bin]]
-name = "nodedesk-agent"
+name = "sysdeck-agent"
 path = "src/main.rs"
 
 [dependencies]

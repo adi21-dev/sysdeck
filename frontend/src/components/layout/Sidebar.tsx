@@ -16,7 +16,7 @@ export function Sidebar() {
         <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
           <Monitor className="w-4 h-4 text-primary" />
         </div>
-        <span className="font-semibold text-lg">NodeDesk</span>
+        <span className="font-semibold text-lg">SysDeck</span>
       </div>
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {items.map((item) => (

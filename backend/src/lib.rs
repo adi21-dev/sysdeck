@@ -82,7 +82,7 @@ pub struct AppState {
 pub fn get_data_dir() -> PathBuf {
     let local_app_data =
         std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
-    PathBuf::from(local_app_data).join("NodeDesk")
+    PathBuf::from(local_app_data).join("SysDeck")
 }
 
 pub fn get_logs_dir() -> PathBuf {
@@ -98,16 +98,16 @@ const MAX_LOG_FILES: usize = 3;
 
 pub fn rotate_logs(logs_dir: &Path) {
     // Shift old logs: remove beyond limit, shift .2→.3, .1→.2, current→.1
-    let _ = std::fs::remove_file(logs_dir.join(format!("nodedesk.{}.log", MAX_LOG_FILES)));
+    let _ = std::fs::remove_file(logs_dir.join(format!("sysdeck.{}.log", MAX_LOG_FILES)));
     for i in (2..=MAX_LOG_FILES).rev() {
         let _ = std::fs::rename(
-            logs_dir.join(format!("nodedesk.{}.log", i - 1)),
-            logs_dir.join(format!("nodedesk.{}.log", i)),
+            logs_dir.join(format!("sysdeck.{}.log", i - 1)),
+            logs_dir.join(format!("sysdeck.{}.log", i)),
         );
     }
-    let current = logs_dir.join("nodedesk.log");
+    let current = logs_dir.join("sysdeck.log");
     if current.exists() {
-        let _ = std::fs::rename(&current, logs_dir.join("nodedesk.1.log"));
+        let _ = std::fs::rename(&current, logs_dir.join("sysdeck.1.log"));
     }
 }
 
@@ -117,7 +117,7 @@ pub fn init_dirs() {
     std::fs::create_dir_all(get_logs_dir()).expect("Failed to create logs directory");
     println!("Data directory: {}", data_dir.display());
     // Rotate logs if current file exceeds 10 MB
-    let log_path = get_logs_dir().join("nodedesk.log");
+    let log_path = get_logs_dir().join("sysdeck.log");
     if log_path.exists() {
         if let Ok(meta) = std::fs::metadata(&log_path) {
             if meta.len() > MAX_LOG_SIZE {
@@ -202,7 +202,7 @@ fn is_startup_enabled() -> bool {
                 "query",
                 "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
                 "/v",
-                "NodeDesk Agent",
+                "SysDeck Agent",
             ])
             .output()
             .map(|o| o.status.success())
@@ -224,7 +224,7 @@ fn set_startup(enabled: bool) {
                     "add",
                     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
                     "/v",
-                    "NodeDesk Agent",
+                    "SysDeck Agent",
                     "/t",
                     "REG_SZ",
                     "/d",
@@ -238,7 +238,7 @@ fn set_startup(enabled: bool) {
                     "delete",
                     "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
                     "/v",
-                    "NodeDesk Agent",
+                    "SysDeck Agent",
                     "/f",
                 ])
                 .output();
@@ -316,7 +316,7 @@ pub fn spawn_tray(
         .expect("Failed to create menu");
 
         let tray = TrayIconBuilder::new()
-            .with_tooltip("NodeDesk Agent")
+            .with_tooltip("SysDeck Agent")
             .with_icon(red.clone())
             .with_menu(Box::new(menu))
             .build()
@@ -390,21 +390,21 @@ pub fn spawn_tray(
                         Ok(TrayCommand::SetConnected) => {
                             tracing::info!(action = "tray", command = "SetConnected");
                             tray.set_icon(Some(green.clone())).ok();
-                            tray.set_tooltip(Some("NodeDesk: Connected")).ok();
+                            tray.set_tooltip(Some("SysDeck: Connected")).ok();
                             pause_item.set_text("Pause Tunnel");
                             copy_url_item.set_enabled(true);
                         }
                         Ok(TrayCommand::SetReconnecting) => {
                             tracing::info!(action = "tray", command = "SetReconnecting");
                             tray.set_icon(Some(yellow.clone())).ok();
-                            tray.set_tooltip(Some("NodeDesk: Reconnecting...")).ok();
+                            tray.set_tooltip(Some("SysDeck: Reconnecting...")).ok();
                             copy_url_item.set_enabled(false);
                             pause_item.set_text("Pause Tunnel");
                         }
                         Ok(TrayCommand::SetOffline) => {
                             tracing::info!(action = "tray", command = "SetOffline");
                             tray.set_icon(Some(red.clone())).ok();
-                            tray.set_tooltip(Some("NodeDesk: Offline")).ok();
+                            tray.set_tooltip(Some("SysDeck: Offline")).ok();
                             pause_item.set_text("Resume Tunnel");
                             copy_url_item.set_enabled(false);
                         }

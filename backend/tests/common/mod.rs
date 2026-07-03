@@ -9,11 +9,11 @@ use rusqlite::Connection;
 use tokio::sync::{broadcast, Mutex};
 use tower::ServiceExt;
 
-use nodedesk_agent::auth::LockoutState;
-use nodedesk_agent::db::{self, TelemetrySnapshot};
-use nodedesk_agent::get_data_dir;
-use nodedesk_agent::setup::SetupManager;
-use nodedesk_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState};
+use sysdeck_agent::auth::LockoutState;
+use sysdeck_agent::db::{self, TelemetrySnapshot};
+use sysdeck_agent::get_data_dir;
+use sysdeck_agent::setup::SetupManager;
+use sysdeck_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState};
 
 // Dummy JWT key for local integration tests only. Safe to expose.
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
@@ -26,7 +26,7 @@ pub fn test_app() -> (Router, AppState) {
 /// Build a Router seeded with a user for authenticated tests.
 /// Returns (router, user_totp_secret) so tests can generate TOTP codes.
 pub fn test_app_with_user() -> (Router, Vec<u8>) {
-    let secret = nodedesk_agent::auth::generate_totp_secret();
+    let secret = sysdeck_agent::auth::generate_totp_secret();
     // Dummy password for local integration tests only. Safe to expose.
     let password = "TestP@ss123";
     let router = test_app_with_seeded(|conn| {
@@ -91,7 +91,7 @@ fn test_app_inner(
         setup_token: Arc::new("test-setup-token-123".to_string()),
     };
 
-    let router = nodedesk_agent::build_router(app_state.clone());
+    let router = sysdeck_agent::build_router(app_state.clone());
     (router, app_state)
 }
 
@@ -110,8 +110,8 @@ pub async fn body_json(resp: axum::response::Response) -> serde_json::Value {
 
 /// Seed a user into the DB. Exported for reuse by other test modules.
 pub fn seed_user(conn: &rusqlite::Connection, password: &str, totp_secret: &[u8]) {
-    let hash = nodedesk_agent::auth::hash_password(password).unwrap();
-    let b32 = nodedesk_agent::auth::totp_secret_to_b32(totp_secret);
+    let hash = sysdeck_agent::auth::hash_password(password).unwrap();
+    let b32 = sysdeck_agent::auth::totp_secret_to_b32(totp_secret);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -138,7 +138,7 @@ pub async fn login_request(
 
 /// Login and extract the Set-Cookie value
 pub async fn login_and_cookie(router: &mut Router, secret: &[u8]) -> String {
-    let code = nodedesk_agent::auth::create_totp(secret.to_vec())
+    let code = sysdeck_agent::auth::create_totp(secret.to_vec())
         .generate_current()
         .unwrap();
     let resp = login_request(router, "TestP@ss123", &code).await;

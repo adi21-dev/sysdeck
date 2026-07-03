@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "cargo run --bin nodedesk-agent",
+      command: "cargo run --bin sysdeck-agent",
       port: 3939,
       cwd: "../../backend",
       timeout: 180000,

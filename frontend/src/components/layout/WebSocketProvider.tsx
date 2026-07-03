@@ -60,7 +60,7 @@ function ShuttingDownOverlay() {
         <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
           <MonitorDown className="w-10 h-10 text-muted-foreground animate-pulse" />
         </div>
-        <h2 className="text-2xl font-semibold mb-2">NodeDesk is shutting down</h2>
+        <h2 className="text-2xl font-semibold mb-2">SysDeck is shutting down</h2>
         <p className="text-muted-foreground">The remote system is powering off</p>
       </div>
     </div>

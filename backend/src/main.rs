@@ -7,10 +7,10 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
-use nodedesk_agent::auth;
-use nodedesk_agent::db::{self, TelemetrySnapshot};
-use nodedesk_agent::tunnel::TunnelStatus;
-use nodedesk_agent::{
+use sysdeck_agent::auth;
+use sysdeck_agent::db::{self, TelemetrySnapshot};
+use sysdeck_agent::tunnel::TunnelStatus;
+use sysdeck_agent::{
     build_router, find_available_port, get_data_dir, init_db, init_dirs, spawn_tray, AppState,
     LockoutState, PowerState, ScriptState, SetupManager, TerminalState, TrayCommand, TunnelState,
 };
@@ -38,7 +38,7 @@ fn spawn_windows_shutdown_listener() {
     }
 
     std::thread::spawn(move || unsafe {
-        let class_name: Vec<u16> = "NodeDeskHiddenWindow\0".encode_utf16().collect();
+        let class_name: Vec<u16> = "SysDeckHiddenWindow\0".encode_utf16().collect();
         let wc = WNDCLASSW {
             style: 0,
             lpfnWndProc: Some(wnd_proc),
@@ -78,8 +78,8 @@ fn spawn_windows_shutdown_listener() {
 async fn main() {
     let filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
-    let logs_dir = nodedesk_agent::get_logs_dir();
-    let file_appender = tracing_appender::rolling::never(&logs_dir, "nodedesk.log");
+    let logs_dir = sysdeck_agent::get_logs_dir();
+    let file_appender = tracing_appender::rolling::never(&logs_dir, "sysdeck.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::registry()
@@ -95,7 +95,7 @@ async fn main() {
         )
         .init();
 
-    println!("NodeDesk Agent v{} starting...", env!("CARGO_PKG_VERSION"));
+    println!("SysDeck Agent v{} starting...", env!("CARGO_PKG_VERSION"));
 
     #[cfg(target_os = "windows")]
     spawn_windows_shutdown_listener();
@@ -115,7 +115,7 @@ async fn main() {
         .collect();
     let setup_token = Arc::new(setup_token);
     println!("\n========================================");
-    println!(" NodeDesk Setup Token: {}", setup_token);
+    println!(" SysDeck Setup Token: {}", setup_token);
     println!("========================================\n");
 
     let (port, listener) = find_available_port().await;
@@ -126,7 +126,7 @@ async fn main() {
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
 
     // Start telemetry engine
-    nodedesk_agent::telemetry::start_engine(telemetry_tx.clone(), conn.clone());
+    sysdeck_agent::telemetry::start_engine(telemetry_tx.clone(), conn.clone());
 
     // Auth state
     let lockout = Arc::new(LockoutState::new());
@@ -177,7 +177,7 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             match tray_action_rx.try_recv() {
-                Ok(nodedesk_agent::TrayAction::ToggleTunnel) => {
+                Ok(sysdeck_agent::TrayAction::ToggleTunnel) => {
                     let status = tunnel_state_clone2.status.read().await.clone();
                     match status {
                         TunnelStatus::Running { .. }
@@ -302,7 +302,7 @@ async fn main() {
                 let _ = shutdown_tunnel.stop().await;
                 tracing::info!("Finalizing database...");
                 if let Ok(db_lock) = db_for_shutdown.try_lock() {
-                    let _ = nodedesk_agent::db::wal_checkpoint(&db_lock);
+                    let _ = sysdeck_agent::db::wal_checkpoint(&db_lock);
                     drop(db_lock);
                 }
             })
@@ -326,5 +326,5 @@ async fn main() {
 
     server_handle.await.expect("Server task panicked");
 
-    println!("NodeDesk Agent stopped.");
+    println!("SysDeck Agent stopped.");
 }

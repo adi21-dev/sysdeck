@@ -1,6 +1,6 @@
 {
-  "name": "NodeDesk",
-  "short_name": "NodeDesk",
+  "name": "SysDeck",
+  "short_name": "SysDeck",
   "description": "Remote system monitoring and management",
   "start_url": "/",
   "display": "standalone",

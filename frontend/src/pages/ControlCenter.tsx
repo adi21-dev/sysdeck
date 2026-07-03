@@ -765,8 +765,8 @@ export function ControlCenterPage() {
         title={networkConfirm?.type === "monitor-off" ? "Turn off monitor?" : "Confirm Network Change"}
         description={
           networkConfirm?.type === "flush-dns" ? "Flushing DNS may briefly disrupt network connectivity." :
-          networkConfirm?.type === "adapter" ? `Disabling "${networkConfirm?.name}" will cut network access. You may lose connection to NodeDesk.` :
-          networkConfirm?.type === "wifi-disconnect" ? "Disconnecting from Wi-Fi may disconnect you from NodeDesk." :
+          networkConfirm?.type === "adapter" ? `Disabling "${networkConfirm?.name}" will cut network access. You may lose connection to SysDeck.` :
+          networkConfirm?.type === "wifi-disconnect" ? "Disconnecting from Wi-Fi may disconnect you from SysDeck." :
           networkConfirm?.type === "monitor-off" ? "The monitor will turn off. You need physical input to wake it." :
           "Are you sure?"
         }

@@ -270,7 +270,7 @@ function StepRecoveryCodes({ onComplete }: { onComplete: (token: string) => void
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "nodedesk-recovery-codes.txt"
+    a.download = "sysdeck-recovery-codes.txt"
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -517,7 +517,7 @@ export function SetupPage() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">NodeDesk Agent Setup</h1>
+          <h1 className="text-2xl font-bold">SysDeck Agent Setup</h1>
           <p className="text-muted-foreground mt-1 text-sm">Configure your agent</p>
         </div>
         <StepIndicator current={step} steps={steps} />

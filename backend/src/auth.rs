@@ -41,10 +41,10 @@ const RATE_LIMIT_REQUESTS: u32 = 60;
 
 // --- JWT Key Management (OS Keychain via keyring crate, with file fallback) ---
 
-const KEYRING_SERVICE: &str = "NodeDesk";
+const KEYRING_SERVICE: &str = "SysDeck";
 const KEYRING_USER: &str = "jwt-signing-key";
 const SECRETS_FILE: &str = ".secrets";
-const FALLBACK_DIR_ENV: &str = "NODEDESK_DATA_DIR";
+const FALLBACK_DIR_ENV: &str = "SYSDECK_DATA_DIR";
 
 /// Determine where to store secrets for the fallback file.
 fn fallback_secrets_dir() -> PathBuf {
@@ -54,7 +54,7 @@ fn fallback_secrets_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
         let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        base.join("NodeDesk")
+        base.join("SysDeck")
     }
     #[cfg(not(target_os = "linux"))]
     {
@@ -113,7 +113,7 @@ fn decrypt_aes_gcm(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
 ///
 /// 1. Try OS keychain via `keyring` crate.
 /// 2. If keyring is unavailable (headless Linux), fall back to machine-id derived
-///    AES-256-GCM key stored in `~/.local/share/NodeDesk/.secrets`.
+///    AES-256-GCM key stored in `~/.local/share/SysDeck/.secrets`.
 pub fn load_or_create_jwt_key() -> Result<Vec<u8>, String> {
     // --- Attempt 1: keyring ---
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
@@ -200,8 +200,8 @@ pub fn create_totp(secret: Vec<u8>) -> TOTP {
         1,
         30,
         secret,
-        Some("NodeDesk".to_string()),
-        "NodeDesk".to_string(),
+        Some("SysDeck".to_string()),
+        "SysDeck".to_string(),
     )
     .expect("Failed to create TOTP")
 }

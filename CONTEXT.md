@@ -1,10 +1,10 @@
-# 📄 Product Requirements Document: NodeDesk V1
+# 📄 Product Requirements Document: SysDeck V1
 
 ## 1. Problem Statement
 Users need to monitor, manage, and execute tasks on their personal computers (Windows, macOS, Linux) while away. Traditional Remote Desktop Protocol (RDP/VNC) is resource-heavy, requires complex network configurations (port forwarding), and provides a terrible experience on mobile screens. Existing lightweight tools lack deep system integration, require self-hosting complex infrastructure, or compromise on security and ease of use.
 
 ## 2. Proposed Solution
-**NodeDesk** is a standalone, portable, cross-platform executable. When launched, it starts a local web server, embeds a mobile-optimized React dashboard, and securely tunnels it to the public internet. 
+**SysDeck** is a standalone, portable, cross-platform executable. When launched, it starts a local web server, embeds a mobile-optimized React dashboard, and securely tunnels it to the public internet. 
 
 Users access the dashboard via any standard web browser (or installed as a PWA on mobile) to monitor system health, manage files, execute scripts, and control hardware securely from anywhere. 
 
@@ -13,7 +13,7 @@ Users access the dashboard via any standard web browser (or installed as a PWA o
 ---
 
 ## 3. The "Three UI" Architecture
-NodeDesk operates on a context-aware UI model. The backend serves the same React frontend, but the UI adapts based on the access context.
+SysDeck operates on a context-aware UI model. The backend serves the same React frontend, but the UI adapts based on the access context.
 
 ### 3.1 Context 1: Localhost Admin UI (The Manager)
 *   **Access:** Strictly bound to `127.0.0.1` (or validated via request headers to ensure it's not coming through the tunnel).
@@ -36,7 +36,7 @@ NodeDesk operates on a context-aware UI model. The backend serves the same React
 ## 4. System Architecture & Build Pipeline
 
 ### 4.1 The Single Binary & Build Pipeline
-NodeDesk is distributed as a **single, standalone binary** with zero external dependencies.
+SysDeck is distributed as a **single, standalone binary** with zero external dependencies.
 *   **Frontend Build:** A Rust `build.rs` script automatically executes `npm install && npm run build` for the React app during compilation.
 *   **Embedding:** The compiled React `dist/` folder is embedded directly into the Rust binary using the `rust-embed` crate.
 *   **Cross-Compilation:** We use the `cross` tool to compile the Rust backend for Windows (`.exe`), macOS (`.app`/binary), and Linux (ELF binary) from a single codebase.
@@ -47,7 +47,7 @@ NodeDesk is distributed as a **single, standalone binary** with zero external de
 *   **Stream Parsing:** The agent captures `cloudflared` **`stderr`** to extract the ephemeral URL.
 
 ### 4.3 Database & Storage
-*   **Single Engine:** SQLite (`data.db`) stored in the OS-specific local app data directory (e.g., `~/.config/NodeDesk/` on Linux, `%LOCALAPPDATA%\NodeDesk\` on Windows).
+*   **Single Engine:** SQLite (`data.db`) stored in the OS-specific local app data directory (e.g., `~/.config/SysDeck/` on Linux, `%LOCALAPPDATA%\SysDeck\` on Windows).
 *   **Concurrency:** Strictly configured with `PRAGMA journal_mode=WAL;` and `PRAGMA synchronous=NORMAL;`.
 *   **Secret Storage:** Uses the **`keyring` crate** to securely store the JWT signing key and credentials in the OS-native Keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service). *Fallback:* Machine-ID encryption if the OS keyring is unavailable (e.g., headless Linux).
 
@@ -120,7 +120,7 @@ To minimize CPU overhead, `sysinfo` polling is tiered:
 *   **Desktop (Windows/macOS/Linux GUI):** The binary automatically opens the default web browser to `http://localhost:<port>/setup`.
 *   **Headless Linux (Servers):** Since there is no GUI to open a browser, the terminal prints:
     ```text
-    NodeDesk is running on http://127.0.0.1:3939
+    SysDeck is running on http://127.0.0.1:3939
     To complete setup, use SSH port forwarding or access via your network.
     One-time setup token: a8f9-3b2c-9d1e
     ```
@@ -133,7 +133,7 @@ To minimize CPU overhead, `sysinfo` polling is tiered:
 
 ## 9. Technical Stack
 
-### Backend (NodeDesk Agent)
+### Backend (SysDeck Agent)
 *   **Language:** Rust (Edition 2021)
 *   **Web Framework:** `axum` (with `tower-http` for CORS, Compression, CSP).
 *   **Async Runtime:** `tokio`

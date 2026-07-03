@@ -623,7 +623,7 @@ fn connect_wifi_windows(
 ) -> Result<(), String> {
     let temp_dir = std::env::temp_dir();
     let profile_path = temp_dir.join(format!(
-        "nodedesk_wifi_{}.xml",
+        "sysdeck_wifi_{}.xml",
         ssid.replace(|c: char| !c.is_alphanumeric(), "_")
     ));
 

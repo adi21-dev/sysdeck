@@ -74,7 +74,7 @@ export function LoginPage() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-primary/10 mb-4">
               <Monitor className="w-6 h-6 text-primary" />
             </div>
-            <h1 className="text-2xl font-semibold tracking-tight">Welcome to NodeDesk</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Welcome to SysDeck</h1>
             <p className="text-sm text-muted-foreground mt-2">Sign in to manage your remote system</p>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
