@@ -1,6 +1,6 @@
-# NodeDesk — Remote PC Agent
+# SysDeck — Remote PC Agent
 
-A lightweight, cross-platform remote system management agent with a mobile-optimized web dashboard. Monitor CPU/RAM/disk/network, browse and transfer files, run scripts, and control power — all through a secure Cloudflare tunnel. No RDP, no complex config.
+A lightweight, cross-platform remote system management agent with a mobile-optimized web dashboard. Monitor CPU/RAM/disk/network, browse and transfer files, run scripts, control power, manage windows, open an interactive terminal, and wake machines on LAN — all through a secure Cloudflare tunnel. No RDP, no complex config.
 
 ## Architecture
 
@@ -16,6 +16,11 @@ A lightweight, cross-platform remote system management agent with a mobile-optim
 │  │  /api/files  │─── file manager            │
 │  │  /api/scripts│─── script engine           │
 │  │  /api/power  │─── power controls          │
+│  │  /api/windows│─── window management       │
+│  │  /api/disks  │─── storage drives          │
+│  │  /api/processes│── top processes          │
+│  │  /api/sessions│── user sessions           │
+│  │  /api/wol    │─── wake-on-LAN             │
 │  │  /api/settings│─── settings admin         │
 │  │  /api/audit  │─── audit log              │
 │  │  /login      │─── password + TOTP auth    │
@@ -40,11 +45,12 @@ A lightweight, cross-platform remote system management agent with a mobile-optim
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Rust, Axum 0.7, tokio, rusqlite (WAL) |
+| Backend | Rust, Axum 0.7, tokio, rusqlite (WAL), sysinfo |
 | Frontend | React 19, Vite, Tailwind CSS v4, shadcn/ui |
 | State | Zustand |
 | Charts | Recharts |
 | Icons | Lucide React |
+| Terminal | xterm.js |
 | Tunnel | Cloudflare Quick Tunnel (cloudflared) |
 | Auth | Argon2id, TOTP, keyring (OS Keychain), zxcvbn |
 | Rate Limit | governor |
@@ -55,13 +61,18 @@ A lightweight, cross-platform remote system management agent with a mobile-optim
 
 - **Dashboard** — live CPU, RAM, network, disk, temperature via WebSocket (1s polling); real-time charts
 - **File Manager** — browse, upload (streaming, 500MB cap), download, delete, rename; table/grid views; path canonicalization with system directory block
-- **Script Engine** — run PowerShell/Batch/Shell scripts; live streaming or wait-and-show output; 5-min timeout; 1MB output truncation
+- **Script Engine** — run PowerShell/Batch/Shell scripts; live streaming or wait-and-show output; 5-min timeout; 1MB output truncation; winget quick-commands
+- **Interactive Terminal** — PTY-backed terminal via WebSocket; xterm.js frontend; resize, multi-session; lazy-loaded chunk
+- **Window Management** — list, focus, minimize, restore, close windows via Win32 API
 - **Power Controls** — Shutdown, Restart, Sleep, Sign Out, Lock; 5-second cancellation window; active-upload check before power off; two-step type-to-confirm
-- **Security** — password + TOTP login, 90-day JWT sessions, OS Keychain-stored signing key, account lockout (5 failures → 15 min), IP rate limiting, CSP headers
+- **Storage & Drives** — disk usage overview with progress bars (sysinfo)
+- **Top Processes** — CPU/memory usage, kill processes via taskkill
+- **User Sessions** — list RDP/active sessions, disconnect or logoff via WTSAPI32
+- **Wake-on-LAN** — send magic packet, save/manage MAC addresses
+- **Security** — password + TOTP login, short-lived JWT + opaque refresh tokens, OS Keychain-stored signing key, account lockout (5 failures → 15 min), IP rate limiting, CSP headers
 - **Admin Context** — settings routes restricted to localhost; remote tunnel users see a limited dashboard without admin access
 - **Audit Log** — append-only log of logins, file transfers, script executions, and security changes; filterable by event type and date range
 - **Setup Wizard** — server-rendered first-run flow: password strength check → TOTP QR → recovery codes → relay opt-in
-- **PWA** — installable as a desktop/mobile app; service worker for offline support
 - **Dark Mode** — toggle in sidebar; follows system preference by default; persisted to localStorage
 - **System Tray** — cross-platform tray icon with autostart support (Windows: reg.exe, Linux: .desktop, macOS: LaunchAgents)
 - **Connection Status** — always-visible indicator (green/yellow/red) for WebSocket health
@@ -81,8 +92,8 @@ A lightweight, cross-platform remote system management agent with a mobile-optim
 ### Quick Start
 
 ```bash
-git clone https://github.com/your-org/nodedesk
-cd nodedesk
+git clone https://github.com/adi21-dev/sysdeck
+cd sysdeck
 
 # Backend (starts both backend + frontend automatically via build.rs)
 cd backend
@@ -95,7 +106,7 @@ npm run dev
 ```
 
 On first run, the backend:
-1. Creates `~/.local/share/NodeDesk/` or `%LOCALAPPDATA%\NodeDesk\` for data and logs
+1. Creates `~/.local/share/SysDeck/` or `%LOCALAPPDATA%\SysDeck\` for data and logs
 2. Stores the JWT signing key in your OS keychain (Credential Manager / Keychain / Secret Service)
 3. Downloads `cloudflared` with SHA256 verification
 4. Binds to `localhost:3939` (falls back to random port)
@@ -125,14 +136,14 @@ cd backend
 cross build --release --target x86_64-unknown-linux-gnu
 ```
 
-The resulting binary is at `backend/target/x86_64-unknown-linux-gnu/release/nodedesk-agent.exe`.
+The resulting binary is at `backend/target/x86_64-unknown-linux-gnu/release/sysdeck-agent.exe`.
 
 > **How it works**: `Cross.toml` maps the Linux target to a custom Docker image defined in `cross/Dockerfile.x86_64-unknown-linux-gnu`, which extends the official `cross` base image with `libappindicator3-dev`, `libgtk-3-dev`, `libdbus-1-dev`, and `libsecret-1-dev`. The `build.rs` detects cross-compilation via the `CROSS` environment variable and skips the frontend build (Node.js is not available in the container).
 
 ## Project Structure
 
 ```
-nodedesk/
+sysdeck/
 ├── backend/
 │   ├── build.rs              # Auto-builds frontend during native cargo build (skipped under cross)
 │   ├── src/
@@ -148,27 +159,33 @@ nodedesk/
 │   │   ├── file_manager.rs   # File listing, upload, download, delete, rename
 │   │   ├── script.rs         # Script execution engine (process management)
 │   │   ├── power.rs          # Shutdown/restart/sleep/signout/lock + cancel
-│   │   └── audit.rs          # Audit log queries
+│   │   ├── audit.rs          # Audit log queries
+│   │   ├── terminal.rs       # PTY terminal (portable-pty, WebSocket bridge)
+│   │   ├── windows.rs        # Win32 window management (EnumWindows, SetForegroundWindow)
+│   │   ├── disks.rs          # Storage drive info (sysinfo::Disks)
+│   │   ├── process.rs        # Top processes + kill (sysinfo::System)
+│   │   ├── sessions.rs       # RDP/user sessions (WTSAPI32)
+│   │   └── wol.rs            # Wake-on-LAN (UDP broadcast)
 │   ├── tests/
 │   │   ├── common/mod.rs     # Test helpers (test_app, login helpers)
-│   │   └── integration.rs    # 34 integration tests
+│   │   └── integration.rs    # Integration tests
 │   └── Cargo.toml
 ├── cross/
 │   └── Dockerfile.x86_64-unknown-linux-gnu  # Custom Docker image for cross-compilation
 ├── Cross.toml                                # cross configuration
 ├── frontend/
 │   ├── e2e/
-│   │   ├── specs/            # 8 Playwright spec files (23 tests)
+│   │   ├── specs/            # Playwright spec files
 │   │   └── playwright.config.ts
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── layout/       # Sidebar, BottomNav, AppLayout, ProtectedRoute
-│   │   │   └── ui/           # shadcn/ui: toast, skeleton, empty-state, confirm-dialog, etc.
-│   │   ├── pages/            # Dashboard, Files, Scripts, Controls, Audit, Settings, Login, Setup
+│   │   │   └── ui/           # shadcn/ui components
+│   │   ├── pages/            # Dashboard, Files, Scripts, Controls, Remote Desktop, Audit, Settings
 │   │   ├── hooks/            # WebSocket hook
-│   │   └── lib/              # Zustand stores, navigation config, utilities
-│   ├── public/               # PWA assets (manifest, icons, service worker)
+│   │   └── lib/              # Zustand stores, API utilities
 │   └── package.json
+├── LICENSE
 └── README.md
 ```
 
@@ -213,19 +230,55 @@ nodedesk/
 ### Scripts
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/scripts/execute` | Start script execution |
+| POST | `/api/scripts/execute` | Start script execution (supports `X-Api-Key` for webhooks) |
 | GET | `/ws/script/{id}` | Script output WebSocket |
+
+### Interactive Terminal
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/terminal/create` | Create PTY session, returns `id` |
+| GET | `/ws/terminal/{id}` | Terminal I/O WebSocket (stdin/stdout/resize) |
+
+### Window Management
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/windows` | List visible windows |
+| POST | `/api/windows/focus` | Bring window to foreground |
+| POST | `/api/windows/minimize` | Minimize window |
+| POST | `/api/windows/restore` | Restore window |
+| POST | `/api/windows/close` | Close window |
 
 ### Power Controls
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/power/shutdown` | Shutdown |
-| POST | `/api/power/restart` | Restart |
-| POST | `/api/power/sleep` | Sleep |
-| POST | `/api/power/signout` | Sign Out |
-| POST | `/api/power/lock` | Lock |
+| POST | `/api/power/execute` | Execute power action (shutdown/restart/sleep/hibernate/signout/lock/switchuser) |
 | POST | `/api/power/cancel` | Cancel pending power command |
 | GET | `/api/power/status` | Check pending power status |
+
+### Storage & Drives
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/disks` | List mounted drives with usage stats |
+
+### Processes
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/processes` | Top 15 processes by CPU usage |
+| POST | `/api/processes/kill` | Kill a process by PID |
+
+### User Sessions
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/sessions` | List RDP/active sessions with usernames |
+| POST | `/api/sessions/action` | Disconnect or logoff a session |
+
+### Wake-on-LAN
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/wol/wake` | Send magic packet to MAC address |
+| GET | `/api/wol/macs` | List saved MAC addresses |
+| POST | `/api/wol/macs` | Save a new MAC address |
+| POST | `/api/wol/macs/delete` | Remove a saved MAC address |
 
 ### Settings (localhost only)
 | Method | Path | Description |
@@ -239,6 +292,10 @@ nodedesk/
 | POST | `/api/settings/reset-totp` | Reset TOTP secret |
 | GET | `/api/settings/export-db` | Download database backup |
 | POST | `/api/settings/regenerate-recovery-codes` | Regenerate recovery codes |
+| GET | `/api/settings/sessions` | List active sessions |
+| POST | `/api/settings/sessions/revoke` | Revoke a session |
+| POST | `/api/settings/revoke-all` | Revoke all sessions |
+| POST | `/api/settings/webhook-key` | Rotate webhook API key |
 
 ### Audit Log
 | Method | Path | Description |
@@ -248,18 +305,15 @@ nodedesk/
 ## Testing
 
 ```bash
-# Backend (88 tests)
+# Backend (93 tests)
 cd backend
-cargo test              # 54 unit + 34 integration tests
+cargo test              # 56 unit + 37 integration tests
 cargo clippy            # zero warnings policy
 
-# Frontend (23 Playwright tests)
+# Frontend
 cd frontend
-npm run test:e2e        # starts backend + frontend automatically
-npm run lint            # oxlint
-
-# Full build verification
 npm run build           # tsc -b && vite build
+npm run lint            # oxlint
 ```
 
 ## Security
@@ -268,15 +322,16 @@ npm run build           # tsc -b && vite build
 - **TOTP**: via **totp-rs** (SHA1, 30s window, 6 digits)
 - **Recovery codes**: 10 random Base32 strings, stored as Argon2id hashes
 - **JWT signing key**: 256-bit random, stored in **OS Keychain** via `keyring` crate (Windows Credential Manager, macOS Keychain, Linux Secret Service)
-- **Sessions**: tracked in DB; "Revoke All Devices" deletes all sessions, invalidates all JWTs
+- **Sessions**: short-lived access JWT + opaque refresh token (7-day, SHA-256 hash in DB); multi-device coexistence
 - **Account lockout**: 5 failed attempts → 15-minute cooldown (in-memory, per user)
 - **IP rate limiting**: 60 req/min per IP (governor); skipped for `/setup` and `/login`
 - **CSP**: `default-src 'self'` with restricted style/img/script sources
-- **Admin route protection**: settings and admin endpoints blocked for non-localhost requests (detected via `X-Forwarded-For` header)
+- **Admin route protection**: settings and admin endpoints blocked for non-localhost requests
 - **File path safety**: `std::fs::canonicalize` + blocklist prevents directory traversal and system directory access
 - **Uploads**: streaming with 500MB hard cap, partial files cleaned up on error
 - **Scripts**: 5-minute timeout with forced kill; 1MB output truncation
+- **Webhook auth**: API key via `X-Api-Key` header for tokenless script execution
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) for details.

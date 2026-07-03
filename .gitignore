@@ -8,9 +8,6 @@ frontend/dist/
 frontend/dist-ssr/
 frontend/.vite/
 
-# Generated CSS from Tailwind
-frontend/src/index.css
-
 # Local environment files
 .env
 .env.local
@@ -43,3 +40,5 @@ frontend/e2e/*.png
 graphify-out/
 .agents/
 .opencode/
+AGENTS.md
+opencode.json

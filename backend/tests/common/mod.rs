@@ -15,6 +15,7 @@ use nodedesk_agent::get_data_dir;
 use nodedesk_agent::setup::SetupManager;
 use nodedesk_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState};
 
+// Dummy JWT key for local integration tests only. Safe to expose.
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";
 
 /// Build a Router + AppState with in-memory SQLite.
@@ -26,6 +27,7 @@ pub fn test_app() -> (Router, AppState) {
 /// Returns (router, user_totp_secret) so tests can generate TOTP codes.
 pub fn test_app_with_user() -> (Router, Vec<u8>) {
     let secret = nodedesk_agent::auth::generate_totp_secret();
+    // Dummy password for local integration tests only. Safe to expose.
     let password = "TestP@ss123";
     let router = test_app_with_seeded(|conn| {
         seed_user(conn, password, &secret);
