@@ -80,9 +80,24 @@ pub struct AppState {
 }
 
 pub fn get_data_dir() -> PathBuf {
-    let local_app_data =
-        std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
-    PathBuf::from(local_app_data).join("SysDeck")
+    #[cfg(target_os = "windows")]
+    {
+        let local_app_data =
+            std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
+        PathBuf::from(local_app_data).join("SysDeck")
+    }
+    #[cfg(target_os = "macos")]
+    {
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("SysDeck")
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("sysdeck")
+    }
 }
 
 pub fn get_logs_dir() -> PathBuf {

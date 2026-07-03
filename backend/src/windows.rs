@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use serde::Serialize;
 use serde_json::json;
-use std::sync::Mutex;
+
 
 use crate::AppState;
 
@@ -18,21 +18,18 @@ pub struct WindowInfo {
 // --- Windows implementation ---
 
 #[cfg(target_os = "windows")]
-static WINDOW_BUF: Mutex<Vec<WindowInfo>> = Mutex::new(Vec::new());
-
-#[cfg(target_os = "windows")]
-unsafe extern "system" fn enum_window_callback(hwnd: *mut c_void, _lparam: isize) -> i32 {
+unsafe extern "system" fn enum_window_callback(hwnd: *mut c_void, lparam: isize) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowTextW, IsWindowVisible};
     let mut buf = [0u16; 512];
     let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 512);
     if len > 0 && IsWindowVisible(hwnd) != 0 {
         let title = String::from_utf16_lossy(&buf[..len as usize]);
-        if let Ok(mut list) = WINDOW_BUF.lock() {
-            list.push(WindowInfo {
-                hwnd: hwnd as isize,
-                title,
-            });
-        }
+        // lparam is a raw pointer to a Vec<WindowInfo> on the caller's stack
+        let list = &mut *(lparam as *mut Vec<WindowInfo>);
+        list.push(WindowInfo {
+            hwnd: hwnd as isize,
+            title,
+        });
     }
     1
 }
@@ -40,14 +37,13 @@ unsafe extern "system" fn enum_window_callback(hwnd: *mut c_void, _lparam: isize
 #[cfg(target_os = "windows")]
 fn list_windows() -> Vec<WindowInfo> {
     use windows_sys::Win32::UI::WindowsAndMessaging::EnumWindows;
-    {
-        let mut buf = WINDOW_BUF.lock().unwrap();
-        buf.clear();
-    }
+    let mut result: Vec<WindowInfo> = Vec::new();
     unsafe {
-        EnumWindows(Some(enum_window_callback), 0);
+        EnumWindows(
+            Some(enum_window_callback),
+            &mut result as *mut Vec<WindowInfo> as isize,
+        );
     }
-    let mut result = WINDOW_BUF.lock().unwrap().clone();
     result.sort_by_key(|a| a.title.to_lowercase());
     result
 }

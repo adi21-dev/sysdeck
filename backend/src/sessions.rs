@@ -142,7 +142,10 @@ pub struct SessionActionBody {
     pub action: String,
 }
 
-pub async fn action_handler(Json(body): Json<SessionActionBody>) -> impl IntoResponse {
+pub async fn action_handler(
+    State(_state): State<AppState>,
+    Json(body): Json<SessionActionBody>,
+) -> impl IntoResponse {
     match session_action(body.session_id, &body.action) {
         Ok(()) => Json(json!({"success": true})).into_response(),
         Err(e) => (

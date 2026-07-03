@@ -60,7 +60,6 @@ function App() {
             <Route path="/remote" element={<RemoteDesktopPage />} />
             <Route path="/controls" element={<ControlsPage />} />
             <Route path="/control-center" element={<ControlCenterPage />} />
-            <Route path="/controls" element={<Navigate to="/control-center" replace />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

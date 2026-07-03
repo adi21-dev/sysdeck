@@ -14,10 +14,41 @@ use tokio::sync::{broadcast, Mutex, RwLock};
 
 use crate::AppState;
 
-const SHA256_URL: &str =
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe.sha256";
-const DOWNLOAD_URL: &str =
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe.sha256";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+const CLOUDFLARED_FILENAME: &str = "cloudflared.exe";
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.sha256sum";
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64";
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const CLOUDFLARED_FILENAME: &str = "cloudflared";
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.sha256sum";
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64";
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const CLOUDFLARED_FILENAME: &str = "cloudflared";
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.sha256sum";
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64";
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+const CLOUDFLARED_FILENAME: &str = "cloudflared";
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.sha256sum";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const CLOUDFLARED_FILENAME: &str = "cloudflared";
+
 const MAX_RETRIES: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -68,7 +99,7 @@ impl TunnelState {
             Self {
                 status: RwLock::new(TunnelStatus::Idle),
                 url: RwLock::new(None),
-                exe_path: data_dir.join("cloudflared.exe"),
+                exe_path: data_dir.join(CLOUDFLARED_FILENAME),
                 port,
                 kill_tx: Mutex::new(None),
                 tx,

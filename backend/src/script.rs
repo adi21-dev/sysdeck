@@ -224,13 +224,42 @@ async fn run_script(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
+    } else if script_type.eq_ignore_ascii_case("batch") || script_type.eq_ignore_ascii_case("cmd") {
+        #[cfg(target_os = "windows")]
+        {
+            let content = content.replace("\r\n", " & ").replace('\n', " & ");
+            Command::new("cmd")
+                .args(["/C", &content])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Batch/cmd scripts are only supported on Windows",
+            ))
+        }
     } else {
-        let content = content.replace("\r\n", " & ").replace('\n', " & ");
-        Command::new("cmd")
-            .args(["/C", &content])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
+        // shell: bash on Linux/macOS, cmd on Windows
+        #[cfg(target_os = "windows")]
+        {
+            let content = content.replace("\r\n", " & ").replace('\n', " & ");
+            Command::new("cmd")
+                .args(["/C", &content])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Command::new("bash")
+                .args(["-c", content])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+        }
     };
 
     let mut child = match child {

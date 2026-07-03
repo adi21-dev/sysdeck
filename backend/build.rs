@@ -37,35 +37,30 @@ fn main() {
     let node_modules = frontend_dir.join("node_modules");
     if !node_modules.exists() {
         println!("cargo:info=Running npm install...");
-        run_npm("install", &frontend_dir);
+        run_npm(&["install"], &frontend_dir);
     }
 
     println!("cargo:info=Building frontend...");
-    run_npm("run build", &frontend_dir);
+    run_npm(&["run", "build"], &frontend_dir);
 }
 
-fn run_npm(args: &str, dir: &Path) {
-    let (cmd, prefix) = npm_cmd();
-    let full_cmd = format!("npm {}", args);
-    let full_args: Vec<&str> = if prefix.is_empty() {
-        vec![args]
+fn run_npm(args: &[&str], dir: &Path) {
+    let status = if cfg!(windows) {
+        Command::new("cmd.exe")
+            .arg("/C")
+            .arg("npm")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .expect("Failed to execute npm command")
     } else {
-        vec![prefix, &full_cmd]
+        Command::new("npm")
+            .args(args)
+            .current_dir(dir)
+            .status()
+            .expect("Failed to execute npm command")
     };
-    let status = Command::new(cmd)
-        .args(&full_args)
-        .current_dir(dir)
-        .status()
-        .expect("Failed to execute npm command");
     if !status.success() {
-        panic!("npm {} failed", args);
-    }
-}
-
-fn npm_cmd() -> (&'static str, &'static str) {
-    if cfg!(windows) {
-        ("cmd.exe", "/C")
-    } else {
-        ("npm", "")
+        panic!("npm {} failed", args.join(" "));
     }
 }

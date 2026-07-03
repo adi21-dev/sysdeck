@@ -15,12 +15,25 @@ use tokio::io::AsyncWriteExt;
 use crate::db;
 
 const MAX_UPLOAD_SIZE: u64 = 500 * 1024 * 1024;
+#[cfg(target_os = "windows")]
 const BLOCKED_PREFIXES: &[&str] = &[
     r"c:\windows\system32",
     r"c:\windows",
     r"c:\program files",
     r"c:\program files (x86)",
 ];
+#[cfg(target_os = "linux")]
+const BLOCKED_PREFIXES: &[&str] = &[
+    "/bin", "/sbin", "/usr/bin", "/usr/sbin",
+    "/etc", "/boot", "/proc", "/sys", "/dev",
+];
+#[cfg(target_os = "macos")]
+const BLOCKED_PREFIXES: &[&str] = &[
+    "/System", "/Library", "/usr/bin", "/usr/sbin",
+    "/private/etc", "/bin", "/sbin",
+];
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+const BLOCKED_PREFIXES: &[&str] = &[];
 
 fn strip_wp(s: &str) -> &str {
     s.strip_prefix(r"\\?\").unwrap_or(s)
@@ -49,13 +62,14 @@ fn path_allowed(canonical: &Path, allowed: &[String]) -> bool {
     if allowed.is_empty() {
         return false;
     }
+    let sep = std::path::MAIN_SEPARATOR;
     let lower = strip_wp(&canonical.to_string_lossy().to_lowercase()).to_string();
-    let trimmed = lower.trim_end_matches('\\').to_string();
+    let trimmed = lower.trim_end_matches(sep).to_string();
     allowed.iter().any(|a| {
         let al = a.to_lowercase();
         let a_stripped = strip_wp(&al).to_string();
-        let a_trimmed = a_stripped.trim_end_matches('\\').to_string();
-        trimmed == a_trimmed || trimmed.starts_with(&format!("{}\\", a_trimmed))
+        let a_trimmed = a_stripped.trim_end_matches(sep).to_string();
+        trimmed == a_trimmed || trimmed.starts_with(&format!("{}{}", a_trimmed, sep))
     })
 }
 
@@ -63,13 +77,14 @@ fn path_blocked(canonical: &Path, blocked: &[String]) -> bool {
     if blocked.is_empty() {
         return false;
     }
+    let sep = std::path::MAIN_SEPARATOR;
     let lower = strip_wp(&canonical.to_string_lossy().to_lowercase()).to_string();
-    let trimmed = lower.trim_end_matches('\\').to_string();
+    let trimmed = lower.trim_end_matches(sep).to_string();
     blocked.iter().any(|b| {
         let bl = b.to_lowercase();
         let b_stripped = strip_wp(&bl).to_string();
-        let b_trimmed = b_stripped.trim_end_matches('\\').to_string();
-        trimmed == b_trimmed || trimmed.starts_with(&format!("{}\\", b_trimmed))
+        let b_trimmed = b_stripped.trim_end_matches(sep).to_string();
+        trimmed == b_trimmed || trimmed.starts_with(&format!("{}{}", b_trimmed, sep))
     })
 }
 
@@ -109,7 +124,12 @@ pub(crate) async fn list_handler(
     State(state): State<crate::AppState>,
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
-    let path_str = query.path.unwrap_or_else(|| "C:\\".to_string());
+    let path_str = query.path.unwrap_or_else(|| {
+        #[cfg(target_os = "windows")]
+        { "C:\\".to_string() }
+        #[cfg(not(target_os = "windows"))]
+        { "/".to_string() }
+    });
     tracing::info!("dir_list: path={}", path_str);
 
     let (allowed, blocked) = {

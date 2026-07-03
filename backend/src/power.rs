@@ -28,6 +28,7 @@ pub struct RealOs;
 
 impl SystemCommands for RealOs {
     fn execute_power_action(&self, action: PowerAction) {
+        #[cfg(target_os = "windows")]
         match action {
             PowerAction::Shutdown => {
                 let _ = std::process::Command::new("shutdown")
@@ -58,10 +59,94 @@ impl SystemCommands for RealOs {
                     .spawn();
             }
             PowerAction::SwitchUser => {
-                let _ = std::process::Command::new("rundll32.exe")
-                    .args(["user32.dll,LockWorkStation"])
+                // Switch to the login screen to allow another user to log in
+                let _ = std::process::Command::new("tsdiscon.exe").spawn();
+            }
+        }
+        #[cfg(target_os = "linux")]
+        match action {
+            PowerAction::Shutdown => {
+                let _ = std::process::Command::new("systemctl")
+                    .arg("poweroff")
                     .spawn();
             }
+            PowerAction::Restart => {
+                let _ = std::process::Command::new("systemctl")
+                    .arg("reboot")
+                    .spawn();
+            }
+            PowerAction::Sleep => {
+                let _ = std::process::Command::new("systemctl")
+                    .arg("suspend")
+                    .spawn();
+            }
+            PowerAction::Hibernate => {
+                let _ = std::process::Command::new("systemctl")
+                    .arg("hibernate")
+                    .spawn();
+            }
+            PowerAction::SignOut => {
+                let _ = std::process::Command::new("loginctl")
+                    .args(["terminate-session", "self"])
+                    .spawn();
+            }
+            PowerAction::Lock => {
+                let _ = std::process::Command::new("loginctl")
+                    .arg("lock-session")
+                    .spawn();
+            }
+            PowerAction::SwitchUser => {
+                // Switch user via display manager
+                let _ = std::process::Command::new("dm-tool")
+                    .arg("switch-to-greeter")
+                    .spawn();
+            }
+        }
+        #[cfg(target_os = "macos")]
+        match action {
+            PowerAction::Shutdown => {
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to shut down"])
+                    .spawn();
+            }
+            PowerAction::Restart => {
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to restart"])
+                    .spawn();
+            }
+            PowerAction::Sleep => {
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to sleep"])
+                    .spawn();
+            }
+            PowerAction::Hibernate => {
+                // macOS: enable hibernate mode then sleep
+                let _ = std::process::Command::new("pmset")
+                    .args(["-a", "hibernatemode", "25"])
+                    .spawn();
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to sleep"])
+                    .spawn();
+            }
+            PowerAction::SignOut => {
+                let _ = std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to log out"])
+                    .spawn();
+            }
+            PowerAction::Lock => {
+                let _ = std::process::Command::new("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
+                    .arg("-suspend")
+                    .spawn();
+            }
+            PowerAction::SwitchUser => {
+                let _ = std::process::Command::new("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
+                    .arg("-suspend")
+                    .spawn();
+            }
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+        {
+            tracing::warn!("Power action {:?} is not supported on this platform", action);
         }
     }
 }
