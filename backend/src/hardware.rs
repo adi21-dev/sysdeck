@@ -1010,7 +1010,9 @@ pub async fn toggles_status_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn toggle_dark_mode_handler(Json(req): Json<ControlCenterToggleReq>) -> impl IntoResponse {
+pub async fn toggle_dark_mode_handler(
+    Json(req): Json<ControlCenterToggleReq>,
+) -> impl IntoResponse {
     match set_toggle_dark_mode(req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (

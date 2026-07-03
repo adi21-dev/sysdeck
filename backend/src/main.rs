@@ -85,16 +85,13 @@ fn spawn_windows_shutdown_listener() {
 // async Enter-wait task. The ctrl handler is a bare C function pointer, so
 // it cannot capture variables — globals are the only option here.
 #[cfg(windows)]
-static CONSOLE_PORT: std::sync::atomic::AtomicU16 =
-    std::sync::atomic::AtomicU16::new(0);
+static CONSOLE_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
 #[cfg(windows)]
-static CONSOLE_ATTACHED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static CONSOLE_ATTACHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Ensures the browser is opened at most once regardless of which path
 /// (X-button vs. Enter key) fires first.
 #[cfg(windows)]
-static BROWSER_OPENED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static BROWSER_OPENED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Registered with `SetConsoleCtrlHandler`.
 ///
@@ -106,7 +103,7 @@ static BROWSER_OPENED: std::sync::atomic::AtomicBool =
 /// so the default handler runs and tokio's graceful-shutdown path takes over.
 #[cfg(windows)]
 unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
-    use windows_sys::Win32::System::Console::{CTRL_CLOSE_EVENT, FreeConsole};
+    use windows_sys::Win32::System::Console::{FreeConsole, CTRL_CLOSE_EVENT};
     if ctrl_type == CTRL_CLOSE_EVENT {
         // Detach the console window — closing it will NOT kill the process.
         if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
@@ -160,7 +157,9 @@ fn init_splash_console() {
 fn detach_splash_console() {
     use windows_sys::Win32::System::Console::FreeConsole;
     if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        unsafe { FreeConsole(); }
+        unsafe {
+            FreeConsole();
+        }
     }
 }
 // ── end Windows splash console ───────────────────────────────────────────────
@@ -397,7 +396,8 @@ async fn main() {
                     _ = wait_for_shutdown_signal() => {},
                 }
                 tracing::info!("Shutdown signal received, notifying clients...");
-                let _ = system_tx_clone2.send(r#"{"event":"system","data":{"type":"shutting_down"}}"#.to_string());
+                let _ = system_tx_clone2
+                    .send(r#"{"event":"system","data":{"type":"shutting_down"}}"#.to_string());
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 let _ = shutdown_tunnel.stop().await;
                 tracing::info!("Finalizing database...");

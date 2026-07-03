@@ -13,7 +13,9 @@ use sysdeck_agent::auth::LockoutState;
 use sysdeck_agent::db::{self, TelemetrySnapshot};
 use sysdeck_agent::get_data_dir;
 use sysdeck_agent::setup::SetupManager;
-use sysdeck_agent::{AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState};
+use sysdeck_agent::{
+    AppState, MockOs, PowerState, ScriptState, SystemCommands, TerminalState, TunnelState,
+};
 
 // Dummy JWT key for local integration tests only. Safe to expose.
 pub const TEST_JWT_KEY: &[u8] = b"01234567890123456789012345678901";

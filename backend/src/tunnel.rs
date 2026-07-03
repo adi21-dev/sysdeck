@@ -24,28 +24,32 @@ const CLOUDFLARED_FILENAME: &str = "cloudflared.exe";
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.sha256sum";
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64";
+const DOWNLOAD_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64";
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const CLOUDFLARED_FILENAME: &str = "cloudflared";
 
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.sha256sum";
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64";
+const DOWNLOAD_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64";
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 const CLOUDFLARED_FILENAME: &str = "cloudflared";
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.sha256sum";
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64";
+const DOWNLOAD_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64";
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const CLOUDFLARED_FILENAME: &str = "cloudflared";
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const SHA256_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.sha256sum";
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-const DOWNLOAD_URL: &str = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64";
+const DOWNLOAD_URL: &str =
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64";
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 const CLOUDFLARED_FILENAME: &str = "cloudflared";
 
@@ -332,7 +336,9 @@ async fn run_tunnel_loop(
                     }
                 }
             }
-            if found_url || (stderr_done && stdout_done) { break; }
+            if found_url || (stderr_done && stdout_done) {
+                break;
+            }
         }
 
         if !found_url {

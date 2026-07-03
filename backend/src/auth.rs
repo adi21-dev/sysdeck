@@ -542,7 +542,11 @@ pub async fn login_handler(
     let ip = client_ip_from_headers(&headers);
 
     if state.lockout.check_locked(user_id) {
-        tracing::warn!(ip, reason = "account_locked", "Login attempt on locked account");
+        tracing::warn!(
+            ip,
+            reason = "account_locked",
+            "Login attempt on locked account"
+        );
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_locked", Some("Account locked"), Some(&ip));
         drop(conn);
@@ -686,7 +690,11 @@ pub struct AuthCheckResponse {
     authenticated: bool,
 }
 
-pub(crate) fn check_access_token(token_str: &str, jwt_key: &[u8], conn: &rusqlite::Connection) -> bool {
+pub(crate) fn check_access_token(
+    token_str: &str,
+    jwt_key: &[u8],
+    conn: &rusqlite::Connection,
+) -> bool {
     match verify_jwt(token_str, jwt_key) {
         Ok(claims) => {
             let session_ok = verify_session(conn, &claims.jti).unwrap_or(false);
@@ -767,7 +775,10 @@ pub async fn refresh_handler(
     let jti = match refresh_result {
         Ok(Some(j)) => j,
         Ok(None) => {
-            tracing::warn!(reason = "invalid_or_expired_refresh_token", "Token refresh failed");
+            tracing::warn!(
+                reason = "invalid_or_expired_refresh_token",
+                "Token refresh failed"
+            );
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(RefreshResponse { success: false }),
@@ -905,10 +916,20 @@ pub async fn auth_middleware(
             || path == "/api/auth/check"
             || path == "/api/admin/check"
         {
-            tracing::debug!(path, method, skip_reason = "setup_not_complete", "Auth middleware skip");
+            tracing::debug!(
+                path,
+                method,
+                skip_reason = "setup_not_complete",
+                "Auth middleware skip"
+            );
             return next.run(req).await;
         }
-        tracing::debug!(path, method, redirect = "/setup", "Auth middleware redirect to setup");
+        tracing::debug!(
+            path,
+            method,
+            redirect = "/setup",
+            "Auth middleware redirect to setup"
+        );
         return Redirect::to("/setup").into_response();
     }
 
@@ -949,7 +970,12 @@ pub async fn auth_middleware(
                 if valid {
                     next.run(req).await
                 } else {
-                    tracing::warn!(path, method, reason = "session_expired_or_revoked", "Auth middleware denied");
+                    tracing::warn!(
+                        path,
+                        method,
+                        reason = "session_expired_or_revoked",
+                        "Auth middleware denied"
+                    );
                     (StatusCode::UNAUTHORIZED, "Session expired or revoked").into_response()
                 }
             }
@@ -961,7 +987,7 @@ pub async fn auth_middleware(
         None => {
             tracing::warn!(path, method, reason = "no_token", "Auth middleware denied");
             (StatusCode::UNAUTHORIZED, "No auth token").into_response()
-        },
+        }
     }
 }
 

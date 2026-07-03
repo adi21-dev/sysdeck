@@ -140,7 +140,11 @@ pub(crate) async fn execute_handler(
     let (output_tx, _) = broadcast::channel::<ScriptOutput>(10000);
     let ip = auth::client_ip_from_headers(&headers);
 
-    tracing::info!("script_execute: type={}, mode={}", req.script_type, req.mode);
+    tracing::info!(
+        "script_execute: type={}, mode={}",
+        req.script_type,
+        req.mode
+    );
 
     {
         let conn = state.db.lock().await;
@@ -274,7 +278,7 @@ async fn run_script(
                 stdout: String::new(),
                 stderr: format!("Failed to spawn process: {}", e),
                 truncated: false,
-            }
+            };
         }
     };
 
@@ -398,10 +402,15 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     let mut truncated = false;
     let mut output = String::new();
 
-    while reader.read_until(b'\n', &mut buf).await.unwrap_or_else(|e| {
-        tracing::error!("script_read_error: stream={}, error={}", stream_name, e);
-        0
-    }) > 0 {
+    while reader
+        .read_until(b'\n', &mut buf)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!("script_read_error: stream={}, error={}", stream_name, e);
+            0
+        })
+        > 0
+    {
         // strip trailing \r\n
         while buf
             .last()

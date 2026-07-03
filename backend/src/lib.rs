@@ -56,8 +56,8 @@ pub use auth::{admin_check_handler, admin_middleware, IpRateLimiter, LockoutStat
 pub use db::TelemetrySnapshot;
 pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
 pub use script::ScriptState;
-pub use terminal::TerminalState;
 pub use setup::SetupManager;
+pub use terminal::TerminalState;
 
 pub use tunnel::TunnelState;
 
@@ -450,7 +450,11 @@ pub async fn history_handler(
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let range = params.get("range").map(|s| s.as_str()).unwrap_or("1h");
-    tracing::info!(handler = "history_handler", range, "telemetry history requested");
+    tracing::info!(
+        handler = "history_handler",
+        range,
+        "telemetry history requested"
+    );
     let seconds = match parse_range(range) {
         Some(s) => s,
         None => {

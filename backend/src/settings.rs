@@ -1,12 +1,12 @@
-use std::io::{Read, Write};
 use axum::body::Body;
-use tracing;
 use axum::extract::State;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::io::{Read, Write};
+use tracing;
 use uuid::Uuid;
 use zip::write::FileOptions;
 
@@ -47,7 +47,10 @@ pub async fn change_password_handler(
     drop(db_lock);
 
     if !auth::verify_password(&body.current_password, &current_hash).unwrap_or(false) {
-        tracing::warn!(handler = "change_password_handler", "wrong current password");
+        tracing::warn!(
+            handler = "change_password_handler",
+            "wrong current password"
+        );
         return err_json(StatusCode::UNAUTHORIZED, "Current password is incorrect").into_response();
     }
 
@@ -122,7 +125,7 @@ pub async fn verify_totp_handler(
         Ok(b) => b,
         Err(_) => {
             tracing::warn!(handler = "verify_totp_handler", "invalid secret format");
-            return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response()
+            return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response();
         }
     };
 
@@ -154,7 +157,10 @@ pub async fn verify_totp_handler(
 }
 
 pub async fn list_recovery_codes_handler(State(state): State<AppState>) -> Response {
-    tracing::info!(handler = "list_recovery_codes_handler", "recovery codes listed");
+    tracing::info!(
+        handler = "list_recovery_codes_handler",
+        "recovery codes listed"
+    );
     let db_lock = state.db.lock().await;
     let codes: Vec<String> =
         match db_lock.prepare("SELECT code_hash FROM recovery_codes WHERE used = 0 ORDER BY id") {
@@ -170,7 +176,10 @@ pub async fn list_recovery_codes_handler(State(state): State<AppState>) -> Respo
 }
 
 pub async fn regenerate_recovery_codes_handler(State(state): State<AppState>) -> Response {
-    tracing::info!(handler = "regenerate_recovery_codes_handler", "recovery codes regenerated");
+    tracing::info!(
+        handler = "regenerate_recovery_codes_handler",
+        "recovery codes regenerated"
+    );
     let plain_codes = auth::generate_recovery_codes();
     let hashes = match auth::hash_recovery_codes(&plain_codes) {
         Ok(h) => h,
@@ -395,9 +404,17 @@ pub async fn set_relay_handler(
     State(state): State<AppState>,
     Json(body): Json<RelayBody>,
 ) -> Json<serde_json::Value> {
-    tracing::info!(handler = "set_relay_handler", enabled = body.enabled, "relay toggled");
+    tracing::info!(
+        handler = "set_relay_handler",
+        enabled = body.enabled,
+        "relay toggled"
+    );
     let db_lock = state.db.lock().await;
-    let _ = db::set_setting(&db_lock, "relay_opt_in", if body.enabled { "true" } else { "false" });
+    let _ = db::set_setting(
+        &db_lock,
+        "relay_opt_in",
+        if body.enabled { "true" } else { "false" },
+    );
     let _ = db::insert_audit_log(
         &db_lock,
         "relay_opt_in",
@@ -408,13 +425,18 @@ pub async fn set_relay_handler(
 
     if body.enabled {
         let status = state.tunnel_state.status.read().await;
-        if matches!(&*status, crate::tunnel::TunnelStatus::Idle | crate::tunnel::TunnelStatus::Failed(_)) {
+        if matches!(
+            &*status,
+            crate::tunnel::TunnelStatus::Idle | crate::tunnel::TunnelStatus::Failed(_)
+        ) {
             drop(status);
             let _ = crate::tunnel::TunnelState::start(state.tunnel_state.clone()).await;
         }
     }
 
-    Json(json!({"success": true, "message": if body.enabled { "Tunnel will auto-start on launch" } else { "Tunnel auto-start disabled" }}))
+    Json(
+        json!({"success": true, "message": if body.enabled { "Tunnel will auto-start on launch" } else { "Tunnel auto-start disabled" }}),
+    )
 }
 
 pub async fn get_port_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -437,10 +459,18 @@ pub async fn set_port_handler(
     Json(body): Json<PortBody>,
 ) -> Json<serde_json::Value> {
     if body.port < 1024 {
-        tracing::warn!(handler = "set_port_handler", port = body.port, "port out of range");
+        tracing::warn!(
+            handler = "set_port_handler",
+            port = body.port,
+            "port out of range"
+        );
         return Json(json!({"success": false, "message": "Port must be between 1024 and 65535"}));
     }
-    tracing::info!(handler = "set_port_handler", port = body.port, "port updated");
+    tracing::info!(
+        handler = "set_port_handler",
+        port = body.port,
+        "port updated"
+    );
     let db_lock = state.db.lock().await;
     let _ = db::set_setting(&db_lock, "port", &body.port.to_string());
     let _ = db::insert_audit_log(

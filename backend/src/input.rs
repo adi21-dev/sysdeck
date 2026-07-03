@@ -1,8 +1,8 @@
 use axum::extract::Query;
 use axum::response::{IntoResponse, Json};
 
-use enigo::{Axis, Direction, Key, Keyboard, Mouse};
 use data_encoding::BASE64;
+use enigo::{Axis, Direction, Key, Keyboard, Mouse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing;
@@ -406,5 +406,3 @@ pub async fn browser_open_handler(Json(req): Json<BrowserOpenReq>) -> impl IntoR
         }
     }
 }
-
-

@@ -146,7 +146,10 @@ impl SystemCommands for RealOs {
         }
         #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
         {
-            tracing::warn!("Power action {:?} is not supported on this platform", action);
+            tracing::warn!(
+                "Power action {:?} is not supported on this platform",
+                action
+            );
         }
     }
 }

@@ -2,8 +2,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::*;
-use sysdeck_agent::auth;
 use serde_json::json;
+use sysdeck_agent::auth;
 use tower::ServiceExt;
 
 // ============================================================

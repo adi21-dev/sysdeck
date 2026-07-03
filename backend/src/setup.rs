@@ -4,10 +4,10 @@ use crate::auth;
 use crate::db;
 use crate::AppState;
 use axum::extract::{Query, State};
-use tracing;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
+use tracing;
 use uuid::Uuid;
 
 // --- Setup State ---
@@ -121,7 +121,10 @@ pub async fn api_password_handler(
         step: "verify_totp",
     };
     let token = state.setup_manager.create(flow);
-    tracing::info!(handler = "api_password_handler", "password set, step 1 complete");
+    tracing::info!(
+        handler = "api_password_handler",
+        "password set, step 1 complete"
+    );
     Json(serde_json::json!({"success": true, "token": token})).into_response()
 }
 
@@ -137,12 +140,15 @@ pub async fn api_totp_handler(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
             )
-                .into_response()
+                .into_response();
         }
     };
     let qr_svg = auth::generate_totp_qr_data_uri(&flow.totp_secret);
     let secret = auth::totp_secret_to_b32(&flow.totp_secret);
-    tracing::info!(handler = "api_totp_handler", "TOTP QR generated, step 2 displayed");
+    tracing::info!(
+        handler = "api_totp_handler",
+        "TOTP QR generated, step 2 displayed"
+    );
     Json(serde_json::json!({"success": true, "qr_svg": qr_svg, "secret": secret})).into_response()
 }
 
@@ -154,12 +160,15 @@ pub async fn api_verify_totp_handler(
     let flow = match state.setup_manager.remove(&query.token) {
         Some(f) => f,
         None => {
-            tracing::warn!(handler = "api_verify_totp_handler", "invalid or expired token");
+            tracing::warn!(
+                handler = "api_verify_totp_handler",
+                "invalid or expired token"
+            );
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
             )
-                .into_response()
+                .into_response();
         }
     };
     if !auth::verify_totp_code(&flow.totp_secret, &body.code) {
@@ -187,7 +196,10 @@ pub async fn api_verify_totp_handler(
         step: "confirm_codes",
     };
     let new_token = state.setup_manager.create(flow);
-    tracing::info!(handler = "api_verify_totp_handler", "TOTP verified, recovery codes generated, step 3 ready");
+    tracing::info!(
+        handler = "api_verify_totp_handler",
+        "TOTP verified, recovery codes generated, step 3 ready"
+    );
     Json(serde_json::json!({"success": true, "codes": plain_codes, "token": new_token}))
         .into_response()
 }
@@ -210,7 +222,7 @@ pub async fn api_relay_handler(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
             )
-                .into_response()
+                .into_response();
         }
     };
     let flow = SetupFlow {
@@ -222,7 +234,11 @@ pub async fn api_relay_handler(
         step: "finish",
     };
     let new_token = state.setup_manager.create(flow);
-    tracing::info!(handler = "api_relay_handler", relay_opt_in = body.enabled, "relay preference set, step 4 ready");
+    tracing::info!(
+        handler = "api_relay_handler",
+        relay_opt_in = body.enabled,
+        "relay preference set, step 4 ready"
+    );
     Json(serde_json::json!({"success": true, "token": new_token})).into_response()
 }
 
@@ -238,7 +254,7 @@ pub async fn api_finish_handler(
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
             )
-                .into_response()
+                .into_response();
         }
     };
     let now = std::time::SystemTime::now()
@@ -293,7 +309,11 @@ pub async fn api_progress_handler(
                 "relay_opt_in" | "finish" => 4,
                 _ => 1,
             };
-            tracing::info!(handler = "api_progress_handler", step = step_num, "setup progress");
+            tracing::info!(
+                handler = "api_progress_handler",
+                step = step_num,
+                "setup progress"
+            );
             Json(serde_json::json!({"success": true, "current_step": step_num}))
         }
         None => {

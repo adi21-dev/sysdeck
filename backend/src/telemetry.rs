@@ -169,7 +169,13 @@ pub fn start_engine(
                 if (before_cpu != temperature_cpu || before_gpu != temperature_gpu)
                     && tick_1s.is_multiple_of(30)
                 {
-                    tracing::debug!(before_cpu, before_gpu, cpu = temperature_cpu, gpu = temperature_gpu, "WMI filled temperature gaps");
+                    tracing::debug!(
+                        before_cpu,
+                        before_gpu,
+                        cpu = temperature_cpu,
+                        gpu = temperature_gpu,
+                        "WMI filled temperature gaps"
+                    );
                 }
             }
 

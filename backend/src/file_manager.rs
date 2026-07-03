@@ -24,13 +24,25 @@ const BLOCKED_PREFIXES: &[&str] = &[
 ];
 #[cfg(target_os = "linux")]
 const BLOCKED_PREFIXES: &[&str] = &[
-    "/bin", "/sbin", "/usr/bin", "/usr/sbin",
-    "/etc", "/boot", "/proc", "/sys", "/dev",
+    "/bin",
+    "/sbin",
+    "/usr/bin",
+    "/usr/sbin",
+    "/etc",
+    "/boot",
+    "/proc",
+    "/sys",
+    "/dev",
 ];
 #[cfg(target_os = "macos")]
 const BLOCKED_PREFIXES: &[&str] = &[
-    "/System", "/Library", "/usr/bin", "/usr/sbin",
-    "/private/etc", "/bin", "/sbin",
+    "/System",
+    "/Library",
+    "/usr/bin",
+    "/usr/sbin",
+    "/private/etc",
+    "/bin",
+    "/sbin",
 ];
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
 const BLOCKED_PREFIXES: &[&str] = &[];
@@ -126,9 +138,13 @@ pub(crate) async fn list_handler(
 ) -> impl IntoResponse {
     let path_str = query.path.unwrap_or_else(|| {
         #[cfg(target_os = "windows")]
-        { "C:\\".to_string() }
+        {
+            "C:\\".to_string()
+        }
         #[cfg(not(target_os = "windows"))]
-        { "/".to_string() }
+        {
+            "/".to_string()
+        }
     });
     tracing::info!("dir_list: path={}", path_str);
 
@@ -212,7 +228,10 @@ pub(crate) async fn list_handler(
             let bl = b.to_lowercase();
             let b_stripped = strip_wp(&bl);
             let b_trimmed = b_stripped.trim_end_matches('\\');
-            child_path.to_lowercase() == b_trimmed || child_path.to_lowercase().starts_with(&format!("{}\\", b_trimmed))
+            child_path.to_lowercase() == b_trimmed
+                || child_path
+                    .to_lowercase()
+                    .starts_with(&format!("{}\\", b_trimmed))
         }) {
             continue;
         }
@@ -387,7 +406,11 @@ async fn upload_stream(
         .await
         .map_err(|e| format!("Flush error: {}", e))?;
 
-    tracing::info!("upload_complete: path={}, total_bytes={}", file_path.display(), total);
+    tracing::info!(
+        "upload_complete: path={}, total_bytes={}",
+        file_path.display(),
+        total
+    );
 
     let conn = state.db.lock().await;
     let _ = db::insert_audit_log(

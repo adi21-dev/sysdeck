@@ -63,7 +63,9 @@ pub async fn wake_handler(Json(body): Json<WakeBody>) -> impl IntoResponse {
                     .into_response();
             }
             match socket.send_to(&packet, "255.255.255.255:9") {
-                Ok(_) => Json(json!({"success": true, "message": "Wake packet sent"})).into_response(),
+                Ok(_) => {
+                    Json(json!({"success": true, "message": "Wake packet sent"})).into_response()
+                }
                 Err(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({"success": false, "message": format!("Send failed: {}", e)})),

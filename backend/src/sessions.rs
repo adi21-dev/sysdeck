@@ -19,9 +19,8 @@ fn list_sessions_impl() -> Vec<SessionInfo> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::System::RemoteDesktop::{
-        WTS_CURRENT_SERVER_HANDLE, WTSEnumerateSessionsW, WTSFreeMemory,
-        WTSQuerySessionInformationW, WTSUserName, WTSActive,
-        WTSDisconnected,
+        WTSActive, WTSDisconnected, WTSEnumerateSessionsW, WTSFreeMemory,
+        WTSQuerySessionInformationW, WTSUserName, WTS_CURRENT_SERVER_HANDLE,
     };
 
     let mut sessions_ptr: *mut windows_sys::Win32::System::RemoteDesktop::WTS_SESSION_INFOW =
@@ -42,8 +41,7 @@ fn list_sessions_impl() -> Vec<SessionInfo> {
         return vec![];
     }
 
-    let sessions_slice =
-        unsafe { std::slice::from_raw_parts(sessions_ptr, count as usize) };
+    let sessions_slice = unsafe { std::slice::from_raw_parts(sessions_ptr, count as usize) };
 
     let mut result = Vec::with_capacity(count as usize);
 
@@ -104,7 +102,7 @@ fn list_sessions_impl() -> Vec<SessionInfo> {
 #[cfg(target_os = "windows")]
 fn session_action(session_id: u32, action: &str) -> Result<(), String> {
     use windows_sys::Win32::System::RemoteDesktop::{
-        WTS_CURRENT_SERVER_HANDLE, WTSDisconnectSession, WTSLogoffSession,
+        WTSDisconnectSession, WTSLogoffSession, WTS_CURRENT_SERVER_HANDLE,
     };
     unsafe {
         match action {

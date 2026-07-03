@@ -6,7 +6,6 @@ use axum::response::{IntoResponse, Json};
 use serde::Serialize;
 use serde_json::json;
 
-
 use crate::AppState;
 
 #[derive(Debug, Serialize, Clone)]
@@ -139,9 +138,11 @@ pub async fn focus_handler(
 ) -> impl IntoResponse {
     match focus_window(body.hwnd) {
         Ok(()) => Json(json!({"success": true})).into_response(),
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": e}))).into_response()
-        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "message": e})),
+        )
+            .into_response(),
     }
 }
 
@@ -151,9 +152,11 @@ pub async fn close_handler(
 ) -> impl IntoResponse {
     match close_window(body.hwnd) {
         Ok(()) => Json(json!({"success": true})).into_response(),
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": e}))).into_response()
-        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "message": e})),
+        )
+            .into_response(),
     }
 }
 
@@ -163,9 +166,11 @@ pub async fn minimize_handler(
 ) -> impl IntoResponse {
     match minimize_window(body.hwnd) {
         Ok(()) => Json(json!({"success": true})).into_response(),
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": e}))).into_response()
-        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "message": e})),
+        )
+            .into_response(),
     }
 }
 
@@ -175,8 +180,10 @@ pub async fn restore_handler(
 ) -> impl IntoResponse {
     match restore_window(body.hwnd) {
         Ok(()) => Json(json!({"success": true})).into_response(),
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, Json(json!({"success": false, "message": e}))).into_response()
-        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "message": e})),
+        )
+            .into_response(),
     }
 }
