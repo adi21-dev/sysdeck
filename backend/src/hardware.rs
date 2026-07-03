@@ -747,6 +747,7 @@ pub async fn get_display_status() -> Result<DisplayStatus, String> {
 pub async fn set_display_brightness(brightness: u32) -> Result<(), String> {
     let brightness = brightness.min(100);
     tokio::task::spawn_blocking(move || {
+        let _ = brightness;
         #[cfg(target_os = "windows")]
         {
             let script = format!("(Get-WmiObject -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods).WmiSetBrightness(1, {})", brightness);

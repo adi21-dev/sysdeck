@@ -134,9 +134,13 @@ fn key_from_str(s: &str) -> Option<Key> {
         "f18" => Key::F18,
         "f19" => Key::F19,
         "f20" => Key::F20,
+        #[cfg(not(target_os = "macos"))]
         "f21" => Key::F21,
+        #[cfg(not(target_os = "macos"))]
         "f22" => Key::F22,
+        #[cfg(not(target_os = "macos"))]
         "f23" => Key::F23,
+        #[cfg(not(target_os = "macos"))]
         "f24" => Key::F24,
         _ => return None,
     };
