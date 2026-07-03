@@ -1,0 +1,70 @@
+name: CI Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Skip frontend build during bare rust linting (speeds up backend steps)
+  CROSS: "true"
+
+jobs:
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run Lint
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Build frontend (Production Verification)
+        run: |
+          cd frontend
+          npm run build
+
+  backend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install System Dependencies (Linux UI & Secret Service)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libgtk-3-dev libappindicator3-dev libsecret-1-dev
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: backend -> target
+
+      - name: Check Formatting
+        run: |
+          cd backend
+          cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: |
+          cd backend
+          cargo clippy --all-targets --all-features -- -D warnings
