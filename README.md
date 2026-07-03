@@ -139,7 +139,8 @@ On first run, the backend:
 2. Stores the JWT signing key in your OS keychain (Credential Manager / Keychain / Secret Service)
 3. Downloads the correct `cloudflared` binary for your platform with SHA256 verification
 4. Binds to `localhost:3939` (falls back to random port)
-5. Opens your browser to the setup wizard
+5. Generates a one-time **Setup Key** printed to the console window. This key acts as a security token to verify physical/owner access to the host machine.
+6. Opens your browser to the first-run Setup Wizard, where you must enter this Setup Key to unlock configuration steps (admin credentials, TOTP, and remote access relay).
 
 ### Production Build
 

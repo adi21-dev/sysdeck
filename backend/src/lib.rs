@@ -572,6 +572,11 @@ pub fn build_router(state: AppState) -> Router {
         .route("/ws", get(ws::ws_handler))
         .route("/api/telemetry/history", get(history_handler))
         .route("/api/setup/status", get(setup::setup_status_handler))
+        .route("/api/setup/check-token", get(setup::check_token_handler))
+        .route(
+            "/api/setup/verify-setup-token",
+            post(setup::verify_setup_token_handler),
+        )
         .route("/api/setup/password", post(setup::api_password_handler))
         .route("/api/setup/totp", post(setup::api_totp_handler))
         .route(

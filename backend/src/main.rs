@@ -418,6 +418,7 @@ async fn main() {
     println!("  Manage     →  System tray icon");
     println!("  Setup key  →  {}", setup_token);
     println!("  ──────────────────────────────────────────────────");
+    println!("  (Use the setup key to authorize the first-run configuration wizard)");
 
     let is_headless = cfg!(target_os = "linux") && std::env::var("DISPLAY").is_err();
     if is_headless {
@@ -425,10 +426,16 @@ async fn main() {
         println!("  Headless mode — no display detected.");
         println!("  Use SSH port forwarding to reach the dashboard:");
         println!("  ssh -L {}:127.0.0.1:{} user@host", port, port);
+        println!();
+        println!("  Note: Keep the Setup key above handy. When you open the");
+        println!("        dashboard, you must enter it to unlock the setup wizard.");
     } else {
         println!();
         println!("  Press Enter to open the dashboard.");
         println!("  Close this window at any time — SysDeck keeps running.");
+        println!();
+        println!("  Note: Copy the Setup key above before proceeding. It is");
+        println!("        required to authorize the first-run configuration wizard.");
     }
     println!();
     // ────────────────────────────────────────────────────────────────────────

@@ -69,6 +69,11 @@ pub struct ProgressQuery {
     pub token: String,
 }
 
+#[derive(Deserialize)]
+pub struct VerifySetupTokenRequest {
+    pub token: String,
+}
+
 #[derive(Serialize)]
 pub(crate) struct SetupStatus {
     is_setup_complete: bool,
@@ -83,12 +88,93 @@ pub(crate) async fn setup_status_handler(State(state): State<AppState>) -> Json<
     Json(SetupStatus { is_setup_complete })
 }
 
+pub(crate) async fn check_token_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let needs_setup = {
+        let conn = state.db.lock().await;
+        db::is_setup_complete(&conn).map(|c| !c).unwrap_or(true)
+    };
+    Json(serde_json::json!({ "token_required": needs_setup }))
+}
+
+pub(crate) async fn verify_setup_token_handler(
+    State(state): State<AppState>,
+    Json(body): Json<VerifySetupTokenRequest>,
+) -> Response {
+    if body.token == *state.setup_token {
+        use sha2::{Sha256, Digest};
+        let mut hasher = Sha256::new();
+        hasher.update(state.setup_token.as_bytes());
+        let hash_hex = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+
+        let cookie_val = format!(
+            "setup_authorized={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600",
+            hash_hex
+        );
+        
+        Response::builder()
+            .header(axum::http::header::SET_COOKIE, cookie_val)
+            .body(axum::body::Body::from(
+                serde_json::json!({ "success": true }).to_string()
+            ))
+            .unwrap()
+    } else {
+        Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(axum::body::Body::from(
+                serde_json::json!({ "success": false, "error": "Invalid setup token" }).to_string()
+            ))
+            .unwrap()
+    }
+}
+
 // --- JSON API Handlers ---
 
 pub async fn api_password_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<PasswordRequest>,
 ) -> Response {
+    let needs_setup = {
+        let conn = state.db.lock().await;
+        db::is_setup_complete(&conn).map(|c| !c).unwrap_or(true)
+    };
+
+    if needs_setup {
+        let is_authorized = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|c| c.to_str().ok())
+            .and_then(|c_str| {
+                c_str.split(';').find_map(|cookie| {
+                    let parts: Vec<&str> = cookie.trim().split('=').collect();
+                    if parts.len() == 2 && parts[0] == "setup_authorized" {
+                        Some(parts[1])
+                    } else {
+                        None
+                    }
+                })
+            })
+            .map(|cookie_val| {
+                use sha2::{Sha256, Digest};
+                let mut hasher = Sha256::new();
+                hasher.update(state.setup_token.as_bytes());
+                let expected_hash = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                cookie_val == expected_hash
+            })
+            .unwrap_or(false);
+
+        if !is_authorized {
+            tracing::warn!(handler = "api_password_handler", "unauthorized setup attempt");
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": "Unauthorized: Setup token verification required"
+                })),
+            )
+                .into_response();
+        }
+    }
+
     if body.password.len() < 8 {
         tracing::warn!(handler = "api_password_handler", "password too short");
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Password must be at least 8 characters"}))).into_response();
