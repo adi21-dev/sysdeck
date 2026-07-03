@@ -61,6 +61,8 @@ export function SettingsPage() {
   // Tunnel
   const tunnel = useTunnelStore()
   const [tunnelLoading, setTunnelLoading] = useState(false)
+  const [relayEnabled, setRelayEnabled] = useState(false)
+  const [relayLoading, setRelayLoading] = useState(false)
 
   const fetchSessions = () => {
     fetch("/api/settings/sessions").then((r) => r.json()).then((d) => {
@@ -83,6 +85,9 @@ export function SettingsPage() {
     }).catch(() => {})
     fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
       if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null, error: d.error ?? null })
+    }).catch(() => {})
+    fetch("/api/settings/relay").then((r) => r.json()).then((d) => {
+      if (d.success) setRelayEnabled(d.enabled)
     }).catch(() => {})
     fetchSessions()
   }, [])
@@ -247,6 +252,23 @@ export function SettingsPage() {
       else showError(data.error || "Failed")
     } catch { showError("Network error") }
     setTunnelLoading(false)
+  }
+
+  const handleToggleRelay = async () => {
+    setRelayLoading(true)
+    try {
+      const res = await fetch("/api/settings/relay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !relayEnabled }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setRelayEnabled(!relayEnabled)
+        showSuccess(data.message)
+      }
+    } catch { showError("Failed to update auto-start") }
+    setRelayLoading(false)
   }
 
   const handleTunnelStop = async () => {
@@ -449,6 +471,21 @@ export function SettingsPage() {
               {tunnel.status === "downloading" ? "Downloading..." : tunnel.status === "starting" ? "Starting..." : "—"}
             </Button>
           )}
+        </div>
+
+        <div className="flex items-center justify-between rounded-lg border p-4 mt-4">
+          <div>
+            <p className="text-sm font-medium">Auto-start Tunnel</p>
+            <p className="text-xs text-muted-foreground">Start tunnel automatically when the app launches</p>
+          </div>
+          <Button
+            size="sm"
+            variant={relayEnabled ? "default" : "outline"}
+            disabled={relayLoading}
+            onClick={handleToggleRelay}
+          >
+            {relayEnabled ? "On" : "Off"}
+          </Button>
         </div>
       </div>
 

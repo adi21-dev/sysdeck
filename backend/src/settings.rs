@@ -375,6 +375,45 @@ pub async fn set_paths_handler(
     Json(json!({"success": true, "message": "Paths updated"}))
 }
 
+pub async fn get_relay_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let db_lock = state.db.lock().await;
+    let enabled = db::get_setting(&db_lock, "relay_opt_in")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    drop(db_lock);
+    Json(json!({"success": true, "enabled": enabled}))
+}
+
+#[derive(Deserialize)]
+pub struct RelayBody {
+    enabled: bool,
+}
+
+pub async fn set_relay_handler(
+    State(state): State<AppState>,
+    Json(body): Json<RelayBody>,
+) -> Json<serde_json::Value> {
+    let db_lock = state.db.lock().await;
+    let _ = db::set_setting(&db_lock, "relay_opt_in", if body.enabled { "true" } else { "false" });
+    let _ = db::insert_audit_log(
+        &db_lock,
+        "relay_opt_in",
+        Some(if body.enabled { "enabled" } else { "disabled" }),
+        None,
+    );
+    drop(db_lock);
+
+    if body.enabled {
+        let status = state.tunnel_state.status.read().await;
+        if matches!(&*status, crate::tunnel::TunnelStatus::Idle | crate::tunnel::TunnelStatus::Failed(_)) {
+            drop(status);
+            let _ = crate::tunnel::TunnelState::start(state.tunnel_state.clone()).await;
+        }
+    }
+
+    Json(json!({"success": true, "message": if body.enabled { "Tunnel will auto-start on launch" } else { "Tunnel auto-start disabled" }}))
+}
+
 pub async fn get_port_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let db_lock = state.db.lock().await;
     let port = db::get_setting(&db_lock, "port")

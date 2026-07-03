@@ -555,6 +555,10 @@ pub fn build_router(state: AppState) -> Router {
             "/api/settings/port",
             get(settings::get_port_handler).post(settings::set_port_handler),
         )
+        .route(
+            "/api/settings/relay",
+            get(settings::get_relay_handler).post(settings::set_relay_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::admin_middleware,
