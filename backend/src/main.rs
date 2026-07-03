@@ -1,3 +1,8 @@
+// On Windows, "windows" subsystem means no console auto-attaches to the process.
+// We manually allocate one at startup for the splash screen via AllocConsole().
+// On Linux/macOS this attribute is silently ignored — the terminal is already there.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::io;
 use std::sync::Arc;
 
@@ -74,20 +79,106 @@ fn spawn_windows_shutdown_listener() {
     });
 }
 
+// ── Windows splash console ──────────────────────────────────────────────────
+//
+// Atomics shared between the console ctrl handler (Win32 callback) and the
+// async Enter-wait task. The ctrl handler is a bare C function pointer, so
+// it cannot capture variables — globals are the only option here.
+#[cfg(windows)]
+static CONSOLE_PORT: std::sync::atomic::AtomicU16 =
+    std::sync::atomic::AtomicU16::new(0);
+#[cfg(windows)]
+static CONSOLE_ATTACHED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// Ensures the browser is opened at most once regardless of which path
+/// (X-button vs. Enter key) fires first.
+#[cfg(windows)]
+static BROWSER_OPENED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Registered with `SetConsoleCtrlHandler`.
+///
+/// When the user clicks the **X** on the splash console, Windows delivers
+/// `CTRL_CLOSE_EVENT`. Returning `1` (TRUE) tells Windows **not** to kill
+/// the process — we just detach the console and keep running via the tray.
+///
+/// Other signals (Ctrl+C, Ctrl+Break, logoff, shutdown) return `0` (FALSE)
+/// so the default handler runs and tokio's graceful-shutdown path takes over.
+#[cfg(windows)]
+unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
+    use windows_sys::Win32::System::Console::{CTRL_CLOSE_EVENT, FreeConsole};
+    if ctrl_type == CTRL_CLOSE_EVENT {
+        // Detach the console window — closing it will NOT kill the process.
+        if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            FreeConsole();
+            // Closing stdin unblocks the Enter-wait read_line() below,
+            // which will then call open_dashboard_once() itself.
+            // We open the browser here only if Enter-wait hasn't already done it.
+            open_dashboard_once();
+        }
+        1 // TRUE — suppress OS default (process termination)
+    } else {
+        0 // FALSE — let Ctrl+C / shutdown etc. flow to tokio's signal handler
+    }
+}
+
+/// Open the dashboard in the default browser exactly once.
+/// Safe to call from both the ctrl handler and the Enter-wait task.
+#[cfg(windows)]
+fn open_dashboard_once() {
+    use std::sync::atomic::Ordering;
+    if BROWSER_OPENED.swap(true, Ordering::SeqCst) {
+        return; // already opened by the other code path
+    }
+    let port = CONSOLE_PORT.load(Ordering::SeqCst);
+    if port != 0 {
+        let _ = open::that(format!("http://localhost:{}", port));
+    }
+}
+
+/// Allocate a fresh console window for the startup splash.
+/// Must be called before any `println!` so output goes to the right place.
+#[cfg(windows)]
+fn init_splash_console() {
+    use windows_sys::Win32::System::Console::{
+        AllocConsole, SetConsoleCtrlHandler, SetConsoleOutputCP, SetConsoleTitleW,
+    };
+    unsafe {
+        AllocConsole();
+        // CP_UTF8 = 65001 — without this, ✓ and ⚡ render as garbage boxes.
+        SetConsoleOutputCP(65001);
+        CONSOLE_ATTACHED.store(true, std::sync::atomic::Ordering::SeqCst);
+        // Register handler AFTER setting CONSOLE_ATTACHED = true.
+        SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
+        let title: Vec<u16> = "SysDeck Agent\0".encode_utf16().collect();
+        SetConsoleTitleW(title.as_ptr());
+    }
+}
+
+/// Detach (close) the splash console. Idempotent — safe to call multiple times.
+#[cfg(windows)]
+fn detach_splash_console() {
+    use windows_sys::Win32::System::Console::FreeConsole;
+    if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        unsafe { FreeConsole(); }
+    }
+}
+// ── end Windows splash console ───────────────────────────────────────────────
+
 #[tokio::main]
 async fn main() {
+    // Allocate the splash console before ANY println! so stdout is routed correctly.
+    #[cfg(windows)]
+    init_splash_console();
+
     let filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
     let logs_dir = sysdeck_agent::get_logs_dir();
     let file_appender = tracing_appender::rolling::never(&logs_dir, "sysdeck.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
+    // File appender only — stdout logging is replaced by the banner below.
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_writer(io::stdout)
-                .with_filter(filter.clone()),
-        )
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
@@ -95,17 +186,23 @@ async fn main() {
         )
         .init();
 
-    println!("SysDeck Agent v{} starting...", env!("CARGO_PKG_VERSION"));
+    println!();
+    println!("  ⚡  SysDeck Agent  v{}", env!("CARGO_PKG_VERSION"));
+    println!();
 
     #[cfg(target_os = "windows")]
     spawn_windows_shutdown_listener();
 
     init_dirs();
+    println!("  ✓  Data directory ready");
+
     let conn = Arc::new(Mutex::new(init_db()));
     let db_for_shutdown = conn.clone();
+    println!("  ✓  Database initialized");
 
     // Load or create JWT signing key (OS Keychain via keyring)
     let jwt_key = Arc::new(auth::load_or_create_jwt_key().expect("Failed to load JWT signing key"));
+    println!("  ✓  JWT signing key loaded");
 
     // Generate setup token for headless/remote setup
     let setup_token: String = rand::thread_rng()
@@ -114,11 +211,13 @@ async fn main() {
         .map(char::from)
         .collect();
     let setup_token = Arc::new(setup_token);
-    println!("\n========================================");
-    println!(" SysDeck Setup Token: {}", setup_token);
-    println!("========================================\n");
 
     let (port, listener) = find_available_port().await;
+    println!("  ✓  Server bound to localhost:{}", port);
+
+    // Store the port for the console ctrl handler (Windows: needed if user clicks X).
+    #[cfg(windows)]
+    CONSOLE_PORT.store(port, std::sync::atomic::Ordering::SeqCst);
 
     // Create broadcast channels
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
@@ -127,6 +226,7 @@ async fn main() {
 
     // Start telemetry engine
     sysdeck_agent::telemetry::start_engine(telemetry_tx.clone(), conn.clone());
+    println!("  ✓  Telemetry engine started");
 
     // Auth state
     let lockout = Arc::new(LockoutState::new());
@@ -311,17 +411,49 @@ async fn main() {
     });
 
     server_ready_rx.await.ok();
-    println!("Server running at http://localhost:{}", port);
 
-    // Headless detection: print setup URL on Linux without DISPLAY
-    if cfg!(target_os = "linux") && std::env::var("DISPLAY").is_err() {
+    // ── Startup banner (complete) ────────────────────────────────────────────
+    println!();
+    println!("  ──────────────────────────────────────────────────");
+    println!("  Dashboard  →  http://localhost:{}", port);
+    println!("  Manage     →  System tray icon");
+    println!("  Setup key  →  {}", setup_token);
+    println!("  ──────────────────────────────────────────────────");
+
+    let is_headless = cfg!(target_os = "linux") && std::env::var("DISPLAY").is_err();
+    if is_headless {
         println!();
-        println!("═══════════════════════════════════════");
-        println!("  No display detected (headless environment)");
-        println!("  To complete setup, use SSH port forwarding:");
-        println!("  http://127.0.0.1:{}", port);
-        println!("═══════════════════════════════════════");
+        println!("  Headless mode — no display detected.");
+        println!("  Use SSH port forwarding to reach the dashboard:");
+        println!("  ssh -L {}:127.0.0.1:{} user@host", port, port);
+    } else {
         println!();
+        println!("  Press Enter to open the dashboard.");
+        println!("  Close this window at any time — SysDeck keeps running.");
+    }
+    println!();
+    // ────────────────────────────────────────────────────────────────────────
+
+    // Spawn a blocking task to wait for Enter, then open the browser and
+    // detach the splash console. On Windows, if the user closes the window
+    // first (CTRL_CLOSE_EVENT), FreeConsole() closes stdin, read_line()
+    // returns EOF, and open_dashboard_once() is a no-op (already opened).
+    if !is_headless {
+        tokio::task::spawn_blocking(move || {
+            let mut buf = String::new();
+            // Returns Ok(0) on EOF (stdin closed by FreeConsole) or Ok(n) on Enter.
+            let _ = std::io::stdin().read_line(&mut buf);
+
+            #[cfg(windows)]
+            {
+                detach_splash_console();
+                open_dashboard_once();
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = open::that(format!("http://localhost:{}", port));
+            }
+        });
     }
 
     server_handle.await.expect("Server task panicked");
