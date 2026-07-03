@@ -4,6 +4,7 @@ use crate::auth;
 use crate::db;
 use crate::AppState;
 use axum::extract::{Query, State};
+use tracing;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
@@ -74,6 +75,7 @@ pub(crate) struct SetupStatus {
 }
 
 pub(crate) async fn setup_status_handler(State(state): State<AppState>) -> Json<SetupStatus> {
+    tracing::debug!(handler = "setup_status_handler", "setup status checked");
     let is_setup_complete = {
         let conn = state.db.lock().await;
         db::is_setup_complete(&conn).unwrap_or(false)
@@ -88,9 +90,11 @@ pub async fn api_password_handler(
     Json(body): Json<PasswordRequest>,
 ) -> Response {
     if body.password.len() < 8 {
+        tracing::warn!(handler = "api_password_handler", "password too short");
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Password must be at least 8 characters"}))).into_response();
     }
     if let Err(e) = auth::check_password_strength(&body.password) {
+        tracing::warn!(handler = "api_password_handler", "weak password: {e}");
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"success": false, "error": e})),
@@ -117,6 +121,7 @@ pub async fn api_password_handler(
         step: "verify_totp",
     };
     let token = state.setup_manager.create(flow);
+    tracing::info!(handler = "api_password_handler", "password set, step 1 complete");
     Json(serde_json::json!({"success": true, "token": token})).into_response()
 }
 
@@ -127,6 +132,7 @@ pub async fn api_totp_handler(
     let flow = match state.setup_manager.get(&query.token) {
         Some(f) => f,
         None => {
+            tracing::warn!(handler = "api_totp_handler", "invalid or expired token");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
@@ -136,6 +142,7 @@ pub async fn api_totp_handler(
     };
     let qr_svg = auth::generate_totp_qr_data_uri(&flow.totp_secret);
     let secret = auth::totp_secret_to_b32(&flow.totp_secret);
+    tracing::info!(handler = "api_totp_handler", "TOTP QR generated, step 2 displayed");
     Json(serde_json::json!({"success": true, "qr_svg": qr_svg, "secret": secret})).into_response()
 }
 
@@ -147,6 +154,7 @@ pub async fn api_verify_totp_handler(
     let flow = match state.setup_manager.remove(&query.token) {
         Some(f) => f,
         None => {
+            tracing::warn!(handler = "api_verify_totp_handler", "invalid or expired token");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
@@ -155,6 +163,7 @@ pub async fn api_verify_totp_handler(
         }
     };
     if !auth::verify_totp_code(&flow.totp_secret, &body.code) {
+        tracing::warn!(handler = "api_verify_totp_handler", "invalid TOTP code");
         let new_token = state.setup_manager.create(flow);
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Invalid TOTP code", "token": new_token}))).into_response();
     }
@@ -178,6 +187,7 @@ pub async fn api_verify_totp_handler(
         step: "confirm_codes",
     };
     let new_token = state.setup_manager.create(flow);
+    tracing::info!(handler = "api_verify_totp_handler", "TOTP verified, recovery codes generated, step 3 ready");
     Json(serde_json::json!({"success": true, "codes": plain_codes, "token": new_token}))
         .into_response()
 }
@@ -189,6 +199,7 @@ pub async fn api_recovery_codes_handler(
     let flow = match state.setup_manager.get(&query.token) {
         Some(f) => f,
         None => {
+            tracing::warn!(handler = "api_recovery_codes_handler", "invalid or expired token");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
@@ -196,6 +207,7 @@ pub async fn api_recovery_codes_handler(
                 .into_response()
         }
     };
+    tracing::info!(handler = "api_recovery_codes_handler", "recovery codes retrieved");
     Json(serde_json::json!({"success": true, "codes": flow.recovery_codes})).into_response()
 }
 
@@ -212,6 +224,7 @@ pub async fn api_relay_handler(
     let flow = match state.setup_manager.remove(&query.token) {
         Some(f) => f,
         None => {
+            tracing::warn!(handler = "api_relay_handler", "invalid or expired token");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
@@ -228,6 +241,7 @@ pub async fn api_relay_handler(
         step: "finish",
     };
     let new_token = state.setup_manager.create(flow);
+    tracing::info!(handler = "api_relay_handler", relay_opt_in = body.enabled, "relay preference set, step 4 ready");
     Json(serde_json::json!({"success": true, "token": new_token})).into_response()
 }
 
@@ -238,6 +252,7 @@ pub async fn api_finish_handler(
     let flow = match state.setup_manager.remove(&query.token) {
         Some(f) => f,
         None => {
+            tracing::warn!(handler = "api_finish_handler", "invalid or expired token");
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
@@ -280,6 +295,7 @@ pub async fn api_finish_handler(
     );
     let _ = db::wal_checkpoint(&conn);
     drop(conn);
+    tracing::info!(handler = "api_finish_handler", "setup complete");
     Json(serde_json::json!({"success": true})).into_response()
 }
 
@@ -296,9 +312,13 @@ pub async fn api_progress_handler(
                 "relay_opt_in" | "finish" => 4,
                 _ => 1,
             };
+            tracing::info!(handler = "api_progress_handler", step = step_num, "setup progress");
             Json(serde_json::json!({"success": true, "current_step": step_num}))
         }
-        None => Json(serde_json::json!({"success": false, "error": "Invalid token"})),
+        None => {
+            tracing::warn!(handler = "api_progress_handler", "invalid token");
+            Json(serde_json::json!({"success": false, "error": "Invalid token"}))
+        }
     }
 }
 
@@ -309,6 +329,7 @@ pub async fn check_token_handler(
     headers: axum::http::HeaderMap,
 ) -> Json<serde_json::Value> {
     let is_tunneled = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
+    tracing::info!(handler = "check_token_handler", token_required = is_tunneled, "setup token check");
     Json(serde_json::json!({"token_required": is_tunneled}))
 }
 
@@ -322,6 +343,9 @@ pub async fn verify_setup_token_handler(
     Json(body): Json<VerifyTokenRequest>,
 ) -> Json<serde_json::Value> {
     let valid = body.token == *state.setup_token;
+    if !valid {
+        tracing::warn!(handler = "verify_setup_token_handler", "invalid setup token");
+    }
     Json(serde_json::json!({"success": valid}))
 }
 

@@ -25,6 +25,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use totp_rs::{Algorithm, Secret, TOTP};
+use tracing;
 use uuid::Uuid;
 
 use crate::db;
@@ -556,6 +557,7 @@ pub async fn login_handler(
     let ip = client_ip_from_headers(&headers);
 
     if state.lockout.check_locked(user_id) {
+        tracing::warn!(ip, reason = "account_locked", "Login attempt on locked account");
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_locked", Some("Account locked"), Some(&ip));
         drop(conn);
@@ -585,6 +587,7 @@ pub async fn login_handler(
 
     if !password_valid {
         let attempts = state.lockout.record_failure(user_id);
+        tracing::warn!(ip, attempts, reason = "invalid_password", "Login failed");
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_failed", Some("Invalid password"), Some(&ip));
         drop(conn);
@@ -608,6 +611,7 @@ pub async fn login_handler(
 
     if !verify_totp_code(&secret_bytes, &form.totp_code) {
         let attempts = state.lockout.record_failure(user_id);
+        tracing::warn!(ip, attempts, reason = "invalid_totp", "Login failed");
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(&conn, "login_failed", Some("Invalid TOTP code"), Some(&ip));
         drop(conn);
@@ -662,6 +666,7 @@ pub async fn login_handler(
         let _ = db::insert_audit_log(&conn, "login_success", Some("Login successful"), Some(&ip));
         let _ = db::wal_checkpoint(&conn);
     }
+    tracing::info!(ip, "Login successful");
 
     let is_secure = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
     let secure_flag = if is_secure { "; Secure" } else { "" };
@@ -734,6 +739,7 @@ pub async fn auth_check_handler(
         None => false,
     };
 
+    tracing::debug!(authenticated, "Auth check");
     Json(AuthCheckResponse { authenticated })
 }
 
@@ -759,6 +765,7 @@ pub async fn refresh_handler(
         .and_then(|c| parse_cookie(c, "refresh_token"));
 
     let Some(raw) = raw_refresh else {
+        tracing::warn!(reason = "no_refresh_token", "Token refresh failed");
         return (
             StatusCode::UNAUTHORIZED,
             Json(RefreshResponse { success: false }),
@@ -775,13 +782,15 @@ pub async fn refresh_handler(
     let jti = match refresh_result {
         Ok(Some(j)) => j,
         Ok(None) => {
+            tracing::warn!(reason = "invalid_or_expired_refresh_token", "Token refresh failed");
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(RefreshResponse { success: false }),
             )
                 .into_response();
         }
-        Err(_) => {
+        Err(e) => {
+            tracing::warn!(reason = "db_error", error = %e, "Token refresh failed");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(RefreshResponse { success: false }),
@@ -832,6 +841,7 @@ pub async fn refresh_handler(
         new_raw, REFRESH_TOKEN_EXPIRY_SECS,
     );
 
+    tracing::info!("Token refresh successful");
     let body = serde_json::to_string(&RefreshResponse { success: true }).unwrap();
     Response::builder()
         .status(StatusCode::OK)
@@ -859,6 +869,7 @@ pub async fn logout_handler(
     match token {
         Some(token_str) => match verify_jwt(token_str, &state.jwt_key) {
             Ok(claims) => {
+                tracing::info!(session_jti = %claims.jti, "Session revoked on logout");
                 let conn = state.db.lock().await;
                 let _ = revoke_session(&conn, &claims.jti);
                 let _ = db::insert_audit_log(&conn, "logout", Some("User logged out"), None);
@@ -896,6 +907,7 @@ pub async fn auth_middleware(
     next: middleware::Next,
 ) -> Response {
     let path = req.uri().path().to_string();
+    let method = req.method().to_string();
 
     let needs_setup = {
         let conn = state.db.lock().await;
@@ -908,8 +920,10 @@ pub async fn auth_middleware(
             || path == "/api/auth/check"
             || path == "/api/admin/check"
         {
+            tracing::debug!(path, method, skip_reason = "setup_not_complete", "Auth middleware skip");
             return next.run(req).await;
         }
+        tracing::debug!(path, method, redirect = "/setup", "Auth middleware redirect to setup");
         return Redirect::to("/setup").into_response();
     }
 
@@ -921,6 +935,7 @@ pub async fn auth_middleware(
         || path == "/api/auth/refresh"
         || path == "/api/admin/check"
     {
+        tracing::debug!(path, method, "Auth middleware skip");
         return next.run(req).await;
     }
 
@@ -948,12 +963,19 @@ pub async fn auth_middleware(
                 if valid {
                     next.run(req).await
                 } else {
+                    tracing::warn!(path, method, reason = "session_expired_or_revoked", "Auth middleware denied");
                     (StatusCode::UNAUTHORIZED, "Session expired or revoked").into_response()
                 }
             }
-            Err(_) => (StatusCode::UNAUTHORIZED, "Invalid token").into_response(),
+            Err(e) => {
+                tracing::warn!(path, method, reason = "invalid_token", error = %e, "Auth middleware denied");
+                (StatusCode::UNAUTHORIZED, "Invalid token").into_response()
+            }
         },
-        None => (StatusCode::UNAUTHORIZED, "No auth token").into_response(),
+        None => {
+            tracing::warn!(path, method, reason = "no_token", "Auth middleware denied");
+            (StatusCode::UNAUTHORIZED, "No auth token").into_response()
+        },
     }
 }
 
@@ -990,11 +1012,14 @@ pub async fn rate_limit_middleware(
 
     match state.rate_limiter.check_key(&sock) {
         Ok(_) => next.run(req).await,
-        Err(_) => (
-            StatusCode::TOO_MANY_REQUESTS,
-            "Rate limit exceeded. Try again later.",
-        )
-            .into_response(),
+        Err(_) => {
+            tracing::warn!(path, ip = %ip_str, "Rate limit exceeded");
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                "Rate limit exceeded. Try again later.",
+            )
+                .into_response()
+        }
     }
 }
 
@@ -1010,6 +1035,8 @@ pub async fn admin_middleware(req: Request, next: middleware::Next) -> Response 
     if is_local_request(req.headers()) {
         next.run(req).await
     } else {
+        let path = req.uri().path();
+        tracing::warn!(path, "Admin middleware denied remote request");
         (
             StatusCode::FORBIDDEN,
             "Forbidden: admin routes require localhost access",
@@ -1024,9 +1051,9 @@ pub struct AdminCheckResponse {
 }
 
 pub async fn admin_check_handler(headers: axum::http::HeaderMap) -> Json<AdminCheckResponse> {
-    Json(AdminCheckResponse {
-        is_local: is_local_request(&headers),
-    })
+    let is_local = is_local_request(&headers);
+    tracing::info!(is_local, "Admin check");
+    Json(AdminCheckResponse { is_local })
 }
 
 // --- CSP Middleware ---

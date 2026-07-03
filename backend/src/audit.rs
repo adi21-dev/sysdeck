@@ -1,6 +1,7 @@
 use axum::extract::{Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use tracing;
 
 use crate::db::{self, AuditLogEntry};
 use crate::AppState;
@@ -26,6 +27,7 @@ pub async fn logs_handler(
     State(state): State<AppState>,
 ) -> Json<AuditLogResponse> {
     let limit = params.limit.unwrap_or(50).min(200);
+    tracing::info!("Audit logs requested");
     let db = state.db.lock().await;
 
     let all_entries = db::query_audit_logs(
@@ -36,7 +38,10 @@ pub async fn logs_handler(
         params.from,
         params.to,
     )
-    .unwrap_or_default();
+    .unwrap_or_else(|e| {
+        tracing::warn!("Failed to query audit logs: {}", e);
+        vec![]
+    });
 
     let has_more = all_entries.len() as i64 > limit;
     let entries = if has_more {

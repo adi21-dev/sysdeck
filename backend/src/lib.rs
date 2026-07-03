@@ -172,6 +172,7 @@ pub fn init_db() -> Connection {
 pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
     if let Ok(listener) = tokio::net::TcpListener::bind("127.0.0.1:3939").await {
         let port = listener.local_addr().unwrap().port();
+        tracing::info!(port, "Server started");
         println!("Bound to port {}", port);
         return (port, listener);
     }
@@ -180,6 +181,7 @@ pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
         .await
         .expect("Failed to bind to any available port");
     let port = listener.local_addr().unwrap().port();
+    tracing::info!(port, "Server started (fallback port)");
     println!("Port 3939 was occupied. Fallback to random port: {}", port);
     (port, listener)
 }
@@ -417,30 +419,38 @@ pub fn spawn_tray(
                 recv(cmd_rx) -> cmd => {
                     match cmd {
                         Ok(TrayCommand::SetConnected) => {
+                            tracing::info!(action = "tray", command = "SetConnected");
                             tray.set_icon(Some(green.clone())).ok();
                             tray.set_tooltip(Some("NodeDesk: Connected")).ok();
                             pause_item.set_text("Pause Tunnel");
                             copy_url_item.set_enabled(true);
                         }
                         Ok(TrayCommand::SetReconnecting) => {
+                            tracing::info!(action = "tray", command = "SetReconnecting");
                             tray.set_icon(Some(yellow.clone())).ok();
                             tray.set_tooltip(Some("NodeDesk: Reconnecting...")).ok();
                             copy_url_item.set_enabled(false);
                             pause_item.set_text("Pause Tunnel");
                         }
                         Ok(TrayCommand::SetOffline) => {
+                            tracing::info!(action = "tray", command = "SetOffline");
                             tray.set_icon(Some(red.clone())).ok();
                             tray.set_tooltip(Some("NodeDesk: Offline")).ok();
                             pause_item.set_text("Resume Tunnel");
                             copy_url_item.set_enabled(false);
                         }
                         Ok(TrayCommand::SetUrl(url)) => {
+                            tracing::info!(action = "tray", command = "SetUrl");
                             tunnel_url = url;
                         }
                         Ok(TrayCommand::SetStartupCheck(on)) => {
+                            tracing::info!(action = "tray", command = "SetStartupCheck", on);
                             startup_item.set_text(if on { "✓ Run on Startup" } else { "  Run on Startup" });
                         }
-                        Ok(TrayCommand::Shutdown) => break,
+                        Ok(TrayCommand::Shutdown) => {
+                            tracing::info!(action = "tray", command = "Shutdown");
+                            break;
+                        }
                         Err(_) => break,
                     }
                 }
@@ -456,6 +466,7 @@ pub async fn history_handler(
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let range = params.get("range").map(|s| s.as_str()).unwrap_or("1h");
+    tracing::info!(handler = "history_handler", range, "telemetry history requested");
     let seconds = match parse_range(range) {
         Some(s) => s,
         None => {

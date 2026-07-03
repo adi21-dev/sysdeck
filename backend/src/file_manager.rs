@@ -1,3 +1,5 @@
+use tracing;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -26,12 +28,16 @@ fn strip_wp(s: &str) -> &str {
 
 pub fn validate_path(requested: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(requested);
-    let canonical = std::fs::canonicalize(&path).map_err(|e| format!("Invalid path: {}", e))?;
+    let canonical = std::fs::canonicalize(&path).map_err(|e| {
+        tracing::warn!("path_validation_failed: path={}, error={}", requested, e);
+        format!("Invalid path: {}", e)
+    })?;
 
     let lower = canonical.to_string_lossy().to_lowercase();
     let stripped = strip_wp(&lower);
     for blocked in BLOCKED_PREFIXES {
         if stripped.starts_with(blocked) {
+            tracing::warn!("path_blocked: path={}", requested);
             return Err(format!("Access to '{}' is blocked", canonical.display()));
         }
     }
@@ -117,6 +123,7 @@ pub(crate) async fn list_handler(
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
     let path_str = query.path.unwrap_or_else(|| "C:\\".to_string());
+    tracing::info!("dir_list: path={}", path_str);
 
     let (allowed, blocked) = {
         let conn = state.db.lock().await;
@@ -265,6 +272,7 @@ pub(crate) async fn upload_handler(
         })
         .into_response(),
         Err(e) => {
+            tracing::warn!("upload_failed: {}", e);
             let conn = state.db.lock().await;
             let _ = db::insert_audit_log(&conn, "upload_failed", Some(&e), None);
             drop(conn);
@@ -286,6 +294,7 @@ async fn upload_stream(
     let target_path = query
         .get("path")
         .ok_or_else(|| "Missing 'path' query parameter".to_string())?;
+    tracing::info!("upload_start: path={}", target_path);
 
     let (allowed, blocked) = {
         let conn = state.db.lock().await;
@@ -367,6 +376,8 @@ async fn upload_stream(
         .await
         .map_err(|e| format!("Flush error: {}", e))?;
 
+    tracing::info!("upload_complete: path={}, total_bytes={}", file_path.display(), total);
+
     let conn = state.db.lock().await;
     let _ = db::insert_audit_log(
         &conn,
@@ -388,6 +399,7 @@ pub(crate) async fn download_handler(
     State(state): State<crate::AppState>,
     Query(query): Query<DownloadQuery>,
 ) -> Response {
+    tracing::info!("download: path={}", query.path);
     let path = match validate_path(&query.path) {
         Ok(p) => p,
         Err(e) => {
@@ -499,6 +511,7 @@ pub(crate) async fn delete_handler(
 
     match result {
         Ok(_) => {
+            tracing::warn!("file_deleted: path={}", path.display());
             let conn = state.db.lock().await;
             let _ =
                 db::insert_audit_log(&conn, "file_deleted", Some(&path.to_string_lossy()), None);
@@ -580,6 +593,7 @@ pub(crate) async fn rename_handler(
 
     match std::fs::rename(&from, &to) {
         Ok(_) => {
+            tracing::info!("file_renamed: from={}, to={}", from.display(), to.display());
             let conn = state.db.lock().await;
             let _ = db::insert_audit_log(
                 &conn,

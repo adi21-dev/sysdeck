@@ -1,3 +1,5 @@
+use tracing;
+
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -93,6 +95,8 @@ pub(crate) async fn execute_handler(
     let (output_tx, _) = broadcast::channel::<ScriptOutput>(10000);
     let ip = auth::client_ip_from_headers(&headers);
 
+    tracing::info!("script_execute: type={}, mode={}", req.script_type, req.mode);
+
     {
         let conn = state.db.lock().await;
         let _ = db::insert_audit_log(
@@ -108,6 +112,7 @@ pub(crate) async fn execute_handler(
 
     if req.mode == "wait" {
         let result = run_script(&req.script_type, &req.content, output_tx, None).await;
+        tracing::info!("script_complete: id={}, exit_code={}", id, result.exit_code);
         return Json(json!({
             "success": true,
             "id": id,
@@ -146,6 +151,7 @@ pub(crate) async fn execute_handler(
         .await;
 
         completed_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+        tracing::info!("script_complete: id={}", id_clone);
 
         tokio::time::sleep(Duration::from_secs(15)).await;
 
@@ -182,8 +188,12 @@ async fn run_script(
     };
 
     let mut child = match child {
-        Ok(c) => c,
+        Ok(c) => {
+            tracing::debug!("script_process_started: type={}", script_type);
+            c
+        }
         Err(e) => {
+            tracing::warn!("script_spawn_failed: type={}, error={}", script_type, e);
             return ScriptResult {
                 exit_code: -1,
                 stdout: String::new(),
@@ -211,12 +221,24 @@ async fn run_script(
     let status = tokio::time::timeout(SCRIPT_TIMEOUT, child.wait()).await;
 
     let (stdout_output, stdout_truncated) = match stdout_task {
-        Some(h) => h.await.unwrap_or_default(),
+        Some(h) => match h.await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("script_stdout_task_join_error: {}", e);
+                (String::new(), false)
+            }
+        },
         None => (String::new(), false),
     };
 
     let (stderr_output, stderr_truncated) = match stderr_task {
-        Some(h) => h.await.unwrap_or_default(),
+        Some(h) => match h.await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!("script_stderr_task_join_error: {}", e);
+                (String::new(), false)
+            }
+        },
         None => (String::new(), false),
     };
 
@@ -248,13 +270,17 @@ async fn run_script(
                 truncated: stdout_truncated || stderr_truncated,
             }
         }
-        Ok(Err(e)) => ScriptResult {
-            exit_code: -1,
-            stdout: stdout_output,
-            stderr: format!("Process error: {}", e),
-            truncated: stdout_truncated || stderr_truncated,
-        },
+        Ok(Err(e)) => {
+            tracing::warn!("script_process_error: type={}, error={}", script_type, e);
+            ScriptResult {
+                exit_code: -1,
+                stdout: stdout_output,
+                stderr: format!("Process error: {}", e),
+                truncated: stdout_truncated || stderr_truncated,
+            }
+        }
         Err(_) => {
+            tracing::warn!("script_timeout: type={}", script_type);
             kill_process_tree(child.id());
             let _ = child.wait().await;
             let mut seq = 0;
@@ -297,7 +323,10 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     let mut truncated = false;
     let mut output = String::new();
 
-    while reader.read_until(b'\n', &mut buf).await.unwrap_or(0) > 0 {
+    while reader.read_until(b'\n', &mut buf).await.unwrap_or_else(|e| {
+        tracing::error!("script_read_error: stream={}, error={}", stream_name, e);
+        0
+    }) > 0 {
         // strip trailing \r\n
         while buf
             .last()
@@ -333,6 +362,7 @@ async fn read_stream<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
             }
         } else if !truncated {
             truncated = true;
+            tracing::warn!("script_output_truncated: stream={}", stream_name);
             let mut seq = 0;
             if let Some(ref hist) = history {
                 let mut h = hist.lock().await;

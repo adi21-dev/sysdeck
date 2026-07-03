@@ -4,6 +4,7 @@ use base64::Engine;
 use enigo::{Axis, Direction, Key, Keyboard, Mouse};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing;
 
 // ── Request types ──
 
@@ -325,6 +326,7 @@ pub async fn media_key_handler(Json(req): Json<MediaKeyReq>) -> impl IntoRespons
 // ── Clipboard handlers ──
 
 pub async fn clipboard_get_handler() -> impl IntoResponse {
+    tracing::info!("Clipboard get requested");
     let result = tokio::task::spawn_blocking(move || -> Result<ClipboardEvent, String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         let text = cb.get_text().ok();
@@ -343,6 +345,7 @@ pub async fn clipboard_get_handler() -> impl IntoResponse {
 }
 
 pub async fn clipboard_set_handler(Json(req): Json<ClipboardSetReq>) -> impl IntoResponse {
+    tracing::info!("Clipboard set requested");
     let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         if let Some(text) = req.text {
@@ -364,6 +367,7 @@ pub async fn clipboard_set_handler(Json(req): Json<ClipboardSetReq>) -> impl Int
 // ── Screenshot handlers ──
 
 pub async fn screenshot_handler(Query(params): Query<Option<ScreenshotReq>>) -> impl IntoResponse {
+    tracing::info!("Screenshot requested");
     let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
         let monitors = xcap::Monitor::all().map_err(|e| format!("monitors: {}", e))?;
         let idx = params.as_ref().and_then(|r| r.monitor).unwrap_or(0);
@@ -401,6 +405,7 @@ pub async fn screenshot_handler(Query(params): Query<Option<ScreenshotReq>>) -> 
 // ── Browser handlers ──
 
 pub async fn browser_open_handler(Json(req): Json<BrowserOpenReq>) -> impl IntoResponse {
+    tracing::info!(url = %req.url, "Browser open requested");
     // ponytail: open URL via system default browser. Tab control via DevTools Protocol if needed.
     match open::that(&req.url) {
         Ok(()) => Json(json!({"success": true})).into_response(),
@@ -411,6 +416,7 @@ pub async fn browser_open_handler(Json(req): Json<BrowserOpenReq>) -> impl IntoR
 }
 
 pub async fn browser_list_windows_handler() -> impl IntoResponse {
+    tracing::info!("Browser list windows requested");
     // ponytail: browser window/tab listing not implemented. Use screenshots for visual feedback.
     Json(json!({"success": true, "data": {"windows": []}}))
 }

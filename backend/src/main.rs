@@ -287,6 +287,7 @@ async fn main() {
     let server_handle = tokio::spawn(async move {
         let _ = server_ready_tx.send(());
 
+        tracing::info!(port, "Listening");
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
                 tokio::select! {

@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 
 use axum::body::Body;
+use tracing;
 use axum::extract::State;
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -49,6 +50,7 @@ pub async fn change_password_handler(
     drop(db_lock);
 
     if !auth::verify_password(&body.current_password, &current_hash).unwrap_or(false) {
+        tracing::warn!(handler = "change_password_handler", "wrong current password");
         return err_json(StatusCode::UNAUTHORIZED, "Current password is incorrect").into_response();
     }
 
@@ -79,6 +81,7 @@ pub async fn change_password_handler(
     }
     let _ = db::insert_audit_log(&db_lock, "password_changed", None, None);
     drop(db_lock);
+    tracing::info!(handler = "change_password_handler", "password changed");
     ok_json("Password updated").into_response()
 }
 
@@ -91,6 +94,7 @@ pub struct TotpResetResponse {
 }
 
 pub async fn reset_totp_handler(State(state): State<AppState>) -> Json<TotpResetResponse> {
+    tracing::info!(handler = "reset_totp_handler", "TOTP reset initiated");
     let secret = auth::generate_totp_secret();
     let qr_svg = auth::generate_totp_qr_data_uri(&secret);
     let b32 = auth::totp_secret_to_b32(&secret);
@@ -120,11 +124,13 @@ pub async fn verify_totp_handler(
     let secret_bytes = match auth::totp_secret_from_b32(&body.secret) {
         Ok(b) => b,
         Err(_) => {
+            tracing::warn!(handler = "verify_totp_handler", "invalid secret format");
             return err_json(StatusCode::BAD_REQUEST, "Invalid secret format").into_response()
         }
     };
 
     if !auth::verify_totp_code(&secret_bytes, &body.code) {
+        tracing::warn!(handler = "verify_totp_handler", "invalid TOTP code");
         return err_json(StatusCode::BAD_REQUEST, "Invalid TOTP code").into_response();
     }
 
@@ -146,10 +152,12 @@ pub async fn verify_totp_handler(
     }
     let _ = db::insert_audit_log(&db_lock, "totp_reset_completed", None, None);
     drop(db_lock);
+    tracing::info!(handler = "verify_totp_handler", "TOTP updated");
     ok_json("TOTP updated").into_response()
 }
 
 pub async fn list_recovery_codes_handler(State(state): State<AppState>) -> Response {
+    tracing::info!(handler = "list_recovery_codes_handler", "recovery codes listed");
     let db_lock = state.db.lock().await;
     let codes: Vec<String> =
         match db_lock.prepare("SELECT code_hash FROM recovery_codes WHERE used = 0 ORDER BY id") {
@@ -165,6 +173,7 @@ pub async fn list_recovery_codes_handler(State(state): State<AppState>) -> Respo
 }
 
 pub async fn regenerate_recovery_codes_handler(State(state): State<AppState>) -> Response {
+    tracing::info!(handler = "regenerate_recovery_codes_handler", "recovery codes regenerated");
     let plain_codes = auth::generate_recovery_codes();
     let hashes = match auth::hash_recovery_codes(&plain_codes) {
         Ok(h) => h,
@@ -190,6 +199,7 @@ pub async fn regenerate_recovery_codes_handler(State(state): State<AppState>) ->
 }
 
 pub async fn revoke_all_handler(State(state): State<AppState>) -> Response {
+    tracing::info!(handler = "revoke_all_handler", "all sessions revoked");
     let db_lock = state.db.lock().await;
     match auth::revoke_all_sessions(&db_lock) {
         Ok(_) => {
@@ -208,6 +218,7 @@ pub async fn list_sessions_handler(
     State(state): State<AppState>,
     req: axum::extract::Request,
 ) -> Response {
+    tracing::info!(handler = "list_sessions_handler", "sessions listed");
     let current_jti = req
         .headers()
         .get(header::COOKIE)
@@ -237,6 +248,7 @@ pub async fn revoke_session_handler(
     State(state): State<AppState>,
     Json(body): Json<RevokeSessionBody>,
 ) -> Response {
+    tracing::info!(handler = "revoke_session_handler", jti = %&body.jti[..8], "session revoked");
     let db_lock = state.db.lock().await;
     match auth::revoke_session(&db_lock, &body.jti) {
         Ok(_) => {
@@ -257,6 +269,7 @@ pub async fn revoke_session_handler(
 }
 
 pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
+    tracing::info!(handler = "export_db_handler", "database export requested");
     let db_path = crate::get_db_path();
     let file = match tokio::fs::File::open(&db_path).await {
         Ok(f) => f,
@@ -294,6 +307,7 @@ pub async fn export_db_handler(State(_state): State<AppState>) -> Response {
 }
 
 pub async fn download_logs_handler(State(_state): State<AppState>) -> Response {
+    tracing::info!(handler = "download_logs_handler", "log download requested");
     let logs_dir = crate::get_logs_dir();
     let mut buffer = Vec::new();
     {
@@ -331,6 +345,7 @@ pub async fn download_logs_handler(State(_state): State<AppState>) -> Response {
 }
 
 pub async fn get_paths_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    tracing::info!(handler = "get_paths_handler", "paths retrieved");
     let db_lock = state.db.lock().await;
     let allowed = db::get_setting(&db_lock, "allowed_paths")
         .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
@@ -352,6 +367,7 @@ pub async fn set_paths_handler(
     State(state): State<AppState>,
     Json(body): Json<PathsBody>,
 ) -> Json<serde_json::Value> {
+    tracing::info!(handler = "set_paths_handler", "paths updated");
     // Validate no overlapping allowed paths
     for i in 0..body.allowed.len() {
         let a = body.allowed[i].trim_end_matches('\\').to_lowercase();
@@ -376,6 +392,7 @@ pub async fn set_paths_handler(
 }
 
 pub async fn get_relay_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    tracing::info!(handler = "get_relay_handler", "relay status retrieved");
     let db_lock = state.db.lock().await;
     let enabled = db::get_setting(&db_lock, "relay_opt_in")
         .map(|v| v == "true")
@@ -393,6 +410,7 @@ pub async fn set_relay_handler(
     State(state): State<AppState>,
     Json(body): Json<RelayBody>,
 ) -> Json<serde_json::Value> {
+    tracing::info!(handler = "set_relay_handler", enabled = body.enabled, "relay toggled");
     let db_lock = state.db.lock().await;
     let _ = db::set_setting(&db_lock, "relay_opt_in", if body.enabled { "true" } else { "false" });
     let _ = db::insert_audit_log(
@@ -415,6 +433,7 @@ pub async fn set_relay_handler(
 }
 
 pub async fn get_port_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    tracing::info!(handler = "get_port_handler", "port retrieved");
     let db_lock = state.db.lock().await;
     let port = db::get_setting(&db_lock, "port")
         .and_then(|v| v.parse::<u16>().ok())
@@ -433,8 +452,10 @@ pub async fn set_port_handler(
     Json(body): Json<PortBody>,
 ) -> Json<serde_json::Value> {
     if body.port < 1024 {
+        tracing::warn!(handler = "set_port_handler", port = body.port, "port out of range");
         return Json(json!({"success": false, "message": "Port must be between 1024 and 65535"}));
     }
+    tracing::info!(handler = "set_port_handler", port = body.port, "port updated");
     let db_lock = state.db.lock().await;
     let _ = db::set_setting(&db_lock, "port", &body.port.to_string());
     let _ = db::insert_audit_log(

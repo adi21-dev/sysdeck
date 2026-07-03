@@ -2,6 +2,7 @@ use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::process::Command;
+use tracing;
 
 #[derive(Serialize, Debug)]
 pub struct InterfaceInfo {
@@ -850,6 +851,7 @@ pub async fn network_status_handler() -> impl IntoResponse {
 }
 
 pub async fn flush_dns_handler() -> impl IntoResponse {
+    tracing::info!("DNS flush requested");
     match flush_dns().await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (
@@ -861,6 +863,7 @@ pub async fn flush_dns_handler() -> impl IntoResponse {
 }
 
 pub async fn adapter_handler(Json(req): Json<AdapterRequest>) -> impl IntoResponse {
+    tracing::info!(adapter = %req.name, enabled = req.enabled, "Adapter toggle requested");
     match toggle_adapter(req.name, req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (
@@ -883,6 +886,7 @@ pub async fn wifi_scan_handler() -> impl IntoResponse {
 }
 
 pub async fn wifi_connect_handler(Json(req): Json<WifiConnectRequest>) -> impl IntoResponse {
+    tracing::info!(ssid = %req.ssid, "WiFi connect requested");
     match connect_wifi(req.ssid, req.password, req.security_type).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (
@@ -894,6 +898,7 @@ pub async fn wifi_connect_handler(Json(req): Json<WifiConnectRequest>) -> impl I
 }
 
 pub async fn wifi_disconnect_handler() -> impl IntoResponse {
+    tracing::info!("WiFi disconnect requested");
     match disconnect_wifi().await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (

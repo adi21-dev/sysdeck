@@ -31,6 +31,8 @@ async fn handle_socket(
     clipboard_tx: broadcast::Sender<String>,
     tunnel_state: Arc<crate::tunnel::TunnelState>,
 ) {
+    tracing::info!("WebSocket connected");
+
     {
         let status = tunnel_state.status.read().await;
         let url = tunnel_state.url.read().await.clone();
@@ -119,4 +121,5 @@ async fn handle_socket(
             }
         }
     }
+    tracing::info!("WebSocket disconnected");
 }
