@@ -63,7 +63,9 @@ export function useWebSocket() {
 
     ws.onclose = () => {
       setStatus("disconnected")
-      reconnectTimer.current = setTimeout(connect, 3000)
+      fetch("/api/auth/refresh", { method: "POST" }).finally(() => {
+        reconnectTimer.current = setTimeout(connect, 3000)
+      })
     }
 
     ws.onerror = () => {
