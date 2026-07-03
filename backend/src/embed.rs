@@ -9,7 +9,8 @@ use rust_embed::RustEmbed;
 #[folder = "../frontend/dist/"]
 struct Asset;
 
-const CSP: &str = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'";
+const CSP: &str =
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'";
 
 pub async fn serve_embedded_assets(uri: Uri) -> Response {
     let mut path = uri.path().trim_start_matches('/').to_owned();
@@ -31,8 +32,9 @@ pub async fn serve_embedded_assets(uri: Uri) -> Response {
         return StatusCode::NOT_FOUND.into_response();
     };
     let (mut parts, body) = resp.into_parts();
-    parts
-        .headers
-        .insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+    parts.headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP),
+    );
     Response::from_parts(parts, body)
 }

@@ -1,10 +1,10 @@
-use std::process::Command;
-use std::time::Duration;
-use serde::{Deserialize, Serialize};
 use axum::extract::State;
 use axum::response::{IntoResponse, Json};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::process::Command;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 #[derive(Serialize, Debug)]
 pub struct AudioStatus {
@@ -122,10 +122,14 @@ fn run_powershell(script: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to spawn powershell: {}", e))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(script.as_bytes()).map_err(|e| format!("Failed to write to powershell stdin: {}", e))?;
+        stdin
+            .write_all(script.as_bytes())
+            .map_err(|e| format!("Failed to write to powershell stdin: {}", e))?;
     }
 
-    let output = child.wait_with_output().map_err(|e| format!("Failed to read powershell output: {}", e))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to read powershell output: {}", e))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -133,8 +137,6 @@ fn run_powershell(script: &str) -> Result<String, String> {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
 }
-
-
 
 // --- Windows-Specific implementation ---
 
@@ -180,11 +182,25 @@ mod win_com {
 
     #[repr(C)]
     pub struct IMMDeviceEnumeratorVtbl {
-        pub QueryInterface: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub QueryInterface: unsafe extern "system" fn(
+            this: *mut IMMDeviceEnumerator,
+            iid: *const GUID,
+            ppv: *mut *mut c_void,
+        ) -> i32,
         pub AddRef: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator) -> u32,
         pub Release: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator) -> u32,
-        pub EnumAudioEndpoints: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, dataFlow: u32, dwStateMask: u32, ppDevices: *mut *mut c_void) -> i32,
-        pub GetDefaultAudioEndpoint: unsafe extern "system" fn(this: *mut IMMDeviceEnumerator, dataFlow: u32, role: u32, ppEndpoint: *mut *mut IMMDevice) -> i32,
+        pub EnumAudioEndpoints: unsafe extern "system" fn(
+            this: *mut IMMDeviceEnumerator,
+            dataFlow: u32,
+            dwStateMask: u32,
+            ppDevices: *mut *mut c_void,
+        ) -> i32,
+        pub GetDefaultAudioEndpoint: unsafe extern "system" fn(
+            this: *mut IMMDeviceEnumerator,
+            dataFlow: u32,
+            role: u32,
+            ppEndpoint: *mut *mut IMMDevice,
+        ) -> i32,
     }
 
     #[repr(C)]
@@ -194,11 +210,25 @@ mod win_com {
 
     #[repr(C)]
     pub struct IMMDeviceVtbl {
-        pub QueryInterface: unsafe extern "system" fn(this: *mut IMMDevice, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub QueryInterface: unsafe extern "system" fn(
+            this: *mut IMMDevice,
+            iid: *const GUID,
+            ppv: *mut *mut c_void,
+        ) -> i32,
         pub AddRef: unsafe extern "system" fn(this: *mut IMMDevice) -> u32,
         pub Release: unsafe extern "system" fn(this: *mut IMMDevice) -> u32,
-        pub Activate: unsafe extern "system" fn(this: *mut IMMDevice, iid: *const GUID, dwClsContext: u32, pActivationParams: *mut c_void, ppInterface: *mut *mut c_void) -> i32,
-        pub OpenPropertyStore: unsafe extern "system" fn(this: *mut IMMDevice, stgmAccess: u32, ppProperties: *mut *mut c_void) -> i32,
+        pub Activate: unsafe extern "system" fn(
+            this: *mut IMMDevice,
+            iid: *const GUID,
+            dwClsContext: u32,
+            pActivationParams: *mut c_void,
+            ppInterface: *mut *mut c_void,
+        ) -> i32,
+        pub OpenPropertyStore: unsafe extern "system" fn(
+            this: *mut IMMDevice,
+            stgmAccess: u32,
+            ppProperties: *mut *mut c_void,
+        ) -> i32,
         pub GetId: unsafe extern "system" fn(this: *mut IMMDevice, ppstrId: *mut *mut u16) -> i32,
         pub GetState: unsafe extern "system" fn(this: *mut IMMDevice, pdwState: *mut u32) -> i32,
     }
@@ -210,30 +240,71 @@ mod win_com {
 
     #[repr(C)]
     pub struct IAudioEndpointVolumeVtbl {
-        pub QueryInterface: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, iid: *const GUID, ppv: *mut *mut c_void) -> i32,
+        pub QueryInterface: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            iid: *const GUID,
+            ppv: *mut *mut c_void,
+        ) -> i32,
         pub AddRef: unsafe extern "system" fn(this: *mut IAudioEndpointVolume) -> u32,
         pub Release: unsafe extern "system" fn(this: *mut IAudioEndpointVolume) -> u32,
-        pub RegisterControlChangeNotify: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
-        pub UnregisterControlChangeNotify: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
-        pub GetChannelCount: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pnChannelCount: *mut u32) -> i32,
-        pub SetMasterVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, fLevelDB: f32, pguidEventContext: *const GUID) -> i32,
-        pub SetMasterVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, fLevel: f32, pguidEventContext: *const GUID) -> i32,
-        pub GetMasterVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevelDB: *mut f32) -> i32,
-        pub GetMasterVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevel: *mut f32) -> i32,
-        pub SetChannelVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, fLevelDB: f32, pguidEventContext: *const GUID) -> i32,
-        pub SetChannelVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, fLevel: f32, pguidEventContext: *const GUID) -> i32,
-        pub GetChannelVolumeLevel: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, pfLevelDB: *mut f32) -> i32,
-        pub GetChannelVolumeLevelScalar: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, nChannel: u32, pfLevel: *mut f32) -> i32,
-        pub SetMute: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, bMute: i32, pguidEventContext: *const GUID) -> i32,
-        pub GetMute: unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pbMute: *mut i32) -> i32,
+        pub RegisterControlChangeNotify:
+            unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
+        pub UnregisterControlChangeNotify:
+            unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pNotify: *mut c_void) -> i32,
+        pub GetChannelCount: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            pnChannelCount: *mut u32,
+        ) -> i32,
+        pub SetMasterVolumeLevel: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            fLevelDB: f32,
+            pguidEventContext: *const GUID,
+        ) -> i32,
+        pub SetMasterVolumeLevelScalar: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            fLevel: f32,
+            pguidEventContext: *const GUID,
+        ) -> i32,
+        pub GetMasterVolumeLevel:
+            unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevelDB: *mut f32) -> i32,
+        pub GetMasterVolumeLevelScalar:
+            unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pfLevel: *mut f32) -> i32,
+        pub SetChannelVolumeLevel: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            nChannel: u32,
+            fLevelDB: f32,
+            pguidEventContext: *const GUID,
+        ) -> i32,
+        pub SetChannelVolumeLevelScalar: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            nChannel: u32,
+            fLevel: f32,
+            pguidEventContext: *const GUID,
+        ) -> i32,
+        pub GetChannelVolumeLevel: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            nChannel: u32,
+            pfLevelDB: *mut f32,
+        ) -> i32,
+        pub GetChannelVolumeLevelScalar: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            nChannel: u32,
+            pfLevel: *mut f32,
+        ) -> i32,
+        pub SetMute: unsafe extern "system" fn(
+            this: *mut IAudioEndpointVolume,
+            bMute: i32,
+            pguidEventContext: *const GUID,
+        ) -> i32,
+        pub GetMute:
+            unsafe extern "system" fn(this: *mut IAudioEndpointVolume, pbMute: *mut i32) -> i32,
     }
-
-    }
+}
 
 #[cfg(target_os = "windows")]
 unsafe fn get_volume_interface() -> Result<*mut win_com::IAudioEndpointVolume, String> {
-    use windows_sys::Win32::System::Com::*;
     use win_com::*;
+    use windows_sys::Win32::System::Com::*;
 
     // Initialize COM on this thread
     let _ = CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32);
@@ -247,7 +318,10 @@ unsafe fn get_volume_interface() -> Result<*mut win_com::IAudioEndpointVolume, S
         &mut enumerator as *mut *mut _ as *mut _,
     );
     if hr < 0 {
-        return Err(format!("CoCreateInstance(MMDeviceEnumerator) failed: HRESULT 0x{:X}", hr));
+        return Err(format!(
+            "CoCreateInstance(MMDeviceEnumerator) failed: HRESULT 0x{:X}",
+            hr
+        ));
     }
 
     let mut device: *mut IMMDevice = std::ptr::null_mut();
@@ -260,7 +334,10 @@ unsafe fn get_volume_interface() -> Result<*mut win_com::IAudioEndpointVolume, S
     ((*(*enumerator).lpVtbl).Release)(enumerator);
 
     if hr < 0 {
-        return Err(format!("GetDefaultAudioEndpoint failed: HRESULT 0x{:X}", hr));
+        return Err(format!(
+            "GetDefaultAudioEndpoint failed: HRESULT 0x{:X}",
+            hr
+        ));
     }
 
     let mut volume: *mut IAudioEndpointVolume = std::ptr::null_mut();
@@ -274,7 +351,10 @@ unsafe fn get_volume_interface() -> Result<*mut win_com::IAudioEndpointVolume, S
     ((*(*device).lpVtbl).Release)(device);
 
     if hr < 0 {
-        return Err(format!("Activate(IAudioEndpointVolume) failed: HRESULT 0x{:X}", hr));
+        return Err(format!(
+            "Activate(IAudioEndpointVolume) failed: HRESULT 0x{:X}",
+            hr
+        ));
     }
 
     Ok(volume)
@@ -397,7 +477,7 @@ pub async fn get_audio_status() -> Result<AudioStatus, String> {
                     .nth(1)
                     .and_then(|s| s.trim().trim_end_matches('%').parse::<u32>().ok())
                     .unwrap_or(50);
-                
+
                 let mute_out = run_cmd("pactl", &["get-sink-mute", "@DEFAULT_SINK@"]).unwrap_or_default();
                 let muted = mute_out.contains("yes");
 
@@ -446,21 +526,36 @@ pub async fn set_audio_volume(volume: u32) -> Result<(), String> {
         unsafe {
             let volume_interface = get_volume_interface()?;
             let scalar = (volume as f32) / 100.0;
-            let hr = ((*(*volume_interface).lpVtbl).SetMasterVolumeLevelScalar)(volume_interface, scalar, std::ptr::null());
+            let hr = ((*(*volume_interface).lpVtbl).SetMasterVolumeLevelScalar)(
+                volume_interface,
+                scalar,
+                std::ptr::null(),
+            );
             ((*(*volume_interface).lpVtbl).Release)(volume_interface);
             if hr < 0 {
-                return Err(format!("SetMasterVolumeLevelScalar failed: HRESULT 0x{:X}", hr));
+                return Err(format!(
+                    "SetMasterVolumeLevelScalar failed: HRESULT 0x{:X}",
+                    hr
+                ));
             }
             Ok(())
         }
         #[cfg(target_os = "macos")]
         {
-            run_cmd("osascript", &["-e", &format!("set volume output volume {}", volume)])?;
+            run_cmd(
+                "osascript",
+                &["-e", &format!("set volume output volume {}", volume)],
+            )?;
             Ok(())
         }
         #[cfg(target_os = "linux")]
         {
-            if run_cmd("pactl", &["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", volume)]).is_ok() {
+            if run_cmd(
+                "pactl",
+                &["set-sink-volume", "@DEFAULT_SINK@", &format!("{}%", volume)],
+            )
+            .is_ok()
+            {
                 Ok(())
             } else {
                 run_cmd("amixer", &["set", "Master", &format!("{}%", volume)])?;
@@ -469,7 +564,9 @@ pub async fn set_audio_volume(volume: u32) -> Result<(), String> {
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         Err("Not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
@@ -477,7 +574,11 @@ pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
         #[cfg(target_os = "windows")]
         unsafe {
             let volume_interface = get_volume_interface()?;
-            let hr = ((*(*volume_interface).lpVtbl).SetMute)(volume_interface, if muted { 1 } else { 0 }, std::ptr::null());
+            let hr = ((*(*volume_interface).lpVtbl).SetMute)(
+                volume_interface,
+                if muted { 1 } else { 0 },
+                std::ptr::null(),
+            );
             ((*(*volume_interface).lpVtbl).Release)(volume_interface);
             if hr < 0 {
                 return Err(format!("SetMute failed: HRESULT 0x{:X}", hr));
@@ -487,7 +588,10 @@ pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
         #[cfg(target_os = "macos")]
         {
             let val = if muted { "with" } else { "without" };
-            run_cmd("osascript", &["-e", &format!("set volume {} output muted", val)])?;
+            run_cmd(
+                "osascript",
+                &["-e", &format!("set volume {} output muted", val)],
+            )?;
             Ok(())
         }
         #[cfg(target_os = "linux")]
@@ -503,7 +607,9 @@ pub async fn set_audio_mute(muted: bool) -> Result<(), String> {
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         Err("Not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn set_audio_device(_device: String) -> Result<(), String> {
@@ -583,7 +689,10 @@ pub async fn trigger_media_key(action: String) -> Result<(), String> {
                 "mute" => "173",
                 _ => return Err(format!("Unknown media action: {}", action)),
             };
-            let script = format!("(New-Object -ComObject Wscript.Shell).SendKeys([char]{})", key);
+            let script = format!(
+                "(New-Object -ComObject Wscript.Shell).SendKeys([char]{})",
+                key
+            );
             run_powershell(&script)?;
             Ok(())
         }
@@ -612,7 +721,9 @@ pub async fn trigger_media_key(action: String) -> Result<(), String> {
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         Err("Not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn get_display_status() -> Result<DisplayStatus, String> {
@@ -841,94 +952,152 @@ pub async fn set_monitor_off() -> Result<(), String> {
 pub async fn audio_status_handler() -> impl IntoResponse {
     match get_audio_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn audio_volume_handler(Json(req): Json<VolumeRequest>) -> impl IntoResponse {
     match set_audio_volume(req.volume).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn audio_mute_handler(Json(req): Json<MuteRequest>) -> impl IntoResponse {
     match set_audio_mute(req.muted).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn audio_device_handler(Json(req): Json<DeviceRequest>) -> impl IntoResponse {
     match set_audio_device(req.device).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn audio_media_handler(Json(req): Json<MediaRequest>) -> impl IntoResponse {
     match trigger_media_key(req.action).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn display_status_handler() -> impl IntoResponse {
     match get_display_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn display_brightness_handler(Json(req): Json<BrightnessRequest>) -> impl IntoResponse {
     match set_display_brightness(req.brightness).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn display_night_light_handler(Json(req): Json<NightLightRequest>) -> impl IntoResponse {
     match set_display_night_light(req.night_light).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn toggles_status_handler() -> impl IntoResponse {
     match get_toggle_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn toggle_dark_mode_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
     match set_toggle_dark_mode(req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn control_center_status_handler() -> impl IntoResponse {
     match get_control_center_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
-pub async fn control_center_toggle_handler(Json(req): Json<ControlCenterToggleReq>) -> impl IntoResponse {
+pub async fn control_center_toggle_handler(
+    Json(req): Json<ControlCenterToggleReq>,
+) -> impl IntoResponse {
     match set_control_center_toggle(req.toggle, req.enabled).await {
         Ok(_) => match get_control_center_status().await {
             Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-            Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "message": e })),
+            )
+                .into_response(),
         },
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn display_monitor_handler(Json(req): Json<MonitorRequest>) -> impl IntoResponse {
     match set_display_monitor(&req.action).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
@@ -980,7 +1149,11 @@ pub async fn schedule_power_handler(
                 tracing::info!("Scheduled power command cancelled: {}", action_str);
             }
             _ => {
-                tracing::info!("Executing scheduled power command (force={}): {}", force, action_str);
+                tracing::info!(
+                    "Executing scheduled power command (force={}): {}",
+                    force,
+                    action_str
+                );
                 // Override execution logic if force is requested
                 #[cfg(target_os = "windows")]
                 if force {
@@ -989,7 +1162,9 @@ pub async fn schedule_power_handler(
                         crate::power::PowerAction::Restart => "/r",
                         _ => "/s",
                     };
-                    let _ = Command::new("shutdown").args([flag, "/f", "/t", "1"]).spawn();
+                    let _ = Command::new("shutdown")
+                        .args([flag, "/f", "/t", "1"])
+                        .spawn();
                 } else {
                     commands.execute_power_action(action);
                 }
@@ -1019,19 +1194,25 @@ mod tests {
     async fn test_set_audio_device() {
         let status = get_audio_status().await.unwrap();
         println!("BEFORE: {}", status.default_device);
-        
+
         if status.devices.len() > 1 {
-            let next_device = status.devices.iter().find(|&d| d != &status.default_device).unwrap();
+            let next_device = status
+                .devices
+                .iter()
+                .find(|&d| d != &status.default_device)
+                .unwrap();
             println!("SWITCHING TO: {}", next_device);
             set_audio_device(next_device.clone()).await.unwrap();
-            
+
             let status2 = get_audio_status().await.unwrap();
             println!("AFTER: {}", status2.default_device);
-            
+
             // Switch back to original
-            set_audio_device(status.default_device.clone()).await.unwrap();
+            set_audio_device(status.default_device.clone())
+                .await
+                .unwrap();
             println!("SWITCHED BACK");
-            
+
             assert_eq!(&status2.default_device, next_device);
         } else {
             println!("Only one device found, cannot test switching");

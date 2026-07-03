@@ -3,6 +3,9 @@ pub mod auth;
 pub mod db;
 pub mod embed;
 pub mod file_manager;
+pub mod hardware;
+pub mod input;
+pub mod network;
 pub mod power;
 pub mod script;
 pub mod settings;
@@ -10,9 +13,6 @@ pub mod setup;
 pub mod telemetry;
 pub mod tunnel;
 pub mod ws;
-pub mod hardware;
-pub mod input;
-pub mod network;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -23,11 +23,11 @@ use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use axum::{middleware, Router};
 use rusqlite::Connection;
+use std::time::Duration;
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tower_http::cors::CorsLayer;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, TrayIconBuilder, TrayIconEvent};
-use std::time::Duration;
 
 /// Commands sent from the main thread to the tray thread.
 #[derive(Debug)]
@@ -47,11 +47,11 @@ pub enum TrayAction {
 }
 
 pub use auth::{admin_check_handler, admin_middleware, IpRateLimiter, LockoutState};
-pub use setup::{check_token_handler, verify_setup_token_handler};
 pub use db::TelemetrySnapshot;
 pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
 pub use script::ScriptState;
 pub use setup::SetupManager;
+pub use setup::{check_token_handler, verify_setup_token_handler};
 pub use tunnel::TunnelState;
 
 #[derive(Clone)]
@@ -303,7 +303,10 @@ fn create_tray_icon(r: u8, g: u8, b: u8) -> Icon {
 pub fn spawn_tray(
     port: u16,
     shutdown_tx: oneshot::Sender<()>,
-) -> (crossbeam_channel::Sender<TrayCommand>, crossbeam_channel::Receiver<TrayAction>) {
+) -> (
+    crossbeam_channel::Sender<TrayCommand>,
+    crossbeam_channel::Receiver<TrayAction>,
+) {
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
     let (action_tx, action_rx) = crossbeam_channel::unbounded();
 
@@ -322,7 +325,11 @@ pub fn spawn_tray(
         let pause_item = MenuItem::new("Pause Tunnel", true, None);
         // ponytail: CheckMenuItem checkbox doesn't render on Windows tray-icon, use text prefix
         let startup_enabled = is_startup_enabled();
-        let startup_text = if startup_enabled { "✓ Run on Startup" } else { "  Run on Startup" };
+        let startup_text = if startup_enabled {
+            "✓ Run on Startup"
+        } else {
+            "  Run on Startup"
+        };
         let startup_item = MenuItem::new(startup_text, true, None);
         let quit_item = MenuItem::new("Quit", true, None);
 
@@ -563,10 +570,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/setup/relay", post(setup::api_relay_handler))
         .route("/api/setup/progress", get(setup::api_progress_handler))
         .route("/api/setup/check-token", get(setup::check_token_handler))
-        .route("/api/setup/verify-setup-token", post(setup::verify_setup_token_handler))
+        .route(
+            "/api/setup/verify-setup-token",
+            post(setup::verify_setup_token_handler),
+        )
         .route("/api/auth/check", get(auth::auth_check_handler))
+        .route("/api/auth/refresh", post(auth::refresh_handler))
+        .route("/api/auth/logout", post(auth::logout_handler))
         .route("/api/admin/check", get(auth::admin_check_handler))
-        .route("/login", post(auth::login_handler))
+        .route(
+            "/login",
+            get(embed::serve_embedded_assets).post(auth::login_handler),
+        )
         // File Manager
         .route("/api/files/list", get(file_manager::list_handler))
         .route(
@@ -585,7 +600,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/power/execute", post(power::execute_handler))
         .route("/api/power/cancel", post(power::cancel_power_handler))
         .route("/api/power/status", get(power::power_status_handler))
-        .route("/api/power/schedule", post(hardware::schedule_power_handler))
+        .route(
+            "/api/power/schedule",
+            post(hardware::schedule_power_handler),
+        )
         // Hardware Controls
         .route("/api/audio/status", get(hardware::audio_status_handler))
         .route("/api/audio/volume", post(hardware::audio_volume_handler))
@@ -593,21 +611,45 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/audio/device", post(hardware::audio_device_handler))
         .route("/api/audio/media", post(hardware::audio_media_handler))
         .route("/api/display/status", get(hardware::display_status_handler))
-        .route("/api/display/brightness", post(hardware::display_brightness_handler))
-        .route("/api/display/night-light", post(hardware::display_night_light_handler))
+        .route(
+            "/api/display/brightness",
+            post(hardware::display_brightness_handler),
+        )
+        .route(
+            "/api/display/night-light",
+            post(hardware::display_night_light_handler),
+        )
         .route("/api/toggles/status", get(hardware::toggles_status_handler))
-        .route("/api/toggles/dark-mode", post(hardware::toggle_dark_mode_handler))
+        .route(
+            "/api/toggles/dark-mode",
+            post(hardware::toggle_dark_mode_handler),
+        )
         // Control Center
-        .route("/api/control-center/status", get(hardware::control_center_status_handler))
-        .route("/api/control-center/toggle", post(hardware::control_center_toggle_handler))
-        .route("/api/control-center/monitor", post(hardware::display_monitor_handler))
+        .route(
+            "/api/control-center/status",
+            get(hardware::control_center_status_handler),
+        )
+        .route(
+            "/api/control-center/toggle",
+            post(hardware::control_center_toggle_handler),
+        )
+        .route(
+            "/api/control-center/monitor",
+            post(hardware::display_monitor_handler),
+        )
         // Network Controls
         .route("/api/network/status", get(network::network_status_handler))
         .route("/api/network/flush-dns", post(network::flush_dns_handler))
         .route("/api/network/adapter", post(network::adapter_handler))
         .route("/api/network/wifi", get(network::wifi_scan_handler))
-        .route("/api/network/wifi/connect", post(network::wifi_connect_handler))
-        .route("/api/network/wifi/disconnect", post(network::wifi_disconnect_handler))
+        .route(
+            "/api/network/wifi/connect",
+            post(network::wifi_connect_handler),
+        )
+        .route(
+            "/api/network/wifi/disconnect",
+            post(network::wifi_disconnect_handler),
+        )
         // Tunnel
         .route("/api/tunnel/status", get(tunnel::status_handler))
         .route("/api/tunnel/start", post(tunnel::start_handler))
@@ -618,8 +660,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/input/mouse/scroll", post(input::mouse_scroll_handler))
         .route("/api/input/mouse/drag", post(input::mouse_drag_handler))
         // Input — Keyboard
-        .route("/api/input/keyboard/type", post(input::keyboard_type_handler))
-        .route("/api/input/keyboard/press", post(input::keyboard_press_handler))
+        .route(
+            "/api/input/keyboard/type",
+            post(input::keyboard_type_handler),
+        )
+        .route(
+            "/api/input/keyboard/press",
+            post(input::keyboard_press_handler),
+        )
         .route("/api/input/keyboard/media", post(input::media_key_handler))
         // Input — Clipboard
         .route("/api/clipboard", get(input::clipboard_get_handler))
@@ -628,7 +676,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/vision/screenshot", get(input::screenshot_handler))
         // Input — Browser
         .route("/api/browser/open", post(input::browser_open_handler))
-        .route("/api/browser/windows", get(input::browser_list_windows_handler))
+        .route(
+            "/api/browser/windows",
+            get(input::browser_list_windows_handler),
+        )
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

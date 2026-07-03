@@ -35,9 +35,7 @@ pub fn test_app_with_user() -> (Router, Vec<u8>) {
 
 /// Like `test_app_with_seeded` but returns the MockOs for assertions.
 /// Power OS commands are recorded instead of executed.
-pub fn test_app_with_mock(
-    seed: impl FnOnce(&Connection),
-) -> (Router, AppState, Arc<MockOs>) {
+pub fn test_app_with_mock(seed: impl FnOnce(&Connection)) -> (Router, AppState, Arc<MockOs>) {
     let mock = Arc::new(MockOs::new());
     let router = test_app_inner(seed, mock.clone() as Arc<dyn SystemCommands>);
     (router.0, router.1, mock)

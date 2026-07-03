@@ -19,8 +19,8 @@ use nodedesk_agent::{
 fn spawn_windows_shutdown_listener() {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, HWND_MESSAGE, MSG,
-        RegisterClassW, TranslateMessage, WNDCLASSW, WM_ENDSESSION, WM_QUERYENDSESSION,
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
+        TranslateMessage, HWND_MESSAGE, MSG, WM_ENDSESSION, WM_QUERYENDSESSION, WNDCLASSW,
         WS_EX_TOOLWINDOW,
     };
 
@@ -147,24 +147,24 @@ async fn main() {
         let mut rx = tunnel_state_clone.tx.subscribe();
         loop {
             match rx.recv().await {
-                Ok(event) => {
-                    match event.status.as_str() {
-                        "running" => {
-                            tray_cmd_tx.send(TrayCommand::SetConnected).ok();
-                            tray_cmd_tx.send(TrayCommand::SetUrl(event.url.clone())).ok();
-                        }
-                        "starting" | "downloading" => {
-                            tray_cmd_tx.send(TrayCommand::SetReconnecting).ok();
-                        }
-                        "failed" => {
-                            tray_cmd_tx.send(TrayCommand::SetOffline).ok();
-                        }
-                        "idle" => {
-                            tray_cmd_tx.send(TrayCommand::SetOffline).ok();
-                        }
-                        _ => {}
+                Ok(event) => match event.status.as_str() {
+                    "running" => {
+                        tray_cmd_tx.send(TrayCommand::SetConnected).ok();
+                        tray_cmd_tx
+                            .send(TrayCommand::SetUrl(event.url.clone()))
+                            .ok();
                     }
-                }
+                    "starting" | "downloading" => {
+                        tray_cmd_tx.send(TrayCommand::SetReconnecting).ok();
+                    }
+                    "failed" => {
+                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
+                    }
+                    "idle" => {
+                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
+                    }
+                    _ => {}
+                },
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(broadcast::error::RecvError::Closed) => break,
             }
@@ -179,7 +179,9 @@ async fn main() {
                 nodedesk_agent::TrayAction::ToggleTunnel => {
                     let status = tunnel_state_clone2.status.read().await.clone();
                     match status {
-                        TunnelStatus::Running { .. } | TunnelStatus::Starting | TunnelStatus::Downloading => {
+                        TunnelStatus::Running { .. }
+                        | TunnelStatus::Starting
+                        | TunnelStatus::Downloading => {
                             let _ = TunnelState::stop(&tunnel_state_clone2).await;
                         }
                         _ => {
@@ -212,8 +214,12 @@ async fn main() {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
             let text = tokio::task::spawn_blocking(move || {
-                arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
-            }).await.unwrap_or(None);
+                arboard::Clipboard::new()
+                    .ok()
+                    .and_then(|mut c| c.get_text().ok())
+            })
+            .await
+            .unwrap_or(None);
             if let Some(text) = text {
                 if text != last {
                     last = text.clone();

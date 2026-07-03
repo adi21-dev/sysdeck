@@ -127,9 +127,12 @@ pub(crate) async fn list_handler(
             success: false,
             entries: vec![],
             path: path_str,
-            error: Some("No allowed paths configured. Go to Settings → File Access to add paths.".to_string()),
+            error: Some(
+                "No allowed paths configured. Go to Settings → File Access to add paths."
+                    .to_string(),
+            ),
         })
-        .into_response()
+        .into_response();
     }
     if !path_allowed(Path::new(&path_str), &allowed) {
         return Json(ListResponse {
@@ -138,7 +141,7 @@ pub(crate) async fn list_handler(
             path: path_str,
             error: Some("Access to this path is not allowed".to_string()),
         })
-        .into_response()
+        .into_response();
     }
 
     let dir = match validate_path(&path_str) {
@@ -172,7 +175,7 @@ pub(crate) async fn list_handler(
             path: path_str,
             error: Some("Access to this path is not allowed".to_string()),
         })
-        .into_response()
+        .into_response();
     }
 
     let mut entries = Vec::new();
@@ -398,10 +401,18 @@ pub(crate) async fn download_handler(
     };
 
     if !path_allowed(&path, &allowed) {
-        return (StatusCode::FORBIDDEN, "Access to this path is not allowed".to_string()).into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            "Access to this path is not allowed".to_string(),
+        )
+            .into_response();
     }
     if path_blocked(&path, &blocked) {
-        return (StatusCode::FORBIDDEN, "Access to this path is blocked".to_string()).into_response();
+        return (
+            StatusCode::FORBIDDEN,
+            "Access to this path is blocked".to_string(),
+        )
+            .into_response();
     }
 
     if !path.is_file() {
@@ -466,10 +477,18 @@ pub(crate) async fn delete_handler(
         read_allowed_blocked(&conn)
     };
     if !path_allowed(&path, &allowed) {
-        return Json(DeleteResponse { success: false, message: "Access denied".to_string() }).into_response();
+        return Json(DeleteResponse {
+            success: false,
+            message: "Access denied".to_string(),
+        })
+        .into_response();
     }
     if path_blocked(&path, &blocked) {
-        return Json(DeleteResponse { success: false, message: "Access denied".to_string() }).into_response();
+        return Json(DeleteResponse {
+            success: false,
+            message: "Access denied".to_string(),
+        })
+        .into_response();
     }
 
     let result = if path.is_dir() {
@@ -545,10 +564,18 @@ pub(crate) async fn rename_handler(
 
     let to_allowed = to.parent().is_some_and(|p| path_allowed(p, &allowed));
     if !path_allowed(&from, &allowed) || !to_allowed {
-        return Json(RenameResponse { success: false, message: "Access denied".to_string() }).into_response();
+        return Json(RenameResponse {
+            success: false,
+            message: "Access denied".to_string(),
+        })
+        .into_response();
     }
     if path_blocked(&from, &blocked) || path_blocked(&to, &blocked) {
-        return Json(RenameResponse { success: false, message: "Access denied".to_string() }).into_response();
+        return Json(RenameResponse {
+            success: false,
+            message: "Access denied".to_string(),
+        })
+        .into_response();
     }
 
     match std::fs::rename(&from, &to) {

@@ -1,7 +1,7 @@
-use std::process::Command;
-use serde::{Deserialize, Serialize};
 use axum::response::{IntoResponse, Json};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::process::Command;
 
 #[derive(Serialize, Debug)]
 pub struct InterfaceInfo {
@@ -73,10 +73,12 @@ fn run_powershell(script: &str) -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("Failed to spawn powershell: {}", e))?;
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(script.as_bytes())
+        stdin
+            .write_all(script.as_bytes())
             .map_err(|e| format!("Failed to write to powershell stdin: {}", e))?;
     }
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .map_err(|e| format!("Failed to read powershell output: {}", e))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -103,7 +105,9 @@ pub async fn get_network_status() -> Result<NetworkStatus, String> {
         {
             Ok(default_network_status())
         }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 fn default_network_status() -> NetworkStatus {
@@ -120,13 +124,13 @@ fn default_network_status() -> NetworkStatus {
 
 #[cfg(target_os = "windows")]
 unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
+    use windows_sys::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_SUCCESS};
     use windows_sys::Win32::NetworkManagement::IpHelper::{
-        GetAdaptersAddresses, IP_ADAPTER_ADDRESSES_LH,
-        GAA_FLAG_SKIP_MULTICAST, GAA_FLAG_SKIP_ANYCAST,
-        IF_TYPE_IEEE80211, IF_TYPE_ETHERNET_CSMACD, IF_TYPE_SOFTWARE_LOOPBACK,
+        GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST,
+        IF_TYPE_ETHERNET_CSMACD, IF_TYPE_IEEE80211, IF_TYPE_SOFTWARE_LOOPBACK,
+        IP_ADAPTER_ADDRESSES_LH,
     };
     use windows_sys::Win32::NetworkManagement::Ndis::IfOperStatusUp;
-    use windows_sys::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_SUCCESS};
 
     let mut buf_len: u32 = 0;
     let ret = GetAdaptersAddresses(
@@ -169,30 +173,39 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
 
         let name = if !adapter.FriendlyName.is_null() {
             let mut len = 0;
-            while *adapter.FriendlyName.add(len) != 0 { len += 1; }
+            while *adapter.FriendlyName.add(len) != 0 {
+                len += 1;
+            }
             String::from_utf16_lossy(std::slice::from_raw_parts(adapter.FriendlyName, len))
         } else {
             String::new()
         };
 
         let type_str = if adapter.IfType == IF_TYPE_IEEE80211 {
-            has_wifi = true; "wifi"
+            has_wifi = true;
+            "wifi"
         } else if adapter.IfType == IF_TYPE_ETHERNET_CSMACD {
-            has_ethernet = true; "ethernet"
+            has_ethernet = true;
+            "ethernet"
         } else if adapter.IfType == IF_TYPE_SOFTWARE_LOOPBACK {
             "loopback"
         } else {
             "unknown"
         };
 
-        let status = if adapter.OperStatus == IfOperStatusUp { "up" } else {
+        let status = if adapter.OperStatus == IfOperStatusUp {
+            "up"
+        } else {
             "down"
         };
 
         let mac_len = adapter.PhysicalAddressLength.min(8) as usize;
         let mac = if mac_len > 0 {
             std::slice::from_raw_parts(adapter.PhysicalAddress.as_ptr(), mac_len)
-                .iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(":")
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(":")
         } else {
             String::new()
         };
@@ -210,7 +223,10 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
                     addr_v4 = format!("{}.{}.{}.{}", ipb[0], ipb[1], ipb[2], ipb[3]);
                 } else if family == 23 && addr_v6.is_none() {
                     let ipb = std::slice::from_raw_parts(sockaddr.add(8) as *const u8, 16);
-                    let segs: Vec<String> = ipb.chunks(2).map(|c| format!("{:02x}{:02x}", c[0], c[1])).collect();
+                    let segs: Vec<String> = ipb
+                        .chunks(2)
+                        .map(|c| format!("{:02x}{:02x}", c[0], c[1]))
+                        .collect();
                     addr_v6 = Some(segs.join(":"));
                 }
             }
@@ -246,8 +262,12 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
         }
 
         // Prefer up adapters for primary IP/gateway
-        if status == "up" && !addr_v4.is_empty() && ipv4.is_empty() { ipv4 = addr_v4.clone(); }
-        if status == "up" && addr_v6.is_some() && ipv6.is_none() { ipv6 = addr_v6.clone(); }
+        if status == "up" && !addr_v4.is_empty() && ipv4.is_empty() {
+            ipv4 = addr_v4.clone();
+        }
+        if status == "up" && addr_v6.is_some() && ipv6.is_none() {
+            ipv6 = addr_v6.clone();
+        }
 
         interfaces.push(InterfaceInfo {
             name,
@@ -260,8 +280,18 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
         cur = adapter.Next;
     }
 
-    let connection_type = if has_wifi { "wifi".to_string() } else if has_ethernet { "ethernet".to_string() } else { "unknown".to_string() };
-    let internet = if default_gateway.is_empty() { None } else { Some(true) };
+    let connection_type = if has_wifi {
+        "wifi".to_string()
+    } else if has_ethernet {
+        "ethernet".to_string()
+    } else {
+        "unknown".to_string()
+    };
+    let internet = if default_gateway.is_empty() {
+        None
+    } else {
+        Some(true)
+    };
 
     Ok(NetworkStatus {
         ipv4,
@@ -283,17 +313,31 @@ fn get_macos_network_status() -> Result<NetworkStatus, String> {
 
     for block in ifconfig_out.split("\n\n") {
         let lines: Vec<&str> = block.lines().collect();
-        if lines.is_empty() { continue; }
+        if lines.is_empty() {
+            continue;
+        }
         let name = lines[0].split(':').next().unwrap_or("").to_string();
-        if name.is_empty() || name.starts_with(" ") { continue; }
+        if name.is_empty() || name.starts_with(" ") {
+            continue;
+        }
         let joined = block;
         let status = if joined.contains("UP") { "up" } else { "down" };
-        let type_str = if name.starts_with("en") { "ethernet" } else if name.starts_with("awdl") || name.starts_with("llw") { "wifi" } else if name == "lo0" { "loopback" } else { "unknown" };
+        let type_str = if name.starts_with("en") {
+            "ethernet"
+        } else if name.starts_with("awdl") || name.starts_with("llw") {
+            "wifi"
+        } else if name == "lo0" {
+            "loopback"
+        } else {
+            "unknown"
+        };
         let mut addr_v4 = String::new();
         for line in &lines {
             if let Some(ip) = line.trim().strip_prefix("inet ") {
                 let p = ip.split_whitespace().next().unwrap_or("");
-                if addr_v4.is_empty() { addr_v4 = p.to_string(); }
+                if addr_v4.is_empty() {
+                    addr_v4 = p.to_string();
+                }
             }
             if ipv6.is_none() {
                 if let Some(ip) = line.trim().strip_prefix("inet6 ") {
@@ -304,11 +348,18 @@ fn get_macos_network_status() -> Result<NetworkStatus, String> {
                 }
             }
         }
-        let mac = lines.iter().find_map(|l| {
-            l.trim().strip_prefix("ether ").map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
-        }).unwrap_or_default();
+        let mac = lines
+            .iter()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("ether ")
+                    .map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
+            })
+            .unwrap_or_default();
 
-        if !addr_v4.is_empty() && ipv4.is_empty() { ipv4 = addr_v4.clone(); }
+        if !addr_v4.is_empty() && ipv4.is_empty() {
+            ipv4 = addr_v4.clone();
+        }
 
         interfaces.push(InterfaceInfo {
             name,
@@ -320,9 +371,16 @@ fn get_macos_network_status() -> Result<NetworkStatus, String> {
     }
 
     let gw = run_cmd("netstat", &["-rn", "-f", "inet"]).unwrap_or_default();
-    let default_gateway = gw.lines().find_map(|l| {
-        if l.starts_with("default") { l.split_whitespace().nth(1).map(|s| s.to_string()) } else { None }
-    }).unwrap_or_default();
+    let default_gateway = gw
+        .lines()
+        .find_map(|l| {
+            if l.starts_with("default") {
+                l.split_whitespace().nth(1).map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
 
     Ok(NetworkStatus {
         ipv4,
@@ -346,24 +404,42 @@ fn get_linux_network_status() -> Result<NetworkStatus, String> {
 
     for block in ip_out.split("\n\n") {
         let block = block.trim();
-        if block.is_empty() { continue; }
+        if block.is_empty() {
+            continue;
+        }
         let lines: Vec<&str> = block.lines().collect();
         let first = lines.first().unwrap_or(&"");
         let parts: Vec<&str> = first.splitn(2, ": ").collect();
-        if parts.len() < 2 { continue; }
+        if parts.len() < 2 {
+            continue;
+        }
         let rest = parts[1];
         let name = rest.split(':').next().unwrap_or("").trim().to_string();
         let joined = block;
-        let status = if joined.contains("state UP") { "up" } else { "down" };
-        let type_str = if joined.contains("wlan") || joined.contains("wlp") { has_wifi = true; "wifi" }
-            else if joined.contains("eth") || joined.contains("enp") || joined.contains("ens") { has_ethernet = true; "ethernet" }
-            else if name == "lo" { "loopback" } else { "unknown" };
+        let status = if joined.contains("state UP") {
+            "up"
+        } else {
+            "down"
+        };
+        let type_str = if joined.contains("wlan") || joined.contains("wlp") {
+            has_wifi = true;
+            "wifi"
+        } else if joined.contains("eth") || joined.contains("enp") || joined.contains("ens") {
+            has_ethernet = true;
+            "ethernet"
+        } else if name == "lo" {
+            "loopback"
+        } else {
+            "unknown"
+        };
         let mut addr_v4 = String::new();
         for line in &lines {
             let trimmed = line.trim();
             if let Some(ip) = trimmed.strip_prefix("inet ") {
                 let p = ip.split('/').next().unwrap_or("");
-                if addr_v4.is_empty() { addr_v4 = p.to_string(); }
+                if addr_v4.is_empty() {
+                    addr_v4 = p.to_string();
+                }
             }
             if ipv6.is_none() {
                 if let Some(ip) = trimmed.strip_prefix("inet6 ") {
@@ -374,11 +450,18 @@ fn get_linux_network_status() -> Result<NetworkStatus, String> {
                 }
             }
         }
-        let mac = lines.iter().find_map(|l| {
-            l.trim().strip_prefix("link/ether ").map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
-        }).unwrap_or_default();
+        let mac = lines
+            .iter()
+            .find_map(|l| {
+                l.trim()
+                    .strip_prefix("link/ether ")
+                    .map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
+            })
+            .unwrap_or_default();
 
-        if !addr_v4.is_empty() && ipv4.is_empty() { ipv4 = addr_v4.clone(); }
+        if !addr_v4.is_empty() && ipv4.is_empty() {
+            ipv4 = addr_v4.clone();
+        }
 
         interfaces.push(InterfaceInfo {
             name,
@@ -390,9 +473,16 @@ fn get_linux_network_status() -> Result<NetworkStatus, String> {
     }
 
     let gw_out = run_cmd("ip", &["route"]).unwrap_or_default();
-    let default_gateway = gw_out.lines().find_map(|l| {
-        if l.starts_with("default via ") { l.split_whitespace().nth(2).map(|s| s.to_string()) } else { None }
-    }).unwrap_or_default();
+    let default_gateway = gw_out
+        .lines()
+        .find_map(|l| {
+            if l.starts_with("default via ") {
+                l.split_whitespace().nth(2).map(|s| s.to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default();
 
     Ok(NetworkStatus {
         ipv4,
@@ -400,7 +490,13 @@ fn get_linux_network_status() -> Result<NetworkStatus, String> {
         interfaces,
         default_gateway,
         dns_servers: vec![],
-        connection_type: if has_wifi { "wifi".to_string() } else if has_ethernet { "ethernet".to_string() } else { "unknown".to_string() },
+        connection_type: if has_wifi {
+            "wifi".to_string()
+        } else if has_ethernet {
+            "ethernet".to_string()
+        } else {
+            "unknown".to_string()
+        },
         internet_connection: None,
     })
 }
@@ -415,7 +511,9 @@ pub async fn scan_wifi() -> Result<Vec<WifiNetwork>, String> {
         {
             Err("Wi-Fi scanning is only supported on Windows".to_string())
         }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[cfg(target_os = "windows")]
@@ -431,7 +529,7 @@ fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
         let trimmed = line.trim();
         if let Some(ssid) = trimmed.strip_prefix("SSID ") {
             if let Some(idx) = ssid.find(':') {
-                let name = ssid[idx+1..].trim().to_string();
+                let name = ssid[idx + 1..].trim().to_string();
                 if !name.is_empty() {
                     if collecting && !current_ssid.is_empty() {
                         networks.push(WifiNetwork {
@@ -450,11 +548,11 @@ fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
         } else if collecting {
             if let Some(auth) = trimmed.strip_prefix("Authentication") {
                 if let Some(idx) = auth.find(':') {
-                    current_auth = auth[idx+1..].trim().to_string();
+                    current_auth = auth[idx + 1..].trim().to_string();
                 }
             } else if let Some(sig) = trimmed.strip_prefix("Signal") {
                 if let Some(idx) = sig.find(':') {
-                    let s = sig[idx+1..].trim().trim_end_matches('%');
+                    let s = sig[idx + 1..].trim().trim_end_matches('%');
                     current_signal = s.parse::<u32>().unwrap_or(0);
                 }
             }
@@ -476,8 +574,10 @@ fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
         let t = l.trim();
         if let Some(s) = t.strip_prefix("SSID") {
             if let Some(idx) = s.find(':') {
-                let name = s[idx+1..].trim().to_string();
-                if !name.is_empty() && name != "BSSID" { return Some(name); }
+                let name = s[idx + 1..].trim().to_string();
+                if !name.is_empty() && name != "BSSID" {
+                    return Some(name);
+                }
             }
         }
         None
@@ -485,14 +585,20 @@ fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
 
     for net in &mut networks {
         if let Some(ref connected) = connected_ssid {
-            if net.ssid == *connected { net.connected = true; }
+            if net.ssid == *connected {
+                net.connected = true;
+            }
         }
     }
 
     Ok(networks)
 }
 
-pub async fn connect_wifi(ssid: String, password: Option<String>, security_type: String) -> Result<(), String> {
+pub async fn connect_wifi(
+    ssid: String,
+    password: Option<String>,
+    security_type: String,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
@@ -503,13 +609,22 @@ pub async fn connect_wifi(ssid: String, password: Option<String>, security_type:
             let _ = (ssid, password, security_type);
             Err("Wi-Fi connect is only supported on Windows".to_string())
         }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 #[cfg(target_os = "windows")]
-fn connect_wifi_windows(ssid: &str, password: Option<&str>, security_type: &str) -> Result<(), String> {
+fn connect_wifi_windows(
+    ssid: &str,
+    password: Option<&str>,
+    security_type: &str,
+) -> Result<(), String> {
     let temp_dir = std::env::temp_dir();
-    let profile_path = temp_dir.join(format!("nodedesk_wifi_{}.xml", ssid.replace(|c: char| !c.is_alphanumeric(), "_")));
+    let profile_path = temp_dir.join(format!(
+        "nodedesk_wifi_{}.xml",
+        ssid.replace(|c: char| !c.is_alphanumeric(), "_")
+    ));
 
     let (auth_elem, use_key) = match security_type {
         "WPA3" | "WPA3-Personal" | "WPA3SAE" => ("WPA3SAE", true),
@@ -573,9 +688,19 @@ fn connect_wifi_windows(ssid: &str, password: Option<&str>, security_type: &str)
         )
     };
 
-    std::fs::write(&profile_path, &xml).map_err(|e| format!("Failed to write WLAN profile: {}", e))?;
+    std::fs::write(&profile_path, &xml)
+        .map_err(|e| format!("Failed to write WLAN profile: {}", e))?;
 
-    let result = run_cmd("netsh", &["wlan", "add", "profile", "filename", &profile_path.to_string_lossy()]);
+    let result = run_cmd(
+        "netsh",
+        &[
+            "wlan",
+            "add",
+            "profile",
+            "filename",
+            &profile_path.to_string_lossy(),
+        ],
+    );
     if let Err(ref e) = result {
         let _ = std::fs::remove_file(&profile_path);
         return Err(format!("Failed to add WLAN profile: {}", e));
@@ -584,20 +709,26 @@ fn connect_wifi_windows(ssid: &str, password: Option<&str>, security_type: &str)
     let connect = run_cmd("netsh", &["wlan", "connect", "name", ssid]);
     let _ = std::fs::remove_file(&profile_path);
 
-    connect.map(|_| ()).map_err(|e| format!("Failed to connect: {}", e))
+    connect
+        .map(|_| ())
+        .map_err(|e| format!("Failed to connect: {}", e))
 }
 
 pub async fn disconnect_wifi() -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            run_cmd("netsh", &["wlan", "disconnect"]).map(|_| ()).map_err(|e| format!("Failed to disconnect: {}", e))
+            run_cmd("netsh", &["wlan", "disconnect"])
+                .map(|_| ())
+                .map_err(|e| format!("Failed to disconnect: {}", e))
         }
         #[cfg(not(target_os = "windows"))]
         {
             Err("Wi-Fi disconnect is only supported on Windows".to_string())
         }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
@@ -606,19 +737,36 @@ pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
         {
             let state_str = if enabled { "Enable" } else { "Disable" };
             // Try PowerShell first (works on more adapter types like VPN), fallback to netsh
-            let script = format!("{}-NetAdapter -Name '{}' -Confirm:$false", state_str, name.replace('\'', "''"));
+            let script = format!(
+                "{}-NetAdapter -Name '{}' -Confirm:$false",
+                state_str,
+                name.replace('\'', "''")
+            );
             let ps_result = run_powershell(&script);
             match ps_result {
                 Ok(_) => Ok(()),
                 Err(ps_err) => {
                     let ns_state = if enabled { "enable" } else { "disable" };
-                    let out = run_cmd("netsh", &["interface", "set", "interface", "name", &name, &format!("admin={}", ns_state)]);
+                    let out = run_cmd(
+                        "netsh",
+                        &[
+                            "interface",
+                            "set",
+                            "interface",
+                            "name",
+                            &name,
+                            &format!("admin={}", ns_state),
+                        ],
+                    );
                     match out {
                         Ok(_) => Ok(()),
                         Err(ns_err) => {
                             let combined = format!("PowerShell: {}, netsh: {}", ps_err, ns_err);
                             if combined.contains("denied") || combined.contains("Access") {
-                                Err("Administrator privileges required to toggle network adapters".to_string())
+                                Err(
+                                    "Administrator privileges required to toggle network adapters"
+                                        .to_string(),
+                                )
                             } else {
                                 Err(combined)
                             }
@@ -632,7 +780,9 @@ pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
             let _ = (name, enabled);
             Err("Adapter toggle is only supported on Windows".to_string())
         }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn flush_dns() -> Result<(), String> {
@@ -653,29 +803,37 @@ pub async fn flush_dns() -> Result<(), String> {
         }
         #[cfg(target_os = "macos")]
         {
-            run_cmd("dscacheutil", &["-flushcache"]).map(|_| ()).map_err(|e| {
-                if e.contains("denied") || e.contains("Permission denied") {
-                    "Administrator privileges required to flush DNS".to_string()
-                } else { e }
-            })
+            run_cmd("dscacheutil", &["-flushcache"])
+                .map(|_| ())
+                .map_err(|e| {
+                    if e.contains("denied") || e.contains("Permission denied") {
+                        "Administrator privileges required to flush DNS".to_string()
+                    } else {
+                        e
+                    }
+                })
         }
         #[cfg(target_os = "linux")]
         {
             let result = run_cmd("resolvectl", &["flush-caches"]);
             match result {
                 Ok(_) => Ok(()),
-                Err(_) => {
-                    run_cmd("systemd-resolve", &["--flush-caches"]).map(|_| ()).map_err(|e| {
+                Err(_) => run_cmd("systemd-resolve", &["--flush-caches"])
+                    .map(|_| ())
+                    .map_err(|e| {
                         if e.contains("denied") || e.contains("Permission denied") {
                             "Administrator privileges required to flush DNS".to_string()
-                        } else { e }
-                    })
-                }
+                        } else {
+                            e
+                        }
+                    }),
             }
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         Err("DNS flush not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 // --- Axum Handlers ---
@@ -683,41 +841,65 @@ pub async fn flush_dns() -> Result<(), String> {
 pub async fn network_status_handler() -> impl IntoResponse {
     match get_network_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn flush_dns_handler() -> impl IntoResponse {
     match flush_dns().await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn adapter_handler(Json(req): Json<AdapterRequest>) -> impl IntoResponse {
     match toggle_adapter(req.name, req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn wifi_scan_handler() -> impl IntoResponse {
     match scan_wifi().await {
         Ok(networks) => Json(json!({ "success": true, "data": networks })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn wifi_connect_handler(Json(req): Json<WifiConnectRequest>) -> impl IntoResponse {
     match connect_wifi(req.ssid, req.password, req.security_type).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }
 
 pub async fn wifi_disconnect_handler() -> impl IntoResponse {
     match disconnect_wifi().await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "message": e }))).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
     }
 }

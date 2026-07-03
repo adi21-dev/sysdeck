@@ -114,14 +114,30 @@ fn key_from_str(s: &str) -> Option<Key> {
         "space" => Key::Space,
         "tab" => Key::Tab,
         "up" | "uparrow" => Key::UpArrow,
-        "f1" => Key::F1, "f2" => Key::F2, "f3" => Key::F3,
-        "f4" => Key::F4, "f5" => Key::F5, "f6" => Key::F6,
-        "f7" => Key::F7, "f8" => Key::F8, "f9" => Key::F9,
-        "f10" => Key::F10, "f11" => Key::F11, "f12" => Key::F12,
-        "f13" => Key::F13, "f14" => Key::F14, "f15" => Key::F15,
-        "f16" => Key::F16, "f17" => Key::F17, "f18" => Key::F18,
-        "f19" => Key::F19, "f20" => Key::F20, "f21" => Key::F21,
-        "f22" => Key::F22, "f23" => Key::F23, "f24" => Key::F24,
+        "f1" => Key::F1,
+        "f2" => Key::F2,
+        "f3" => Key::F3,
+        "f4" => Key::F4,
+        "f5" => Key::F5,
+        "f6" => Key::F6,
+        "f7" => Key::F7,
+        "f8" => Key::F8,
+        "f9" => Key::F9,
+        "f10" => Key::F10,
+        "f11" => Key::F11,
+        "f12" => Key::F12,
+        "f13" => Key::F13,
+        "f14" => Key::F14,
+        "f15" => Key::F15,
+        "f16" => Key::F16,
+        "f17" => Key::F17,
+        "f18" => Key::F18,
+        "f19" => Key::F19,
+        "f20" => Key::F20,
+        "f21" => Key::F21,
+        "f22" => Key::F22,
+        "f23" => Key::F23,
+        "f24" => Key::F24,
         _ => return None,
     };
     Some(k)
@@ -138,9 +154,11 @@ pub async fn mouse_move_handler(Json(req): Json<MouseMoveReq>) -> impl IntoRespo
         } else {
             enigo::Coordinate::Abs
         };
-        enigo.move_mouse(req.x, req.y, coord)
+        enigo
+            .move_mouse(req.x, req.y, coord)
             .map_err(|e| format!("mouse move: {}", e))
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -157,16 +175,20 @@ pub async fn mouse_click_handler(Json(req): Json<MouseClickReq>) -> impl IntoRes
             .map_err(|e| format!("enigo init: {}", e))?;
         let btn = enigo_button(&button)?;
         if double {
-            enigo.button(btn, enigo::Direction::Click)
+            enigo
+                .button(btn, enigo::Direction::Click)
                 .map_err(|e| format!("click: {}", e))?;
             std::thread::sleep(std::time::Duration::from_millis(50));
-            enigo.button(btn, enigo::Direction::Click)
+            enigo
+                .button(btn, enigo::Direction::Click)
                 .map_err(|e| format!("click: {}", e))
         } else {
-            enigo.button(btn, enigo::Direction::Click)
+            enigo
+                .button(btn, enigo::Direction::Click)
                 .map_err(|e| format!("click: {}", e))
         }
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -181,13 +203,18 @@ pub async fn mouse_scroll_handler(Json(req): Json<MouseScrollReq>) -> impl IntoR
         let dy = req.dy.unwrap_or(0);
         let dx = req.dx.unwrap_or(0);
         if dy != 0 {
-            enigo.scroll(dy, Axis::Vertical).map_err(|e| format!("scroll: {}", e))?;
+            enigo
+                .scroll(dy, Axis::Vertical)
+                .map_err(|e| format!("scroll: {}", e))?;
         }
         if dx != 0 {
-            enigo.scroll(dx, Axis::Horizontal).map_err(|e| format!("scroll: {}", e))?;
+            enigo
+                .scroll(dx, Axis::Horizontal)
+                .map_err(|e| format!("scroll: {}", e))?;
         }
         Ok(())
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -200,13 +227,17 @@ pub async fn mouse_drag_handler(Json(req): Json<MouseDragReq>) -> impl IntoRespo
         let mut enigo = enigo::Enigo::new(&enigo::Settings::default())
             .map_err(|e| format!("enigo init: {}", e))?;
         let btn = enigo_button(req.button.as_deref().unwrap_or("left"))?;
-        enigo.button(btn, enigo::Direction::Press)
+        enigo
+            .button(btn, enigo::Direction::Press)
             .map_err(|e| format!("drag press: {}", e))?;
-        enigo.move_mouse(req.x, req.y, enigo::Coordinate::Abs)
+        enigo
+            .move_mouse(req.x, req.y, enigo::Coordinate::Abs)
             .map_err(|e| format!("drag move: {}", e))?;
-        enigo.button(btn, enigo::Direction::Release)
+        enigo
+            .button(btn, enigo::Direction::Release)
             .map_err(|e| format!("drag release: {}", e))
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -220,9 +251,9 @@ pub async fn keyboard_type_handler(Json(req): Json<KeyboardTypeReq>) -> impl Int
     let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
         let mut enigo = enigo::Enigo::new(&enigo::Settings::default())
             .map_err(|e| format!("enigo init: {}", e))?;
-        enigo.text(&req.text)
-            .map_err(|e| format!("type: {}", e))
-    }).await;
+        enigo.text(&req.text).map_err(|e| format!("type: {}", e))
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -256,23 +287,26 @@ pub async fn keyboard_press_handler(Json(req): Json<KeyboardPressReq>) -> impl I
         }
 
         for k in &modifiers {
-            enigo.key(*k, Direction::Press)
+            enigo
+                .key(*k, Direction::Press)
                 .map_err(|e| format!("key press: {}", e))?;
         }
         for k in &keycodes {
-            enigo.key(*k, Direction::Click)
+            enigo
+                .key(*k, Direction::Click)
                 .map_err(|e| format!("key click: {}", e))?;
         }
         if !chars.is_empty() {
-            enigo.text(&chars)
-                .map_err(|e| format!("key text: {}", e))?;
+            enigo.text(&chars).map_err(|e| format!("key text: {}", e))?;
         }
         for k in modifiers.iter().rev() {
-            enigo.key(*k, Direction::Release)
+            enigo
+                .key(*k, Direction::Release)
                 .map_err(|e| format!("key release: {}", e))?;
         }
         Ok(())
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -295,8 +329,12 @@ pub async fn clipboard_get_handler() -> impl IntoResponse {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         let text = cb.get_text().ok();
         // ponytail: only text clipboard sync. Image sync if requested.
-        Ok(ClipboardEvent { text, image_b64: None })
-    }).await;
+        Ok(ClipboardEvent {
+            text,
+            image_b64: None,
+        })
+    })
+    .await;
 
     match result {
         Ok(Ok(event)) => Json(json!({"success": true, "data": event})).into_response(),
@@ -304,9 +342,7 @@ pub async fn clipboard_get_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn clipboard_set_handler(
-    Json(req): Json<ClipboardSetReq>,
-) -> impl IntoResponse {
+pub async fn clipboard_set_handler(Json(req): Json<ClipboardSetReq>) -> impl IntoResponse {
     let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         if let Some(text) = req.text {
@@ -316,7 +352,8 @@ pub async fn clipboard_set_handler(
             // ponytail: image clipboard not yet supported
         }
         Ok(())
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(())) => Json(json!({"success": true})).into_response(),
@@ -326,14 +363,14 @@ pub async fn clipboard_set_handler(
 
 // ── Screenshot handlers ──
 
-pub async fn screenshot_handler(
-    Query(params): Query<Option<ScreenshotReq>>,
-) -> impl IntoResponse {
+pub async fn screenshot_handler(Query(params): Query<Option<ScreenshotReq>>) -> impl IntoResponse {
     let result = tokio::task::spawn_blocking(move || -> Result<String, String> {
         let monitors = xcap::Monitor::all().map_err(|e| format!("monitors: {}", e))?;
         let idx = params.as_ref().and_then(|r| r.monitor).unwrap_or(0);
         let monitor = monitors.get(idx).ok_or("Monitor not found")?;
-        let img = monitor.capture_image().map_err(|e| format!("capture: {}", e))?;
+        let img = monitor
+            .capture_image()
+            .map_err(|e| format!("capture: {}", e))?;
 
         let cropped = if let Some(region) = params.as_ref().and_then(|r| r.region.as_ref()) {
             let rx = region.x.max(0) as u32;
@@ -347,11 +384,13 @@ pub async fn screenshot_handler(
         };
 
         let mut buf = std::io::Cursor::new(Vec::new());
-        cropped.write_to(&mut buf, image::ImageFormat::Png)
+        cropped
+            .write_to(&mut buf, image::ImageFormat::Png)
             .map_err(|e| format!("encode: {}", e))?;
         let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
         Ok(b64)
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(b64)) => Json(json!({"success": true, "data": {"png_b64": b64}})).into_response(),
@@ -361,13 +400,13 @@ pub async fn screenshot_handler(
 
 // ── Browser handlers ──
 
-pub async fn browser_open_handler(
-    Json(req): Json<BrowserOpenReq>,
-) -> impl IntoResponse {
+pub async fn browser_open_handler(Json(req): Json<BrowserOpenReq>) -> impl IntoResponse {
     // ponytail: open URL via system default browser. Tab control via DevTools Protocol if needed.
     match open::that(&req.url) {
         Ok(()) => Json(json!({"success": true})).into_response(),
-        Err(e) => Json(json!({"success": false, "message": format!("open: {}", e)})).into_response(),
+        Err(e) => {
+            Json(json!({"success": false, "message": format!("open: {}", e)})).into_response()
+        }
     }
 }
 

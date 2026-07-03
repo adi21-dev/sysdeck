@@ -12,58 +12,62 @@ pub fn start_engine(
 ) {
     let (internal_tx, mut internal_rx) = mpsc::channel::<TelemetrySnapshot>(8);
 
-        std::thread::spawn(move || {
-            let mut system = System::new();
-            let mut networks = Networks::new_with_refreshed_list();
-            let mut components = Components::new_with_refreshed_list();
-            let mut disks = Disks::new_with_refreshed_list();
-            let mut tick_1s = 0u64;
-            let mut last_battery = (None, None);
+    std::thread::spawn(move || {
+        let mut system = System::new();
+        let mut networks = Networks::new_with_refreshed_list();
+        let mut components = Components::new_with_refreshed_list();
+        let mut disks = Disks::new_with_refreshed_list();
+        let mut tick_1s = 0u64;
+        let mut last_battery = (None, None);
 
-            loop {
-                std::thread::sleep(Duration::from_secs(1));
-                tick_1s += 1;
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            tick_1s += 1;
 
-                system.refresh_cpu_usage();
-                system.refresh_memory();
-                networks.refresh();
+            system.refresh_cpu_usage();
+            system.refresh_memory();
+            networks.refresh();
 
-                let cpu_usage = system.global_cpu_info().cpu_usage();
-                let ram_used = system.used_memory();
-                let ram_total = system.total_memory();
+            let cpu_usage = system.global_cpu_info().cpu_usage();
+            let ram_used = system.used_memory();
+            let ram_total = system.total_memory();
 
-                let net_rx_bps: u64 = networks.values().map(|n| n.received()).sum();
-                let net_tx_bps: u64 = networks.values().map(|n| n.transmitted()).sum();
+            let net_rx_bps: u64 = networks.values().map(|n| n.received()).sum();
+            let net_tx_bps: u64 = networks.values().map(|n| n.transmitted()).sum();
 
-                if tick_1s.is_multiple_of(5) {
-                    components.refresh();
-                }
-                // ponytail: prefer CPU/package-labeled sensors, fallback to any non-fan, then any
-                let temperature = components
-                    .iter()
-                    .find(|c| {
-                        let l = c.label().to_lowercase();
-                        l.contains("cpu") || l.contains("package") || l.contains("core")
-                    })
-                    .or_else(|| components.iter().find(|c| !c.label().to_lowercase().contains("fan")))
-                    .or_else(|| components.iter().next())
-                    .map(|c| c.temperature());
+            if tick_1s.is_multiple_of(5) {
+                components.refresh();
+            }
+            // ponytail: prefer CPU/package-labeled sensors, fallback to any non-fan, then any
+            let temperature = components
+                .iter()
+                .find(|c| {
+                    let l = c.label().to_lowercase();
+                    l.contains("cpu") || l.contains("package") || l.contains("core")
+                })
+                .or_else(|| {
+                    components
+                        .iter()
+                        .find(|c| !c.label().to_lowercase().contains("fan"))
+                })
+                .or_else(|| components.iter().next())
+                .map(|c| c.temperature());
 
-                if tick_1s.is_multiple_of(10) {
-                    disks.refresh();
-                }
-                let disk_total: u64 = disks.iter().map(|d| d.total_space()).sum();
-                let disk_available: u64 = disks.iter().map(|d| d.available_space()).sum();
-                let disk_used = disk_total.saturating_sub(disk_available);
+            if tick_1s.is_multiple_of(10) {
+                disks.refresh();
+            }
+            let disk_total: u64 = disks.iter().map(|d| d.total_space()).sum();
+            let disk_available: u64 = disks.iter().map(|d| d.available_space()).sum();
+            let disk_used = disk_total.saturating_sub(disk_available);
 
-                // ponytail: cache last battery value to avoid flickering between 30s polls
-                let (battery_percent, battery_charging) = if tick_1s.is_multiple_of(30) {
-                    let v = get_battery_status();
-                    last_battery = v;
-                    v
-                } else {
-                    last_battery
-                };
+            // ponytail: cache last battery value to avoid flickering between 30s polls
+            let (battery_percent, battery_charging) = if tick_1s.is_multiple_of(30) {
+                let v = get_battery_status();
+                last_battery = v;
+                v
+            } else {
+                last_battery
+            };
 
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

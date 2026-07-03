@@ -164,7 +164,7 @@ async fn download_cloudflared(exe_path: &std::path::Path) -> Result<(), String> 
 
     let tmp = exe_path.with_extension("tmp");
     fs::write(&tmp, &binary_data)
-            .await
+        .await
         .map_err(|e| format!("Write failed: {}", e))?;
 
     #[cfg(unix)]
@@ -217,7 +217,7 @@ async fn run_tunnel_loop(
     weak: std::sync::Weak<TunnelState>,
     mut kill_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
-        let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
+    let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
     loop {
         let state = match weak.upgrade() {
             Some(s) => s,

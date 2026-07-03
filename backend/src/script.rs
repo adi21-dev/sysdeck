@@ -20,7 +20,9 @@ fn kill_process_tree(pid: Option<u32>) {
         let _ = std::process::Command::new("taskkill")
             .args(["/T", "/F", "/PID", &pid.to_string()])
             .spawn()
-            .map(|mut c| { let _ = c.wait(); });
+            .map(|mut c| {
+                let _ = c.wait();
+            });
     }
     #[cfg(unix)]
     {

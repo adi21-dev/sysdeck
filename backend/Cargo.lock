@@ -2514,6 +2514,7 @@ dependencies = [
  "enigo",
  "futures-util",
  "governor",
+ "hex",
  "http-body-util",
  "image 0.25.10",
  "jsonwebtoken",
