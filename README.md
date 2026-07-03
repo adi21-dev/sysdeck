@@ -265,7 +265,7 @@ sysdeck/
 | POST | `/api/setup/password` | Set initial password (step 1) |
 | POST | `/api/setup/totp` | Generate TOTP secret (step 2) |
 | POST | `/api/setup/verify-totp` | Verify TOTP code (step 3) |
-| POST | `/api/setup/recovery-codes` | Generate recovery codes (step 4) |
+| POST | `/api/setup/relay` | Set Cloudflare relay opt-in (step 4) |
 | POST | `/api/setup/finish` | Complete setup |
 
 ### Dashboard & Telemetry

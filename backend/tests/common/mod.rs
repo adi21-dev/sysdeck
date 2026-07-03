@@ -90,7 +90,6 @@ fn test_app_inner(
         terminal_state: Arc::new(TerminalState::default()),
         tunnel_state: Arc::new(tunnel_state),
         port: 3939,
-        setup_token: Arc::new("test-setup-token-123".to_string()),
     };
 
     let router = sysdeck_agent::build_router(app_state.clone());

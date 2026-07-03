@@ -5,12 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-07-04
+## [1.1.0] - Unreleased
 
 ### Added
-- **Setup Key Verification**: Implemented backend validation for the console-printed Setup Key (via new endpoints `/api/setup/check-token` and `/api/setup/verify-setup-token`) and cookie-based authorization to secure the Setup Wizard against unauthorized remote access.
-- **Startup Console**: Added descriptive instructions and use-case details about the generated setup key in the startup console banner.
-- **Documentation**: Documented the Setup Key generation and its verification purposes in the main README.md file.
+- **Zero-Friction Portable Workflow**: Redesigned the onboarding process by completely removing the setup key requirements. Added a welcoming onboarding screen (Step 0) in the browser before configuring the system.
+- **Cloudflare Tunnel Auto-Start**: Configured the Cloudflare tunnel to dynamically start immediately upon completing the setup wizard if the user opts in, removing any need for a server restart.
+- **User-Friendly Startup Console**: Updated the server CLI banner on launch to show a clean box-drawing layout directing the user to press Enter to instantly minimize the window to system tray and open their default browser.
 
 ### Fixed
 - **Windows Console Flashing**: Resolved an issue where multiple empty Command Prompt/PowerShell terminal windows flashed on the screen on Windows during startup and periodic background operations (telemetry WMI polling, network/hardware status checks, registry queries, and Cloudflare tunnel spawning) by forcing child processes to spawn silently with the `CREATE_NO_WINDOW` process creation flag.

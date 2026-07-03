@@ -14,27 +14,10 @@ use tower::ServiceExt;
 async fn test_setup_json_api_full_flow() {
     let (mut router, _state) = test_app();
 
-    // Verify setup token to get setup_authorized cookie
+    // Step 1: Set password
     let resp = post_json(
         &mut router,
-        "/api/setup/verify-setup-token",
-        json!({"token": "test-setup-token-123"}),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let cookie = resp
-        .headers()
-        .get(axum::http::header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    // Step 1: Set password
-    let resp = authed_post_json(
-        &mut router,
         "/api/setup/password",
-        &cookie,
         json!({"password": "MySecureP@ss1"}),
     )
     .await;
@@ -101,26 +84,9 @@ async fn test_setup_invalid_token_returns_error() {
 #[tokio::test]
 async fn test_setup_weak_password_rejected() {
     let (mut router, _state) = test_app();
-    // Verify setup token to get setup_authorized cookie
     let resp = post_json(
         &mut router,
-        "/api/setup/verify-setup-token",
-        json!({"token": "test-setup-token-123"}),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let cookie = resp
-        .headers()
-        .get(axum::http::header::SET_COOKIE)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .to_string();
-
-    let resp = authed_post_json(
-        &mut router,
         "/api/setup/password",
-        &cookie,
         json!({"password": "weak"}),
     )
     .await;
