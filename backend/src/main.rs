@@ -174,9 +174,9 @@ async fn main() {
     // Handle tray actions (tunnel toggle)
     let tunnel_state_clone2 = tunnel_state.clone();
     tokio::spawn(async move {
-        while let Ok(action) = tray_action_rx.recv() {
-            match action {
-                nodedesk_agent::TrayAction::ToggleTunnel => {
+        loop {
+            match tray_action_rx.try_recv() {
+                Ok(nodedesk_agent::TrayAction::ToggleTunnel) => {
                     let status = tunnel_state_clone2.status.read().await.clone();
                     match status {
                         TunnelStatus::Running { .. }
@@ -189,6 +189,10 @@ async fn main() {
                         }
                     }
                 }
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => break,
             }
         }
     });
@@ -290,7 +294,7 @@ async fn main() {
                     _ = wait_for_shutdown_signal() => {},
                 }
                 tracing::info!("Shutdown signal received, notifying clients...");
-                let _ = system_tx_clone2.send(r#"{"action":"shutting_down"}"#.to_string());
+                let _ = system_tx_clone2.send(r#"{"event":"system","data":{"type":"shutting_down"}}"#.to_string());
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 let _ = shutdown_tunnel.stop().await;
                 tracing::info!("Finalizing database...");

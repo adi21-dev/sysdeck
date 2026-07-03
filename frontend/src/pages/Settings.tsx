@@ -422,9 +422,9 @@ export function SettingsPage() {
             <p className="text-sm text-muted-foreground">Status: {tunnel.status}</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`status-dot w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : "bg-yellow-500"}`} />
-            <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
-              {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : "Connecting"}
+            <span className={`w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : tunnel.status === "idle" ? "bg-gray-400" : "bg-yellow-500 status-dot"}`} />
+            <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : tunnel.status === "idle" ? "text-muted-foreground" : "text-muted-foreground"}`}>
+              {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : tunnel.status === "idle" ? "Stopped" : "Connecting"}
             </span>
           </div>
         </div>

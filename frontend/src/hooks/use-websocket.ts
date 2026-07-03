@@ -2,10 +2,13 @@ import { useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuthStore, useTelemetryStore, useConnectionStore, useTunnelStore } from "@/lib/store"
 
+const MAX_RECONNECT_DELAY = 30000
+
 export function useWebSocket() {
   const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconnectAttempts = useRef(0)
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
   const setCurrent = useTelemetryStore((s) => s.setCurrent)
   const addToHistory = useTelemetryStore((s) => s.addToHistory)
@@ -32,19 +35,17 @@ export function useWebSocket() {
     }
 
     ws.onopen = () => {
+      reconnectAttempts.current = 0
       setStatus("connected")
     }
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.action === "shutting_down") {
-          setShuttingDown(true)
-          return
-        }
-        if (data.event === "auth_expired") {
-          setAuthenticated(false)
-          navigate("/login")
+        if (data.event === "system") {
+          if (data.data?.type === "shutting_down") {
+            setShuttingDown(true)
+          }
           return
         }
         if (data.event === "telemetry") {
@@ -61,10 +62,13 @@ export function useWebSocket() {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.log("WS onclose fired", event)
       setStatus("disconnected")
       fetch("/api/auth/refresh", { method: "POST" }).finally(() => {
-        reconnectTimer.current = setTimeout(connect, 3000)
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), MAX_RECONNECT_DELAY)
+        reconnectAttempts.current++
+        reconnectTimer.current = setTimeout(connect, delay)
       })
     }
 

@@ -7,7 +7,7 @@ use serde_json::json;
 use tokio::sync::broadcast;
 
 use crate::db::TelemetrySnapshot;
-use crate::tunnel::TunnelEvent;
+use crate::tunnel::{TunnelEvent, TunnelStatus};
 use crate::AppState;
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
@@ -18,6 +18,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
             state.system_tx,
             state.tunnel_state.tx.clone(),
             state.clipboard_tx,
+            state.tunnel_state.clone(),
         )
     })
 }
@@ -28,7 +29,24 @@ async fn handle_socket(
     system_tx: broadcast::Sender<String>,
     tunnel_tx: broadcast::Sender<Arc<TunnelEvent>>,
     clipboard_tx: broadcast::Sender<String>,
+    tunnel_state: Arc<crate::tunnel::TunnelState>,
 ) {
+    {
+        let status = tunnel_state.status.read().await;
+        let url = tunnel_state.url.read().await.clone();
+        let error = match &*status {
+            TunnelStatus::Failed(e) => Some(e.clone()),
+            _ => None,
+        };
+        let msg = json!({
+            "event": "tunnel_status",
+            "status": status.to_string(),
+            "url": url,
+            "error": error,
+        });
+        let _ = socket.send(Message::Text(msg.to_string())).await;
+    }
+
     let mut telemetry_rx = telemetry_tx.subscribe();
     let mut system_rx = system_tx.subscribe();
     let mut tunnel_rx = tunnel_tx.subscribe();

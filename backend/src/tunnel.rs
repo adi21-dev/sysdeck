@@ -80,8 +80,9 @@ impl TunnelState {
     pub async fn start(this: Arc<Self>) -> Result<(), String> {
         {
             let status = this.status.read().await;
-            if *status != TunnelStatus::Idle {
-                return Err(format!("Tunnel is {}", status));
+            match &*status {
+                TunnelStatus::Idle | TunnelStatus::Failed(_) => {}
+                _ => return Err(format!("Tunnel is {}", status)),
             }
         }
 
@@ -217,6 +218,7 @@ async fn run_tunnel_loop(
     weak: std::sync::Weak<TunnelState>,
     mut kill_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
+    tracing::info!("tunnel loop started");
     let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
     loop {
         let state = match weak.upgrade() {
@@ -227,14 +229,19 @@ async fn run_tunnel_loop(
         let mut child = match Command::new(&state.exe_path)
             .args([
                 "tunnel",
+                "--no-autoupdate",
                 "--url",
                 &format!("http://localhost:{}", state.port),
             ])
-            .stdout(std::process::Stdio::null())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
         {
-            Ok(c) => c,
+            Ok(c) => {
+                tracing::info!("cloudflared spawned successfully");
+                c
+            }
             Err(e) => {
                 state
                     .set_status(TunnelStatus::Failed(format!("Spawn failed: {}", e)))
@@ -244,30 +251,41 @@ async fn run_tunnel_loop(
         };
 
         let stderr = child.stderr.take().unwrap();
-        let reader = BufReader::new(stderr);
-        let mut lines = reader.lines();
+        let stdout = child.stdout.take().unwrap();
+        let mut stderr_lines = BufReader::new(stderr).lines();
+        let mut stdout_lines = BufReader::new(stdout).lines();
+        let mut stderr_done = false;
+        let mut stdout_done = false;
         let mut found_url = false;
 
-        // ponytail: 30s timeout for URL detection, add to settings if configurable needed
-        let mut timeout = tokio::time::interval(Duration::from_secs(30));
+        let timeout = tokio::time::sleep(Duration::from_secs(30));
+        tokio::pin!(timeout);
 
-        // Wait for URL in stderr
+        tracing::info!("waiting for tunnel URL (30s timeout)");
         loop {
             tokio::select! {
-                line = lines.next_line() => {
+                line = stderr_lines.next_line(), if !stderr_done => {
                     match line {
                         Ok(Some(l)) => {
-                            tracing::debug!("cloudflared: {}", l);
+                            tracing::info!("cloudflared stderr: {}", l);
                             if let Some(m) = url_re.find(&l) {
                                 found_url = true;
                                 state.set_status(TunnelStatus::Running { url: m.as_str().to_string() }).await;
                             }
                         }
-                        Ok(None) => break,
-                        Err(e) => {
-                            tracing::error!("cloudflared stderr: {}", e);
-                            break;
+                        _ => stderr_done = true,
+                    }
+                }
+                line = stdout_lines.next_line(), if !stdout_done => {
+                    match line {
+                        Ok(Some(l)) => {
+                            tracing::info!("cloudflared stdout: {}", l);
+                            if let Some(m) = url_re.find(&l) {
+                                found_url = true;
+                                state.set_status(TunnelStatus::Running { url: m.as_str().to_string() }).await;
+                            }
                         }
+                        _ => stdout_done = true,
                     }
                 }
                 _ = &mut kill_rx => {
@@ -275,7 +293,7 @@ async fn run_tunnel_loop(
                     let _ = child.wait().await;
                     return;
                 }
-                _ = timeout.tick() => {
+                _ = &mut timeout => {
                     if !found_url {
                         let _ = child.kill().await;
                         let _ = child.wait().await;
@@ -284,6 +302,7 @@ async fn run_tunnel_loop(
                     }
                 }
             }
+            if found_url || (stderr_done && stdout_done) { break; }
         }
 
         if !found_url {
@@ -293,16 +312,25 @@ async fn run_tunnel_loop(
             return;
         }
 
-        // Monitor process — restart on exit
-        match child.wait().await {
-            Ok(status) => tracing::warn!(
-                "cloudflared exited with {:?}, restarting in 2s",
-                status.code()
-            ),
-            Err(e) => tracing::error!("cloudflared wait error: {}", e),
+        // Monitor process — restart on exit (or kill on signal)
+        tokio::select! {
+            result = child.wait() => {
+                match result {
+                    Ok(status) => tracing::warn!(
+                        "cloudflared exited with {:?}, restarting in 2s",
+                        status.code()
+                    ),
+                    Err(e) => tracing::error!("cloudflared wait error: {}", e),
+                }
+                state.set_status(TunnelStatus::Starting).await;
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            _ = &mut kill_rx => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                return;
+            }
         }
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
     }
 }
 

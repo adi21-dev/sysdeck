@@ -322,7 +322,7 @@ pub fn spawn_tray(
 
         let open_item = MenuItem::new("Open Admin UI", true, None);
         let copy_url_item = MenuItem::new("Copy Remote URL", false, None);
-        let pause_item = MenuItem::new("Pause Tunnel", true, None);
+        let pause_item = MenuItem::new("Resume Tunnel", true, None);
         // ponytail: CheckMenuItem checkbox doesn't render on Windows tray-icon, use text prefix
         let startup_enabled = is_startup_enabled();
         let startup_text = if startup_enabled {
@@ -346,7 +346,7 @@ pub fn spawn_tray(
 
         let tray = TrayIconBuilder::new()
             .with_tooltip("NodeDesk Agent")
-            .with_icon(green.clone())
+            .with_icon(red.clone())
             .with_menu(Box::new(menu))
             .build()
             .expect("Failed to build tray icon");
@@ -426,6 +426,7 @@ pub fn spawn_tray(
                             tray.set_icon(Some(yellow.clone())).ok();
                             tray.set_tooltip(Some("NodeDesk: Reconnecting...")).ok();
                             copy_url_item.set_enabled(false);
+                            pause_item.set_text("Pause Tunnel");
                         }
                         Ok(TrayCommand::SetOffline) => {
                             tray.set_icon(Some(red.clone())).ok();
