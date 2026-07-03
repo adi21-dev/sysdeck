@@ -141,8 +141,8 @@ export function FilesPage() {
     setAllowedPaths,
   } = useFilesStore()
 
-  const [sortBy, setSortBy] = useState<"name" | "size" | "type" | "modified">("name")
-  const [sortAsc, setSortAsc] = useState(true)
+  const sortBy = "name"
+  const sortAsc = true
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; name: string } | null>(null)
@@ -206,7 +206,6 @@ export function FilesPage() {
     [loadDir, clearSelection, setCurrentPath, setEntries],
   )
 
-  const handleRefresh = () => loadDir(currentPath)
 
   const handleDoubleClick = (entry: FileEntry) => {
     if (entry.is_dir) handleNavigate(entry.path)
@@ -223,10 +222,6 @@ export function FilesPage() {
     return sortAsc ? cmp : -cmp
   })
 
-  const handleSort = (col: typeof sortBy) => {
-    if (sortBy === col) setSortAsc(!sortAsc)
-    else { setSortBy(col); setSortAsc(true) }
-  }
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -298,10 +293,6 @@ export function FilesPage() {
   }
   const handleTouchEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current) }
 
-  const sortIndicator = (col: typeof sortBy) => {
-    if (sortBy !== col) return null
-    return <span className="ml-1">{sortAsc ? "↑" : "↓"}</span>
-  }
 
   return (
     <div className="space-y-4">

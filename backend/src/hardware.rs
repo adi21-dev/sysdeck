@@ -866,16 +866,19 @@ pub async fn set_control_center_toggle(toggle: String, enabled: bool) -> Result<
     match toggle.as_str() {
         "dark_mode" => set_toggle_dark_mode(enabled).await,
         "wifi" => {
-            let action = if enabled { "Enable" } else { "Disable" };
-            let action = action.to_string();
             tokio::task::spawn_blocking(move || {
                 #[cfg(target_os = "windows")]
                 {
+                    let action = if enabled { "Enable" } else { "Disable" };
+                    let action = action.to_string();
                     let script = format!("{} -NetAdapter -Name '*Wi-Fi*' -Confirm:$false", action);
                     run_powershell(&script).map(|_| ())
                 }
                 #[cfg(not(target_os = "windows"))]
-                Err("Wi-Fi toggle not supported on this OS".to_string())
+                {
+                    let _ = enabled;
+                    Err("Wi-Fi toggle not supported on this OS".to_string())
+                }
             }).await.map_err(|e| format!("Task join error: {}", e))?
         }
         "dnd" => {

@@ -85,7 +85,7 @@ function TrackpadTab() {
     if (dx !== 0 || dy !== 0) {
       api("/api/input/mouse/move", { x: dx, y: dy, relative: true }).catch(() => {})
     }
-  }, [api, connected])
+  }, [api])
 
   const handleUp = useCallback(() => {
     dragging.current = false
@@ -106,6 +106,10 @@ function TrackpadTab() {
       <Card className="p-4">
         <div
           ref={padRef}
+          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+          role="button"
+          tabIndex={0}
+          aria-label="Trackpad"
           className="w-full h-64 bg-muted rounded-lg cursor-crosshair select-none border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground"
           onMouseDown={handleDown}
           onMouseMove={handleMove}
@@ -316,8 +320,9 @@ function VisionTab() {
             {loading ? "Capturing..." : "Take Screenshot"}
           </Button>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Auto every</label>
+            <label htmlFor="screenshot-interval-select" className="text-sm text-muted-foreground">Auto every</label>
             <select
+              id="screenshot-interval-select"
               className="bg-muted border rounded px-2 py-1 text-sm"
               value={interval}
               onChange={(e) => setInterval(Number(e.target.value))}

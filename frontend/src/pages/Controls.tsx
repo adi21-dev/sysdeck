@@ -6,7 +6,6 @@ import {
   Bed,
   LogOut,
   Lock,
-  AlertTriangle,
   Wifi,
   WifiOff,
   Sun,
@@ -15,8 +14,6 @@ import {
   Volume1,
   Bell,
   BellOff,
-  Play,
-  Pause,
   SkipBack,
   SkipForward,
   Monitor,
@@ -416,10 +413,11 @@ export function ControlsPage() {
                   </div>
                 </div>
 
-                {/* Output Device */}
+                 {/* Output Device */}
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Output Device</label>
+                  <label htmlFor="output-device-select-controls" className="text-xs font-semibold text-muted-foreground">Output Device</label>
                   <select
+                    id="output-device-select-controls"
                     value={audio.default_device}
                     onChange={(e) => setDevice(e.target.value)}
                     className="w-full bg-background border border-border text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-primary focus:border-primary cursor-pointer"
@@ -441,7 +439,7 @@ export function ControlsPage() {
 
           {/* Media keys */}
           <div className="border-t pt-4">
-            <label className="text-xs font-semibold text-muted-foreground block mb-3">Media Controls</label>
+            <span className="text-xs font-semibold text-muted-foreground block mb-3">Media Controls</span>
             <div className="flex items-center justify-around gap-2 bg-muted/20 p-2.5 rounded-xl border">
               <Button size="icon" variant="ghost" className="rounded-full" onClick={() => handleMedia("prev")} title="Previous">
                 <SkipBack className="h-5 w-5" />
@@ -502,6 +500,7 @@ export function ControlsPage() {
                     <p className="text-xs text-muted-foreground">Reduce blue light to help sleep</p>
                   </div>
                   <button
+                    aria-label="Toggle Night Light"
                     onClick={() => {
                       setNightLight(!display.night_light).catch((err) => {
                         toastStore.addToast(err.message || "Failed to toggle Night Light.", "error")
@@ -585,7 +584,7 @@ export function ControlsPage() {
             <div className="space-y-4">
               {/* Action selection */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Action type</label>
+                <span className="text-xs font-semibold text-muted-foreground block">Action type</span>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setScheduleAction("shutdown")}
@@ -614,9 +613,10 @@ export function ControlsPage() {
 
               {/* Time selection */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Delay (minutes)</label>
+                <label htmlFor="schedule-delay-input-controls" className="text-xs font-semibold text-muted-foreground">Delay (minutes)</label>
                 <div className="flex items-center gap-3">
                   <input
+                    id="schedule-delay-input-controls"
                     type="number"
                     min="1"
                     value={scheduleTime}
@@ -647,6 +647,7 @@ export function ControlsPage() {
                   <p className="text-[10px] text-muted-foreground">Force close running programs immediately</p>
                 </div>
                 <button
+                  aria-label="Force Action"
                   onClick={() => setScheduleForce(!scheduleForce)}
                   className={cn(
                     "w-10 h-5 flex items-center rounded-full p-0.5 transition-all outline-none",

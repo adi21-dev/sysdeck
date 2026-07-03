@@ -6,7 +6,7 @@ import { useAuthStore, useThemeStore } from "@/lib/store"
 
 export function Sidebar() {
   const isLocal = useAuthStore((s) => s.isLocal)
-  const { isDark, toggle } = useThemeStore()
+  const { toggle } = useThemeStore()
   const items = isLocal ? [...navItems, ...adminNavItems] : navItems
   const navigate = useNavigate()
 

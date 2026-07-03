@@ -46,7 +46,6 @@ test.describe("Login error states", () => {
     await expect(input).toHaveAttribute("type", "password")
     await page.locator('button:has(svg.lucide-eye)').click()
     // after click the input should become text type (or a different input appears)
-    const visibleInput = page.locator('input:not([type="hidden"])').first()
     // The toggle swaps to a text input; just verify icon changed
     await expect(page.locator('button:has(svg.lucide-eye-off)')).toBeVisible()
     await ctx.close()

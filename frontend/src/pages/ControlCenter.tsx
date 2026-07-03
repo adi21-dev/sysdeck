@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import {
   Power, RefreshCw, Moon, Bed, LogOut, Lock, SwitchCamera,
   Sun, Volume2, VolumeX, Volume1, Bell, BellOff,
-  SkipBack, SkipForward, Monitor, Loader2, Sliders,
+  SkipBack, SkipForward, Loader2, Sliders,
   Wifi, WifiOff, Signal, MonitorOff
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -76,9 +76,9 @@ function PlayPauseIcon(props: React.SVGProps<SVGSVGElement>) {
 export function ControlCenterPage() {
   const toastStore = useToastStore()
   const {
-    audio, display, toggles, network, wifiNetworks, controlCenter,
+    audio, display, network, wifiNetworks, controlCenter,
     fetchAll, fetchNetwork, fetchWifiNetworks, fetchControlCenter,
-    setVolume, setMuted, setDevice, triggerMedia,
+    setVolume, setDevice, triggerMedia,
     setBrightness, setNightLight, setDarkMode,
     toggleControlCenter, flushDns, toggleAdapter,
     wifiConnect, wifiDisconnect, monitorOff
@@ -398,8 +398,8 @@ export function ControlCenterPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold text-muted-foreground">Output Device</label>
-                  <select value={audio.default_device} onChange={(e) => setDevice(e.target.value)}
+                  <label htmlFor="output-device-select" className="text-xs font-semibold text-muted-foreground">Output Device</label>
+                  <select id="output-device-select" value={audio.default_device} onChange={(e) => setDevice(e.target.value)}
                     className="w-full bg-background border border-border text-sm rounded-lg p-2.5 outline-none focus:ring-1 focus:ring-primary focus:border-primary cursor-pointer"
                   >
                     {audio.devices.length === 0 ? (
@@ -413,7 +413,7 @@ export function ControlCenterPage() {
             )}
           </div>
           <div className="border-t pt-4">
-            <label className="text-xs font-semibold text-muted-foreground block mb-3">Media Controls</label>
+            <span className="text-xs font-semibold text-muted-foreground block mb-3">Media Controls</span>
             <div className="flex items-center justify-around gap-2 bg-muted/20 p-2.5 rounded-xl border">
               <Button size="icon" variant="ghost" className="rounded-full" onClick={() => handleMedia("prev")} title="Previous">
                 <SkipBack className="h-5 w-5" />
@@ -479,7 +479,7 @@ export function ControlCenterPage() {
                     <p className="text-sm font-semibold">Night Light</p>
                     <p className="text-xs text-muted-foreground">Reduce blue light</p>
                   </div>
-                  <button onClick={() => { setNightLight(!display.night_light).catch((err) => { toastStore.addToast(err.message || "Failed to toggle Night Light.", "error") }) }}
+                  <button aria-label="Toggle Night Light" onClick={() => { setNightLight(!display.night_light).catch((err) => { toastStore.addToast(err.message || "Failed to toggle Night Light.", "error") }) }}
                     className={cn("w-12 h-6 flex items-center rounded-full p-1 transition-all outline-none", display.night_light ? "bg-primary" : "bg-muted border")}
                   >
                     <div className={cn("w-4 h-4 bg-background rounded-full shadow-md transform transition-all duration-200", display.night_light ? "translate-x-6" : "translate-x-0")} />
@@ -694,7 +694,7 @@ export function ControlCenterPage() {
             </div>
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Action type</label>
+                <span className="text-xs font-semibold text-muted-foreground block">Action type</span>
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => setScheduleAction("shutdown")}
                     className={cn("py-2.5 px-4 rounded-xl border text-sm font-medium transition-all text-center",
@@ -713,8 +713,8 @@ export function ControlCenterPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground">Delay (minutes)</label>
-                <input type="number" min="1" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)}
+                <label htmlFor="schedule-delay-input" className="text-xs font-semibold text-muted-foreground">Delay (minutes)</label>
+                <input id="schedule-delay-input" type="number" min="1" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)}
                   className="w-full bg-background border border-border text-sm rounded-xl p-3 outline-none focus:ring-1 focus:ring-primary focus:border-primary" />
                 <div className="flex flex-wrap gap-2 mt-2">
                   {["1", "5", "15", "30", "60"].map((mins) => (
@@ -731,7 +731,7 @@ export function ControlCenterPage() {
                   <p className="text-xs font-semibold">Force Action</p>
                   <p className="text-[10px] text-muted-foreground">Force close running programs</p>
                 </div>
-                <button onClick={() => setScheduleForce(!scheduleForce)}
+                <button aria-label="Force Action" onClick={() => setScheduleForce(!scheduleForce)}
                   className={cn("w-10 h-5 flex items-center rounded-full p-0.5 transition-all outline-none",
                     scheduleForce ? "bg-destructive" : "bg-muted border")}>
                   <div className={cn("w-4 h-4 bg-background rounded-full shadow transform transition-all duration-200",

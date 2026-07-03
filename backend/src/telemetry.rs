@@ -127,6 +127,7 @@ pub fn start_engine(
                 components.refresh();
             }
 
+            #[allow(unused_mut)]
             let mut temperature_cpu = components
                 .iter()
                 .find(|c| {
@@ -145,6 +146,7 @@ pub fn start_engine(
                     c.temperature()
                 });
 
+            #[allow(unused_mut)]
             let mut temperature_gpu = components
                 .iter()
                 .find(|c| {
@@ -292,14 +294,17 @@ fn get_battery_status() -> (Option<f32>, Option<bool>) {
         return get_battery_status_linux();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "linux"))]
     {
-        if let Some((p, c)) = get_battery_status_macos() {
-            return (p, c);
+        #[cfg(target_os = "macos")]
+        {
+            if let Some((p, c)) = get_battery_status_macos() {
+                return (p, c);
+            }
         }
-    }
 
-    (None, None)
+        (None, None)
+    }
 }
 
 #[cfg(target_os = "linux")]

@@ -1,15 +1,12 @@
 import { useEffect, useRef, useCallback } from "react"
-import { useNavigate } from "react-router-dom"
-import { useAuthStore, useTelemetryStore, useConnectionStore, useTunnelStore } from "@/lib/store"
+import { useTelemetryStore, useConnectionStore, useTunnelStore } from "@/lib/store"
 
 const MAX_RECONNECT_DELAY = 30000
 
 export function useWebSocket() {
-  const navigate = useNavigate()
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttempts = useRef(0)
-  const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
   const setCurrent = useTelemetryStore((s) => s.setCurrent)
   const addToHistory = useTelemetryStore((s) => s.addToHistory)
   const setStatus = useConnectionStore((s) => s.setStatus)
@@ -85,7 +82,7 @@ export function useWebSocket() {
       setStatus("offline")
       setTimeout(connect, 100)
     })
-  }, [navigate, setAuthenticated, setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown])
+  }, [setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown])
 
   useEffect(() => {
     connect()

@@ -44,6 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create dummy frontend/dist (for RustEmbed under CROSS=true)
+        run: |
+          mkdir -p frontend/dist
+          touch frontend/dist/index.html
+
       - name: Install System Dependencies (Linux UI & Secret Service)
         run: |
           sudo apt-get update

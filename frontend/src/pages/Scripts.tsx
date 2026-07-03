@@ -23,7 +23,7 @@ const WINGET = [
 export function ScriptsPage() {
   const {
     mode, scriptType, content, predefined, running,
-    output, status, consoleOpen, errorCount,
+    output, status,
     setMode, setScriptType, setContent, setPredefined,
     setRunning, setRunId, addOutput, clearOutput,
     setStatus,

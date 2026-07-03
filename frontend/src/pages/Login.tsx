@@ -91,7 +91,7 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">Authentication Code</label>
+              <span className="block text-sm font-medium mb-2">Authentication Code</span>
               <div className="flex gap-2 justify-center">
                 {totp.map((digit, i) => (
                   <input

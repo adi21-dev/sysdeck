@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import {
-  Shield, Eye, EyeOff, Download, Server, Globe, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key,
+  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -163,7 +163,7 @@ export function SettingsPage() {
       if (d.success) setRelayEnabled(d.enabled)
     }).catch(() => {})
     fetchSessions()
-  }, [])
+  }, [tunnel])
 
   const showError = (msg: string) => { setError(msg); setSuccess(null) }
   const showSuccess = (msg: string) => { setSuccess(msg); setError(null) }
@@ -571,7 +571,7 @@ export function SettingsPage() {
         <h3 className="font-semibold mb-4">Configuration</h3>
         <div className="space-y-6">
           <div className="space-y-3">
-            <label className="text-sm font-medium">File Access Paths</label>
+            <span className="text-sm font-medium block">File Access Paths</span>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Allowed Paths</p>
@@ -614,9 +614,9 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-3">
-            <label className="text-sm font-medium">Local Server Port</label>
+            <label htmlFor="local-server-port" className="text-sm font-medium">Local Server Port</label>
             <div className="flex gap-2">
-              <Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
+              <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
               <Button onClick={handleSavePort} size="sm">Save</Button>
             </div>
             <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>

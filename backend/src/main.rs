@@ -3,7 +3,6 @@
 // On Linux/macOS this attribute is silently ignored — the terminal is already there.
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use std::io;
 use std::sync::Arc;
 
 use rand::Rng;
@@ -349,7 +348,7 @@ async fn main() {
         terminal_state,
         tunnel_state: tunnel_state.clone(),
         port,
-        setup_token,
+        setup_token: setup_token.clone(),
     };
 
     let app = build_router(app_state.clone());
