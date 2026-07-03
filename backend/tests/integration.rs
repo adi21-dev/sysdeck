@@ -22,7 +22,13 @@ async fn test_setup_json_api_full_flow() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let cookie = resp.headers().get(axum::http::header::SET_COOKIE).unwrap().to_str().unwrap().to_string();
+    let cookie = resp
+        .headers()
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
     // Step 1: Set password
     let resp = authed_post_json(
@@ -103,7 +109,13 @@ async fn test_setup_weak_password_rejected() {
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
-    let cookie = resp.headers().get(axum::http::header::SET_COOKIE).unwrap().to_str().unwrap().to_string();
+    let cookie = resp
+        .headers()
+        .get(axum::http::header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
 
     let resp = authed_post_json(
         &mut router,

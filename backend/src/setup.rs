@@ -101,27 +101,31 @@ pub(crate) async fn verify_setup_token_handler(
     Json(body): Json<VerifySetupTokenRequest>,
 ) -> Response {
     if body.token == *state.setup_token {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(state.setup_token.as_bytes());
-        let hash_hex = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        let hash_hex = hasher
+            .finalize()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>();
 
         let cookie_val = format!(
             "setup_authorized={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=3600",
             hash_hex
         );
-        
+
         Response::builder()
             .header(axum::http::header::SET_COOKIE, cookie_val)
             .body(axum::body::Body::from(
-                serde_json::json!({ "success": true }).to_string()
+                serde_json::json!({ "success": true }).to_string(),
             ))
             .unwrap()
     } else {
         Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(axum::body::Body::from(
-                serde_json::json!({ "success": false, "error": "Invalid setup token" }).to_string()
+                serde_json::json!({ "success": false, "error": "Invalid setup token" }).to_string(),
             ))
             .unwrap()
     }
@@ -154,16 +158,23 @@ pub async fn api_password_handler(
                 })
             })
             .map(|cookie_val| {
-                use sha2::{Sha256, Digest};
+                use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(state.setup_token.as_bytes());
-                let expected_hash = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                let expected_hash = hasher
+                    .finalize()
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
                 cookie_val == expected_hash
             })
             .unwrap_or(false);
 
         if !is_authorized {
-            tracing::warn!(handler = "api_password_handler", "unauthorized setup attempt");
+            tracing::warn!(
+                handler = "api_password_handler",
+                "unauthorized setup attempt"
+            );
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({
