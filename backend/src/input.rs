@@ -1,7 +1,8 @@
 use axum::extract::Query;
 use axum::response::{IntoResponse, Json};
-use base64::Engine;
+
 use enigo::{Axis, Direction, Key, Keyboard, Mouse};
+use data_encoding::BASE64;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing;
@@ -52,13 +53,11 @@ pub struct MediaKeyReq {
 #[derive(Deserialize)]
 pub struct ClipboardSetReq {
     pub text: Option<String>,
-    pub image_b64: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
 pub struct ClipboardEvent {
     pub text: Option<String>,
-    pub image_b64: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -330,11 +329,7 @@ pub async fn clipboard_get_handler() -> impl IntoResponse {
     let result = tokio::task::spawn_blocking(move || -> Result<ClipboardEvent, String> {
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         let text = cb.get_text().ok();
-        // ponytail: only text clipboard sync. Image sync if requested.
-        Ok(ClipboardEvent {
-            text,
-            image_b64: None,
-        })
+        Ok(ClipboardEvent { text })
     })
     .await;
 
@@ -350,9 +345,6 @@ pub async fn clipboard_set_handler(Json(req): Json<ClipboardSetReq>) -> impl Int
         let mut cb = arboard::Clipboard::new().map_err(|e| format!("clipboard: {}", e))?;
         if let Some(text) = req.text {
             cb.set_text(text).map_err(|e| format!("set text: {}", e))?;
-        }
-        if let Some(_b64) = req.image_b64 {
-            // ponytail: image clipboard not yet supported
         }
         Ok(())
     })
@@ -391,7 +383,7 @@ pub async fn screenshot_handler(Query(params): Query<Option<ScreenshotReq>>) -> 
         cropped
             .write_to(&mut buf, image::ImageFormat::Png)
             .map_err(|e| format!("encode: {}", e))?;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(buf.into_inner());
+        let b64 = BASE64.encode(&buf.into_inner());
         Ok(b64)
     })
     .await;
@@ -415,8 +407,4 @@ pub async fn browser_open_handler(Json(req): Json<BrowserOpenReq>) -> impl IntoR
     }
 }
 
-pub async fn browser_list_windows_handler() -> impl IntoResponse {
-    tracing::info!("Browser list windows requested");
-    // ponytail: browser window/tab listing not implemented. Use screenshots for visual feedback.
-    Json(json!({"success": true, "data": {"windows": []}}))
-}
+

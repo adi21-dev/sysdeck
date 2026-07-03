@@ -51,7 +51,7 @@ pub use db::TelemetrySnapshot;
 pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
 pub use script::ScriptState;
 pub use setup::SetupManager;
-pub use setup::{check_token_handler, verify_setup_token_handler};
+
 pub use tunnel::TunnelState;
 
 #[derive(Clone)]
@@ -187,7 +187,8 @@ pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
 }
 
 fn is_startup_enabled() -> bool {
-    if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    {
         std::process::Command::new("reg")
             .args([
                 "query",
@@ -198,23 +199,17 @@ fn is_startup_enabled() -> bool {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
-    } else if cfg!(target_os = "linux") {
-        let path = dirs::config_dir().map(|p| p.join("autostart/nodedesk-agent.desktop"));
-        path.map(|p| p.exists()).unwrap_or(false)
-    } else if cfg!(target_os = "macos") {
-        let path =
-            dirs::home_dir().map(|p| p.join("Library/LaunchAgents/com.nodedesk.agent.plist"));
-        path.map(|p| p.exists()).unwrap_or(false)
-    } else {
-        false
     }
+    #[cfg(not(target_os = "windows"))]
+    false
 }
 
 fn set_startup(enabled: bool) {
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-    if cfg!(target_os = "windows") {
+    #[cfg(target_os = "windows")]
+    {
+        let exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
         if enabled {
             let _ = std::process::Command::new("reg")
                 .args([
@@ -240,43 +235,9 @@ fn set_startup(enabled: bool) {
                 ])
                 .output();
         }
-    } else if cfg!(target_os = "linux") {
-        if let Some(config_dir) = dirs::config_dir() {
-            let autostart_dir = config_dir.join("autostart");
-            let desktop_file = autostart_dir.join("nodedesk-agent.desktop");
-            if enabled {
-                let _ = std::fs::create_dir_all(&autostart_dir);
-                let content = format!(
-                    "[Desktop Entry]\nType=Application\nName=NodeDesk Agent\nExec={}\nX-GNOME-Autostart-enabled=true\n",
-                    exe
-                );
-                let _ = std::fs::write(&desktop_file, content);
-            } else {
-                let _ = std::fs::remove_file(&desktop_file);
-            }
-        }
-    } else if cfg!(target_os = "macos") {
-        if let Some(home) = dirs::home_dir() {
-            let launch_agents = home.join("Library/LaunchAgents");
-            let plist = launch_agents.join("com.nodedesk.agent.plist");
-            if enabled {
-                let _ = std::fs::create_dir_all(&launch_agents);
-                let content = format!(
-                    r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>Label</key><string>com.nodedesk.agent</string>
-<key>ProgramArguments</key><array><string>{}</string></array>
-<key>RunAtLoad</key><true/>
-</dict></plist>"#,
-                    exe
-                );
-                let _ = std::fs::write(&plist, content);
-            } else {
-                let _ = std::fs::remove_file(&plist);
-            }
-        }
     }
+    #[cfg(not(target_os = "windows"))]
+    let _ = enabled;
 }
 
 fn create_tray_icon(r: u8, g: u8, b: u8) -> Icon {
@@ -586,18 +547,9 @@ pub fn build_router(state: AppState) -> Router {
             "/api/setup/verify-totp",
             post(setup::api_verify_totp_handler),
         )
-        .route(
-            "/api/setup/recovery-codes",
-            post(setup::api_recovery_codes_handler),
-        )
         .route("/api/setup/finish", post(setup::api_finish_handler))
         .route("/api/setup/relay", post(setup::api_relay_handler))
         .route("/api/setup/progress", get(setup::api_progress_handler))
-        .route("/api/setup/check-token", get(setup::check_token_handler))
-        .route(
-            "/api/setup/verify-setup-token",
-            post(setup::verify_setup_token_handler),
-        )
         .route("/api/auth/check", get(auth::auth_check_handler))
         .route("/api/auth/refresh", post(auth::refresh_handler))
         .route("/api/auth/logout", post(auth::logout_handler))
@@ -638,10 +590,6 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/display/brightness",
             post(hardware::display_brightness_handler),
-        )
-        .route(
-            "/api/display/night-light",
-            post(hardware::display_night_light_handler),
         )
         .route("/api/toggles/status", get(hardware::toggles_status_handler))
         .route(
@@ -700,10 +648,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/vision/screenshot", get(input::screenshot_handler))
         // Input — Browser
         .route("/api/browser/open", post(input::browser_open_handler))
-        .route(
-            "/api/browser/windows",
-            get(input::browser_list_windows_handler),
-        )
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

@@ -66,6 +66,7 @@ impl SystemCommands for RealOs {
     }
 }
 
+// ponytail: test-only mock, always visible for integration tests
 pub struct MockOs {
     pub last_action: std::sync::Mutex<Option<PowerAction>>,
 }

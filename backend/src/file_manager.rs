@@ -73,19 +73,6 @@ fn path_blocked(canonical: &Path, blocked: &[String]) -> bool {
     })
 }
 
-fn child_blocked_fast(child_path: &str, blocked: &[String]) -> bool {
-    if blocked.is_empty() {
-        return false;
-    }
-    let lower = child_path.to_lowercase();
-    blocked.iter().any(|b| {
-        let bl = b.to_lowercase();
-        let b_stripped = strip_wp(&bl).to_string();
-        let b_trimmed = b_stripped.trim_end_matches('\\').to_string();
-        lower == b_trimmed || lower.starts_with(&format!("{}\\", b_trimmed))
-    })
-}
-
 fn read_allowed_blocked(conn: &rusqlite::Connection) -> (Vec<String>, Vec<String>) {
     let allowed = db::get_setting(conn, "allowed_paths")
         .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
@@ -201,8 +188,12 @@ pub(crate) async fn list_handler(
 
     for entry in read_dir.flatten() {
         let child_path = entry.path().to_string_lossy().to_string();
-        // ponytail: fast string check, no canonicalize per child
-        if child_blocked_fast(&child_path, &blocked) {
+        if blocked.iter().any(|b| {
+            let bl = b.to_lowercase();
+            let b_stripped = strip_wp(&bl);
+            let b_trimmed = b_stripped.trim_end_matches('\\');
+            child_path.to_lowercase() == b_trimmed || child_path.to_lowercase().starts_with(&format!("{}\\", b_trimmed))
+        }) {
             continue;
         }
         let meta = entry.metadata().ok();

@@ -16,7 +16,7 @@ use axum::http::{header, HeaderValue, StatusCode};
 use axum::middleware;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Form, Json};
-use data_encoding::{BASE32_NOPAD, BASE64};
+use data_encoding::{BASE32_NOPAD, BASE64, HEXLOWER};
 use governor::clock::DefaultClock;
 use governor::state::keyed::DefaultKeyedStateStore;
 use governor::{Quota, RateLimiter};
@@ -294,12 +294,12 @@ pub fn verify_jwt(token: &str, key: &[u8]) -> Result<JwtClaims, String> {
 
 pub fn generate_refresh_token() -> (String, String) {
     let raw = Uuid::new_v4().to_string();
-    let hash = hex::encode(Sha256::digest(raw.as_bytes()));
+    let hash = HEXLOWER.encode(&Sha256::digest(raw.as_bytes()));
     (raw, hash)
 }
 
 pub fn hash_refresh_token(raw: &str) -> String {
-    hex::encode(Sha256::digest(raw.as_bytes()))
+    HEXLOWER.encode(&Sha256::digest(raw.as_bytes()))
 }
 
 pub fn create_session(
@@ -387,21 +387,6 @@ pub fn get_token_version(conn: &rusqlite::Connection, user_id: i64) -> Result<i6
         |row| row.get::<_, i64>(0),
     )
     .map_err(|e| format!("Failed to get token_version: {}", e))
-}
-
-pub fn bump_token_version(conn: &rusqlite::Connection, user_id: i64) -> Result<(), String> {
-    conn.execute(
-        "UPDATE users SET token_version = token_version + 1, updated_at = ?1 WHERE id = ?2",
-        rusqlite::params![
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
-            user_id
-        ],
-    )
-    .map_err(|e| format!("Failed to bump token_version: {}", e))?;
-    Ok(())
 }
 
 pub fn revoke_all_sessions(conn: &rusqlite::Connection) -> Result<(), String> {

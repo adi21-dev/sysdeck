@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use axum::extract::State;
 use axum::response::Json;
-use regex::Regex;
+
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -219,7 +219,6 @@ async fn run_tunnel_loop(
     mut kill_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
     tracing::info!("tunnel loop started");
-    let url_re = Regex::new(r"https://[a-z0-9-]+\.trycloudflare\.com").unwrap();
     loop {
         let state = match weak.upgrade() {
             Some(s) => s,
@@ -268,9 +267,9 @@ async fn run_tunnel_loop(
                     match line {
                         Ok(Some(l)) => {
                             tracing::info!("cloudflared stderr: {}", l);
-                            if let Some(m) = url_re.find(&l) {
+                            if let Some(url) = l.split_whitespace().find(|w| w.contains("trycloudflare.com")) {
                                 found_url = true;
-                                state.set_status(TunnelStatus::Running { url: m.as_str().to_string() }).await;
+                                state.set_status(TunnelStatus::Running { url: url.to_string() }).await;
                             }
                         }
                         _ => stderr_done = true,
@@ -280,9 +279,9 @@ async fn run_tunnel_loop(
                     match line {
                         Ok(Some(l)) => {
                             tracing::info!("cloudflared stdout: {}", l);
-                            if let Some(m) = url_re.find(&l) {
+                            if let Some(url) = l.split_whitespace().find(|w| w.contains("trycloudflare.com")) {
                                 found_url = true;
-                                state.set_status(TunnelStatus::Running { url: m.as_str().to_string() }).await;
+                                state.set_status(TunnelStatus::Running { url: url.to_string() }).await;
                             }
                         }
                         _ => stdout_done = true,

@@ -95,10 +95,6 @@ pub fn init_auth_tables(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS jwt_signing_key (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            encrypted_key BLOB NOT NULL
         );",
     )
 }

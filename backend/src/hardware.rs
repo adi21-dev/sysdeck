@@ -51,16 +51,6 @@ pub struct BrightnessRequest {
 }
 
 #[derive(Deserialize)]
-pub struct NightLightRequest {
-    pub night_light: bool,
-}
-
-#[derive(Deserialize)]
-pub struct ToggleRequest {
-    pub enabled: bool,
-}
-
-#[derive(Deserialize)]
 pub struct ControlCenterToggleReq {
     pub toggle: String,
     pub enabled: bool,
@@ -70,11 +60,7 @@ pub struct ControlCenterToggleReq {
 pub struct ControlCenterStatus {
     pub dark_mode: bool,
     pub wifi_on: Option<bool>,
-    pub bluetooth_on: Option<bool>,
     pub dnd_on: Option<bool>,
-    pub battery_saver_on: Option<bool>,
-    pub airplane_mode_on: Option<bool>,
-    pub auto_brightness: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -782,11 +768,6 @@ pub async fn set_display_brightness(brightness: u32) -> Result<(), String> {
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
-pub async fn set_display_night_light(_enabled: bool) -> Result<(), String> {
-    // Night light is highly platform-dependent and fragile to set via simple CLI, return unsupported
-    Err("Night Light toggle is not supported natively on this OS configuration.".to_string())
-}
-
 pub async fn get_toggle_status() -> Result<ToggleStatus, String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
@@ -867,11 +848,7 @@ pub async fn get_control_center_status() -> Result<ControlCenterStatus, String> 
             Ok(ControlCenterStatus {
                 dark_mode: toggle_status.dark_mode,
                 wifi_on,
-                bluetooth_on: None,
                 dnd_on,
-                battery_saver_on: None,
-                airplane_mode_on: None,
-                auto_brightness: None,
             })
         }
         #[cfg(not(target_os = "windows"))]
@@ -879,11 +856,7 @@ pub async fn get_control_center_status() -> Result<ControlCenterStatus, String> 
             Ok(ControlCenterStatus {
                 dark_mode: toggle_status.dark_mode,
                 wifi_on: None,
-                bluetooth_on: None,
                 dnd_on: None,
-                battery_saver_on: None,
-                airplane_mode_on: None,
-                auto_brightness: None,
             })
         }
     }).await.map_err(|e| format!("Task join error: {}", e))?
@@ -1026,17 +999,6 @@ pub async fn display_brightness_handler(Json(req): Json<BrightnessRequest>) -> i
     }
 }
 
-pub async fn display_night_light_handler(Json(req): Json<NightLightRequest>) -> impl IntoResponse {
-    match set_display_night_light(req.night_light).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
-}
-
 pub async fn toggles_status_handler() -> impl IntoResponse {
     match get_toggle_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
@@ -1048,7 +1010,7 @@ pub async fn toggles_status_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn toggle_dark_mode_handler(Json(req): Json<ToggleRequest>) -> impl IntoResponse {
+pub async fn toggle_dark_mode_handler(Json(req): Json<ControlCenterToggleReq>) -> impl IntoResponse {
     match set_toggle_dark_mode(req.enabled).await {
         Ok(_) => Json(json!({ "success": true })).into_response(),
         Err(e) => (
@@ -1190,6 +1152,7 @@ pub async fn schedule_power_handler(
 mod tests {
     use super::*;
 
+    #[ignore = "requires real audio device hardware; SetDefaultEndpoint fails with 0x80004005"]
     #[tokio::test]
     async fn test_set_audio_device() {
         let status = get_audio_status().await.unwrap();
@@ -1207,16 +1170,9 @@ mod tests {
             let status2 = get_audio_status().await.unwrap();
             println!("AFTER: {}", status2.default_device);
 
-            // Switch back to original
-            set_audio_device(status.default_device.clone())
-                .await
-                .unwrap();
-            println!("SWITCHED BACK");
-
             assert_eq!(&status2.default_device, next_device);
         } else {
             println!("Only one device found, cannot test switching");
         }
-        panic!("Show output!");
     }
 }

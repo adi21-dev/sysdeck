@@ -192,25 +192,6 @@ pub async fn api_verify_totp_handler(
         .into_response()
 }
 
-pub async fn api_recovery_codes_handler(
-    Query(query): Query<ProgressQuery>,
-    State(state): State<AppState>,
-) -> Response {
-    let flow = match state.setup_manager.get(&query.token) {
-        Some(f) => f,
-        None => {
-            tracing::warn!(handler = "api_recovery_codes_handler", "invalid or expired token");
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"success": false, "error": "Invalid or expired token"})),
-            )
-                .into_response()
-        }
-    };
-    tracing::info!(handler = "api_recovery_codes_handler", "recovery codes retrieved");
-    Json(serde_json::json!({"success": true, "codes": flow.recovery_codes})).into_response()
-}
-
 #[derive(Deserialize)]
 pub struct RelayRequest {
     pub enabled: bool,
@@ -320,33 +301,6 @@ pub async fn api_progress_handler(
             Json(serde_json::json!({"success": false, "error": "Invalid token"}))
         }
     }
-}
-
-// --- Setup token for headless/remote setup ---
-
-pub async fn check_token_handler(
-    _state: State<AppState>,
-    headers: axum::http::HeaderMap,
-) -> Json<serde_json::Value> {
-    let is_tunneled = headers.contains_key("cf-connecting-ip") || headers.contains_key("cf-ray");
-    tracing::info!(handler = "check_token_handler", token_required = is_tunneled, "setup token check");
-    Json(serde_json::json!({"token_required": is_tunneled}))
-}
-
-#[derive(Deserialize)]
-pub struct VerifyTokenRequest {
-    pub token: String,
-}
-
-pub async fn verify_setup_token_handler(
-    State(state): State<AppState>,
-    Json(body): Json<VerifyTokenRequest>,
-) -> Json<serde_json::Value> {
-    let valid = body.token == *state.setup_token;
-    if !valid {
-        tracing::warn!(handler = "verify_setup_token_handler", "invalid setup token");
-    }
-    Json(serde_json::json!({"success": valid}))
 }
 
 #[cfg(test)]
