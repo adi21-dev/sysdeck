@@ -18,6 +18,7 @@ const EVENT_TYPES = [
   "",
   "login_success",
   "login_failed",
+  "upload_failed",
   "login_locked",
   "file_uploaded",
   "upload_failed",

@@ -126,14 +126,12 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
 interface TunnelState {
   status: string
   url: string | null
-  error: string | null
-  setTunnel: (t: { status: string; url: string | null; error: string | null }) => void
+  setTunnel: (t: { status: string; url: string | null }) => void
 }
 
 export const useTunnelStore = create<TunnelState>((set) => ({
   status: "idle",
   url: null,
-  error: null,
   setTunnel: (t) => set(t),
 }))
 

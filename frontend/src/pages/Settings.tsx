@@ -84,7 +84,7 @@ export function SettingsPage() {
       }
     }).catch(() => {})
     fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
-      if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null, error: d.error ?? null })
+      if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null })
     }).catch(() => {})
     fetch("/api/settings/relay").then((r) => r.json()).then((d) => {
       if (d.success) setRelayEnabled(d.enabled)

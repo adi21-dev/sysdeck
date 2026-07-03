@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils"
 import { useToastStore } from "@/lib/store"
 import { useFilesStore, type FileEntry } from "@/lib/files-store"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { EmptyState } from "@/components/ui/empty-state"
 
 function toApiPath(p: string): string {
   return p.replace(/^\/([A-Za-z]:)/, "$1\\").replace(/\//g, "\\")
@@ -413,7 +412,11 @@ export function FilesPage() {
               </div>
             ))}
             {entries.length === 0 && (
-              <EmptyState icon={FolderOpen} title="This folder is empty" description="Upload files or navigate to another directory" />
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
+                <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
+                <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
+              </div>
             )}
           </div>
         </div>
@@ -441,8 +444,10 @@ export function FilesPage() {
             </Card>
           ))}
           {entries.length === 0 && (
-            <div className="col-span-full">
-              <EmptyState icon={FolderOpen} title="This folder is empty" description="Upload files or navigate to another directory" />
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+              <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
+              <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
             </div>
           )}
         </div>

@@ -54,7 +54,7 @@ export function useWebSocket() {
           return
         }
         if (data.event === "tunnel_status") {
-          setTunnel({ status: data.status, url: data.url ?? null, error: data.error ?? null })
+          setTunnel({ status: data.status, url: data.url ?? null })
           return
         }
       } catch {

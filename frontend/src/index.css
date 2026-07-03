@@ -75,10 +75,6 @@
   --sidebar-ring: hsl(221.2 83.2% 53.3%);
 }
 
-@utility pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -157,30 +153,6 @@ html {
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Glass card utility */
-.glass-card {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-}
-
-/* Skeleton loading */
-@keyframes skeleton-loading {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.skeleton {
-  background: linear-gradient(
-    90deg,
-    hsl(var(--muted)) 25%,
-    hsl(var(--accent)) 50%,
-    hsl(var(--muted)) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-loading 1.5s infinite;
-  border-radius: var(--radius);
-}
-
 /* Status dot animation */
 @keyframes status-pulse {
   0%, 100% { opacity: 1; }
@@ -191,31 +163,4 @@ html {
   animation: status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Toast slide-in */
-@keyframes toast-slide-in {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
 
-@keyframes toast-slide-out {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(100%); opacity: 0; }
-}
-
-/* Line chart grid lines */
-.chart-grid-line {
-  stroke: hsl(var(--border));
-  stroke-dasharray: 4 4;
-}
-
-.chart-line-primary {
-  stroke: hsl(var(--primary));
-  fill: none;
-  stroke-width: 2;
-}
-
-.chart-line-secondary {
-  stroke: hsl(142.1 76.2% 36.3%);
-  fill: none;
-  stroke-width: 2;
-}
