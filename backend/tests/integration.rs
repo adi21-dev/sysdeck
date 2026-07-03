@@ -190,7 +190,7 @@ async fn test_script_execute_wait_mode() {
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert_eq!(data["success"], true);
-    assert!(data["id"].as_str().unwrap().len() > 0);
+    assert!(!data["id"].as_str().unwrap().is_empty());
     let result = &data["result"];
     assert_eq!(result["exit_code"], 0);
     assert!(result["stdout"].as_str().unwrap().contains("hello"));
@@ -474,7 +474,7 @@ async fn test_audit_logs_authenticated() {
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert!(data["entries"].is_array());
-    assert!(data["entries"].as_array().unwrap().len() >= 1);
+    assert!(!data["entries"].as_array().unwrap().is_empty());
 }
 
 // ============================================================

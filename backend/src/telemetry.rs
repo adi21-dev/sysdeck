@@ -291,7 +291,7 @@ fn get_battery_status() -> (Option<f32>, Option<bool>) {
 
     #[cfg(target_os = "linux")]
     {
-        return get_battery_status_linux();
+        get_battery_status_linux()
     }
 
     #[cfg(not(target_os = "linux"))]

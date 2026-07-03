@@ -111,6 +111,7 @@ pub async fn get_network_status() -> Result<NetworkStatus, String> {
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[allow(dead_code)]
 fn default_network_status() -> NetworkStatus {
     NetworkStatus {
         ipv4: String::new(),
