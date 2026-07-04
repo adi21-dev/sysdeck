@@ -89,6 +89,23 @@ pub async fn api_password_handler(
     State(state): State<AppState>,
     Json(body): Json<PasswordRequest>,
 ) -> Response {
+    let needs_setup = {
+        let conn = state.db.lock().await;
+        db::is_setup_complete(&conn).map(|c| !c).unwrap_or(true)
+    };
+
+    if !needs_setup {
+        tracing::warn!(handler = "api_password_handler", "setup already complete");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "success": false,
+                "error": "Setup is already completed"
+            })),
+        )
+            .into_response();
+    }
+
     if body.password.len() < 8 {
         tracing::warn!(handler = "api_password_handler", "password too short");
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": "Password must be at least 8 characters"}))).into_response();
@@ -292,6 +309,14 @@ pub async fn api_finish_handler(
     );
     let _ = db::wal_checkpoint(&conn);
     drop(conn);
+
+    if flow.relay_opt_in {
+        let ts = state.tunnel_state.clone();
+        tokio::spawn(async move {
+            let _ = crate::tunnel::TunnelState::start(ts).await;
+        });
+    }
+
     tracing::info!(handler = "api_finish_handler", "setup complete");
     Json(serde_json::json!({"success": true})).into_response()
 }

@@ -10,7 +10,6 @@ use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::AsyncBufReadExt;
-use tokio::process::Command;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -19,7 +18,7 @@ fn kill_process_tree(pid: Option<u32>) {
     let Some(pid) = pid else { return };
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("taskkill")
+        let _ = crate::new_command("taskkill")
             .args(["/T", "/F", "/PID", &pid.to_string()])
             .spawn()
             .map(|mut c| {
@@ -28,10 +27,10 @@ fn kill_process_tree(pid: Option<u32>) {
     }
     #[cfg(unix)]
     {
-        let _ = std::process::Command::new("pkill")
+        let _ = crate::new_command("pkill")
             .args(["-P", &pid.to_string()])
             .spawn();
-        let _ = std::process::Command::new("kill")
+        let _ = crate::new_command("kill")
             .args(["-9", &pid.to_string()])
             .spawn();
     }
@@ -223,7 +222,7 @@ async fn run_script(
             "$OutputEncoding = [System.Text.Encoding]::UTF8; {}",
             content
         );
-        Command::new("powershell")
+        crate::new_tokio_command("powershell")
             .args(["-NoProfile", "-Command", &ps_content])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -232,7 +231,7 @@ async fn run_script(
         #[cfg(target_os = "windows")]
         {
             let content = content.replace("\r\n", " & ").replace('\n', " & ");
-            Command::new("cmd")
+            crate::new_tokio_command("cmd")
                 .args(["/C", &content])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
@@ -250,7 +249,7 @@ async fn run_script(
         #[cfg(target_os = "windows")]
         {
             let content = content.replace("\r\n", " & ").replace('\n', " & ");
-            Command::new("cmd")
+            crate::new_tokio_command("cmd")
                 .args(["/C", &content])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())
@@ -258,7 +257,7 @@ async fn run_script(
         }
         #[cfg(not(target_os = "windows"))]
         {
-            Command::new("bash")
+            crate::new_tokio_command("bash")
                 .args(["-c", content])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::piped())

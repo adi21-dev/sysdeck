@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Check, Copy, Download, Eye, EyeOff, ShieldAlert } from "lucide-react"
+import { Check, Copy, Download, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -347,6 +347,11 @@ function StepRelay({ onComplete }: { onComplete: (enabled: boolean) => void }) {
         Optionally expose this agent to the internet via a Cloudflare Quick Tunnel.
         This allows remote access from outside your local network without port forwarding.
       </p>
+      <div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+        <span>
+          <strong>*Note:</strong> Because this uses a free, zero-signup tunnel, your remote URL will change every time the app restarts. We are working on adding persistent domain support soon!
+        </span>
+      </div>
       <div className="flex items-start gap-2">
         <input
           type="checkbox"
@@ -366,57 +371,55 @@ function StepRelay({ onComplete }: { onComplete: (enabled: boolean) => void }) {
   )
 }
 
-function StepToken({ onComplete }: { onComplete: () => void }) {
-  const [inputToken, setInputToken] = useState("")
-  const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError("")
-    setLoading(true)
-    try {
-      const res = await fetch("/api/setup/verify-setup-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: inputToken }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        onComplete()
-      } else {
-        setError("Invalid setup token. Check the server console for the token.")
-      }
-    } catch {
-      setError("Connection error")
-    } finally {
-      setLoading(false)
-    }
-  }
-
+function StepWelcome({ onComplete }: { onComplete: () => void }) {
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex items-center gap-2 rounded-md bg-amber-500/10 p-3 text-sm text-amber-600 dark:text-amber-400">
-        <ShieldAlert className="h-4 w-4 shrink-0" />
-        <span>This server requires a setup token. Enter the token printed in the server console.</span>
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
+            1
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground">Secure your account</h4>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              You will create an admin password and set up Two-Factor Authentication (2FA) to keep your system safe.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
+            2
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground">Enable Remote Access (Optional)</h4>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              You can turn on the Cloudflare Relay to access this PC from anywhere in the world.
+              <br />
+              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1 block">
+                *Note: Because this uses a free, zero-signup tunnel, your remote URL will change every time the app restarts. We are working on adding persistent domain support soon!
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
+            3
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground">Access your dashboard</h4>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Once setup is complete, you'll be able to manage your files, terminal, and system hardware directly from your browser.
+            </p>
+          </div>
+        </div>
       </div>
-      <div>
-        <label htmlFor="setup-token" className="text-sm font-medium">Setup Token</label>
-        <Input
-          id="setup-token"
-          type="text"
-          value={inputToken}
-          onChange={(e) => setInputToken(e.target.value)}
-          placeholder="Enter setup token"
-          required
-          autoComplete="off"
-        />
-      </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" className="w-full" disabled={loading || !inputToken}>
-        {loading ? "Verifying..." : "Verify & Continue"}
+
+      <Button onClick={onComplete} className="w-full mt-4">
+        Start Setup →
       </Button>
-    </form>
+    </div>
   )
 }
 
@@ -425,10 +428,6 @@ export function SetupPage() {
   const [step, setStep] = useState(0)
   const [token, setToken] = useState<string | null>(null)
   const [checking, setChecking] = useState(true)
-  const [tokenRequired, setTokenRequired] = useState(false)
-  const [offset, setOffset] = useState(0)
-
-  const steps = tokenRequired ? ["Token", ...BASE_STEPS] : BASE_STEPS
 
   useEffect(() => {
     async function checkStatus() {
@@ -439,19 +438,13 @@ export function SetupPage() {
           navigate("/login", { replace: true })
           return
         }
-        const tokenRes = await fetch("/api/setup/check-token")
-        const tokenData = await tokenRes.json()
-        if (tokenData.token_required) {
-          setTokenRequired(true)
-          setOffset(1)
-        }
         const savedToken = sessionStorage.getItem("setup_token")
         if (savedToken) {
           const progressRes = await fetch(`/api/setup/progress?token=${savedToken}`)
           const progressData = await progressRes.json()
           if (progressData.success) {
             setToken(savedToken)
-            setStep(progressData.current_step - 1 + (tokenData.token_required ? 1 : 0))
+            setStep(progressData.current_step)
           }
         }
       } catch {
@@ -463,23 +456,19 @@ export function SetupPage() {
     checkStatus()
   }, [navigate])
 
-  const handleTokenComplete = useCallback(() => {
-    setStep(1)
-  }, [])
-
   const handlePasswordComplete = useCallback((newToken: string) => {
     setToken(newToken)
-    setStep(1 + offset)
-  }, [offset])
+    setStep(2)
+  }, [])
 
   const handleTotpComplete = useCallback((newToken: string) => {
     setToken(newToken)
-    setStep(2 + offset)
-  }, [offset])
+    setStep(3)
+  }, [])
 
   const handleRecoveryComplete = useCallback(() => {
-    setStep(3 + offset)
-  }, [offset])
+    setStep(4)
+  }, [])
 
   const handleRelayComplete = useCallback(async (enabled: boolean) => {
     const token = sessionStorage.getItem("setup_token")
@@ -511,8 +500,6 @@ export function SetupPage() {
     )
   }
 
-  const baseStep = step - offset
-
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className="w-full max-w-lg space-y-6">
@@ -520,28 +507,30 @@ export function SetupPage() {
           <h1 className="text-2xl font-bold">SysDeck Agent Setup</h1>
           <p className="text-muted-foreground mt-1 text-sm">Configure your agent</p>
         </div>
-        <StepIndicator current={step} steps={steps} />
+        {step > 0 && <StepIndicator current={step - 1} steps={BASE_STEPS} />}
         <Card>
           <CardHeader>
-            <CardTitle>{steps[step]}</CardTitle>
+            <CardTitle>
+              {step === 0 ? "👋 Welcome to SysDeck" : BASE_STEPS[step - 1]}
+            </CardTitle>
             <CardDescription>
-              {steps[step] === "Token" ? "Enter the setup token from the server console" :
-               steps[step] === "Password" ? "Create a strong password to secure your agent" :
-               steps[step] === "Two-Factor Auth" ? "Set up two-factor authentication" :
-               steps[step] === "Recovery Codes" ? "Store your recovery codes safely" :
+              {step === 0 ? "Let's get your remote access set up in 3 quick steps." :
+               step === 1 ? "Create a strong password to secure your agent" :
+               step === 2 ? "Set up two-factor authentication" :
+               step === 3 ? "Store your recovery codes safely" :
                "Configure remote access"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {step === 0 && tokenRequired ? (
-              <StepToken onComplete={handleTokenComplete} />
-            ) : baseStep === 0 ? (
+            {step === 0 ? (
+              <StepWelcome onComplete={() => setStep(1)} />
+            ) : step === 1 ? (
               <StepPassword onComplete={handlePasswordComplete} />
-            ) : baseStep === 1 && token ? (
+            ) : step === 2 && token ? (
               <StepTotp token={token} onComplete={handleTotpComplete} />
-            ) : baseStep === 2 ? (
+            ) : step === 3 ? (
               <StepRecoveryCodes onComplete={handleRecoveryComplete} />
-            ) : baseStep === 3 ? (
+            ) : step === 4 ? (
               <StepRelay onComplete={handleRelayComplete} />
             ) : null}
           </CardContent>

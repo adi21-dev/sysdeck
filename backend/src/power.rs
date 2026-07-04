@@ -31,73 +31,63 @@ impl SystemCommands for RealOs {
         #[cfg(target_os = "windows")]
         match action {
             PowerAction::Shutdown => {
-                let _ = std::process::Command::new("shutdown")
+                let _ = crate::new_command("shutdown")
                     .args(["/s", "/t", "1"])
                     .spawn();
             }
             PowerAction::Restart => {
-                let _ = std::process::Command::new("shutdown")
+                let _ = crate::new_command("shutdown")
                     .args(["/r", "/t", "1"])
                     .spawn();
             }
             PowerAction::Sleep => {
-                let _ = std::process::Command::new("rundll32.exe")
+                let _ = crate::new_command("rundll32.exe")
                     .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
                     .spawn();
             }
             PowerAction::Hibernate => {
-                let _ = std::process::Command::new("rundll32.exe")
+                let _ = crate::new_command("rundll32.exe")
                     .args(["powrprof.dll,SetSuspendState", "1", "1", "0"])
                     .spawn();
             }
             PowerAction::SignOut => {
-                let _ = std::process::Command::new("shutdown").args(["/l"]).spawn();
+                let _ = crate::new_command("shutdown").args(["/l"]).spawn();
             }
             PowerAction::Lock => {
-                let _ = std::process::Command::new("rundll32.exe")
+                let _ = crate::new_command("rundll32.exe")
                     .args(["user32.dll,LockWorkStation"])
                     .spawn();
             }
             PowerAction::SwitchUser => {
                 // Switch to the login screen to allow another user to log in
-                let _ = std::process::Command::new("tsdiscon.exe").spawn();
+                let _ = crate::new_command("tsdiscon.exe").spawn();
             }
         }
         #[cfg(target_os = "linux")]
         match action {
             PowerAction::Shutdown => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("poweroff")
-                    .spawn();
+                let _ = crate::new_command("systemctl").arg("poweroff").spawn();
             }
             PowerAction::Restart => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("reboot")
-                    .spawn();
+                let _ = crate::new_command("systemctl").arg("reboot").spawn();
             }
             PowerAction::Sleep => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("suspend")
-                    .spawn();
+                let _ = crate::new_command("systemctl").arg("suspend").spawn();
             }
             PowerAction::Hibernate => {
-                let _ = std::process::Command::new("systemctl")
-                    .arg("hibernate")
-                    .spawn();
+                let _ = crate::new_command("systemctl").arg("hibernate").spawn();
             }
             PowerAction::SignOut => {
-                let _ = std::process::Command::new("loginctl")
+                let _ = crate::new_command("loginctl")
                     .args(["terminate-session", "self"])
                     .spawn();
             }
             PowerAction::Lock => {
-                let _ = std::process::Command::new("loginctl")
-                    .arg("lock-session")
-                    .spawn();
+                let _ = crate::new_command("loginctl").arg("lock-session").spawn();
             }
             PowerAction::SwitchUser => {
                 // Switch user via display manager
-                let _ = std::process::Command::new("dm-tool")
+                let _ = crate::new_command("dm-tool")
                     .arg("switch-to-greeter")
                     .spawn();
             }
@@ -105,41 +95,41 @@ impl SystemCommands for RealOs {
         #[cfg(target_os = "macos")]
         match action {
             PowerAction::Shutdown => {
-                let _ = std::process::Command::new("osascript")
+                let _ = crate::new_command("osascript")
                     .args(["-e", "tell application \"System Events\" to shut down"])
                     .spawn();
             }
             PowerAction::Restart => {
-                let _ = std::process::Command::new("osascript")
+                let _ = crate::new_command("osascript")
                     .args(["-e", "tell application \"System Events\" to restart"])
                     .spawn();
             }
             PowerAction::Sleep => {
-                let _ = std::process::Command::new("osascript")
+                let _ = crate::new_command("osascript")
                     .args(["-e", "tell application \"System Events\" to sleep"])
                     .spawn();
             }
             PowerAction::Hibernate => {
                 // macOS: enable hibernate mode then sleep
-                let _ = std::process::Command::new("pmset")
+                let _ = crate::new_command("pmset")
                     .args(["-a", "hibernatemode", "25"])
                     .spawn();
-                let _ = std::process::Command::new("osascript")
+                let _ = crate::new_command("osascript")
                     .args(["-e", "tell application \"System Events\" to sleep"])
                     .spawn();
             }
             PowerAction::SignOut => {
-                let _ = std::process::Command::new("osascript")
+                let _ = crate::new_command("osascript")
                     .args(["-e", "tell application \"System Events\" to log out"])
                     .spawn();
             }
             PowerAction::Lock => {
-                let _ = std::process::Command::new("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
+                let _ = crate::new_command("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
                     .arg("-suspend")
                     .spawn();
             }
             PowerAction::SwitchUser => {
-                let _ = std::process::Command::new("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
+                let _ = crate::new_command("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
                     .arg("-suspend")
                     .spawn();
             }

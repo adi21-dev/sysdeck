@@ -5,7 +5,6 @@
 
 use std::sync::Arc;
 
-use rand::Rng;
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -202,14 +201,6 @@ async fn main() {
     let jwt_key = Arc::new(auth::load_or_create_jwt_key().expect("Failed to load JWT signing key"));
     println!("  ✓  JWT signing key loaded");
 
-    // Generate setup token for headless/remote setup
-    let setup_token: String = rand::thread_rng()
-        .sample_iter(&rand::distributions::Alphanumeric)
-        .take(16)
-        .map(char::from)
-        .collect();
-    let setup_token = Arc::new(setup_token);
-
     let (port, listener) = find_available_port().await;
     println!("  ✓  Server bound to localhost:{}", port);
 
@@ -348,7 +339,6 @@ async fn main() {
         terminal_state,
         tunnel_state: tunnel_state.clone(),
         port,
-        setup_token: setup_token.clone(),
     };
 
     let app = build_router(app_state.clone());
@@ -411,49 +401,37 @@ async fn main() {
 
     server_ready_rx.await.ok();
 
-    // ── Startup banner (complete) ────────────────────────────────────────────
+    // ── Startup banner ────────────────────────────────────────────
     println!();
-    println!("  ──────────────────────────────────────────────────");
-    println!("  Dashboard  →  http://localhost:{}", port);
-    println!("  Manage     →  System tray icon");
-    println!("  Setup key  →  {}", setup_token);
-    println!("  ──────────────────────────────────────────────────");
-
-    let is_headless = cfg!(target_os = "linux") && std::env::var("DISPLAY").is_err();
-    if is_headless {
-        println!();
-        println!("  Headless mode — no display detected.");
-        println!("  Use SSH port forwarding to reach the dashboard:");
-        println!("  ssh -L {}:127.0.0.1:{} user@host", port, port);
-    } else {
-        println!();
-        println!("  Press Enter to open the dashboard.");
-        println!("  Close this window at any time — SysDeck keeps running.");
-    }
+    println!("┌────────────────────────────────────────────────────────┐");
+    println!("│  ⚡ SysDeck is running!                                │");
+    println!("├────────────────────────────────────────────────────────┤");
+    println!("│  The app is now active in your system tray.            │");
+    println!("│                                                        │");
+    println!("│  Press [Enter] to open the setup wizard in your browser│");
+    println!("│  Press [Ctrl+C] to stop the app                        │");
+    println!("└────────────────────────────────────────────────────────┘");
     println!();
-    // ────────────────────────────────────────────────────────────────────────
 
     // Spawn a blocking task to wait for Enter, then open the browser and
     // detach the splash console. On Windows, if the user closes the window
     // first (CTRL_CLOSE_EVENT), FreeConsole() closes stdin, read_line()
     // returns EOF, and open_dashboard_once() is a no-op (already opened).
-    if !is_headless {
-        tokio::task::spawn_blocking(move || {
-            let mut buf = String::new();
-            // Returns Ok(0) on EOF (stdin closed by FreeConsole) or Ok(n) on Enter.
-            let _ = std::io::stdin().read_line(&mut buf);
+    tokio::task::spawn_blocking(move || {
+        let mut buf = String::new();
+        // Returns Ok(0) on EOF (stdin closed by FreeConsole) or Ok(n) on Enter.
+        let _ = std::io::stdin().read_line(&mut buf);
 
-            #[cfg(windows)]
-            {
-                detach_splash_console();
-                open_dashboard_once();
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = open::that(format!("http://localhost:{}", port));
-            }
-        });
-    }
+        #[cfg(windows)]
+        {
+            detach_splash_console();
+            open_dashboard_once();
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = open::that(format!("http://localhost:{}", port));
+        }
+    });
 
     server_handle.await.expect("Server task panicked");
 
