@@ -161,7 +161,7 @@ export function ScriptsPage() {
 
   const statusBadge = () => {
     switch (status) {
-      case "running": return <Badge variant="default" className="bg-blue-500">Running</Badge>
+      case "running": return <Badge variant="default" className="bg-chart-2">Running</Badge>
       case "completed": return <Badge variant="secondary">Completed</Badge>
       case "failed": return <Badge variant="destructive">Failed</Badge>
       case "timed_out": return <Badge variant="destructive">Timed Out</Badge>
@@ -178,7 +178,7 @@ export function ScriptsPage() {
               <select
                 value={predefined}
                 onChange={(e) => handlePredefinedChange(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+                className="flex-1 px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
               >
                 {PREDEFINED.map((p) => (
                   <option key={p.label} value={p.label}>{p.label}</option>
@@ -189,7 +189,7 @@ export function ScriptsPage() {
                   <button
                     key={w.label}
                     onClick={() => { setPredefined("Custom"); setScriptType("cmd"); setContent(w.content) }}
-                    className="px-2 py-1 rounded bg-muted text-xs hover:bg-muted/80"
+                    className="px-2.5 py-1.5 rounded-lg bg-muted/50 backdrop-blur-sm border border-border/30 text-xs hover:bg-muted/80 transition-colors"
                     title={w.content}
                   >
                     {w.label}
@@ -199,7 +199,7 @@ export function ScriptsPage() {
               <select
                 value={scriptType}
                 onChange={(e) => setScriptType(e.target.value as "powershell" | "cmd")}
-                className="px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+                className="px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
               >
                 <option value="powershell">PowerShell</option>
                 <option value="cmd">CMD</option>
@@ -207,12 +207,12 @@ export function ScriptsPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="text-primary" />
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="text-primary accent-primary" />
                 Live Output
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="mode" checked={mode === "wait"} onChange={() => setMode("wait")} className="text-primary" />
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="radio" name="mode" checked={mode === "wait"} onChange={() => setMode("wait")} className="text-primary accent-primary" />
                 Wait & Show
               </label>
             </div>
@@ -223,7 +223,7 @@ export function ScriptsPage() {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Enter your script here..."
                 rows={8}
-                className="w-full px-3 py-2 rounded-lg border border-input bg-background font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
+                className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none transition-all"
               />
             )}
 
@@ -234,7 +234,7 @@ export function ScriptsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-semibold">Output</h3>
@@ -250,7 +250,7 @@ export function ScriptsPage() {
           </div>
           <div
             ref={outputRef}
-            className="bg-muted rounded-lg p-4 font-mono text-xs h-80 overflow-y-auto space-y-1"
+            className="bg-muted/30 backdrop-blur-sm rounded-xl p-4 font-mono text-xs h-80 overflow-y-auto space-y-1 border border-border/20"
           >
             {output.length === 0 && (
               <p className="text-muted-foreground italic">Waiting for output...</p>
@@ -275,7 +275,7 @@ export function ScriptsPage() {
       </div>
 
       {localError && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
           <AlertTriangle className="h-4 w-4" />
           <span>{localError}</span>
         </div>

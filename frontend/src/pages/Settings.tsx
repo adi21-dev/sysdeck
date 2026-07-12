@@ -366,19 +366,19 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
           <AlertTriangle className="h-4 w-4" />
           <span>{error}</span>
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-md bg-green-500/10 p-3 text-sm text-green-600 dark:text-green-400">
+        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm p-3 text-sm text-green-400 border border-green-500/10">
           <Check className="h-4 w-4" />
           <span>{success}</span>
         </div>
       )}
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Change Password</h3>
         <div className="space-y-4 max-w-md">
           <div>
@@ -388,7 +388,7 @@ export function SettingsPage() {
               type={showPw ? "text" : "password"}
               value={currentPw}
               onChange={(e) => setCurrentPw(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+              className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
           <div>
@@ -399,7 +399,7 @@ export function SettingsPage() {
                 type={showPw ? "text" : "password"}
                 value={newPw}
                 onChange={(e) => setNewPw(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 pr-10"
+                className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all pr-10"
               />
               <button
                 onClick={() => setShowPw(!showPw)}
@@ -416,14 +416,14 @@ export function SettingsPage() {
               type="password"
               value={confirmPw}
               onChange={(e) => setConfirmPw(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
+              className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
           <Button onClick={handleChangePassword} size="sm"><Key className="h-4 w-4 mr-1" /> Update Password</Button>
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Two-Factor Authentication</h3>
         {totpStep === "idle" && (
           <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
@@ -446,7 +446,7 @@ export function SettingsPage() {
         )}
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Recovery Codes</h3>
         {recoveryCodes.length > 0 && showCodes && (
           <div className="p-4 rounded-lg border bg-muted/50 mb-4">
@@ -469,7 +469,7 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Active Sessions</h3>
         <div className="space-y-3">
           {sessions.length === 0 && (
@@ -509,7 +509,7 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Remote Access</h3>
         <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50 mb-4">
           <div>
@@ -562,12 +562,12 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Wake-on-LAN</h3>
         <WolSection />
       </div>
 
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="font-semibold mb-4">Configuration</h3>
         <div className="space-y-6">
           <div className="space-y-3">

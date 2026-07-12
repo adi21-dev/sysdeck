@@ -1,44 +1,53 @@
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { Monitor, Moon, Sun, LogOut } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { navItems, adminNavItems } from "@/lib/navigation"
 import { useAuthStore, useThemeStore } from "@/lib/store"
+import { useState, useEffect } from "react"
 
 export function Sidebar() {
   const isLocal = useAuthStore((s) => s.isLocal)
   const { toggle } = useThemeStore()
   const items = isLocal ? [...navItems, ...adminNavItems] : navItems
+  const location = useLocation()
   const navigate = useNavigate()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  if (!mounted) return null
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 flex-col border-r bg-card z-50">
-      <div className="flex items-center gap-3 p-6 border-b">
-        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-          <Monitor className="w-4 h-4 text-primary" />
+    <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 flex-col border-r border-border/50 bg-sidebar-background backdrop-blur-xl z-50">
+      <div className="flex items-center gap-3 p-6 border-b border-border/30">
+        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Monitor className="w-5 h-5 text-primary" />
         </div>
-        <span className="font-semibold text-lg">SysDeck</span>
+        <span className="font-semibold text-lg tracking-tight">SysDeck</span>
       </div>
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {items.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-accent",
-                isActive ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
-              )
-            }
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </NavLink>
-        ))}
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        {items.map((item) => {
+          const isActive = location.pathname === item.to
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
+                isActive
+                  ? "bg-primary/10 text-primary shadow-sm"
+                  : "text-sidebar-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <item.icon className={cn("h-4 w-4 transition-colors", isActive && "text-primary")} />
+              <span>{item.label}</span>
+              {isActive && <div className="ml-auto w-1 h-4 rounded-full bg-primary" />}
+            </NavLink>
+          )
+        })}
       </nav>
-      <div className="p-4 border-t space-y-2">
+      <div className="p-3 border-t border-border/30 space-y-0.5">
         <button
           onClick={toggle}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-200"
         >
           <Sun className="h-4 w-4 hidden dark:block" />
           <Moon className="h-4 w-4 block dark:hidden" />
@@ -51,7 +60,7 @@ export function Sidebar() {
             useAuthStore.getState().setAuthenticated(false)
             navigate("/login")
           }}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive/80 hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
         >
           <LogOut className="h-4 w-4" />
           Sign Out

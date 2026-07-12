@@ -261,7 +261,7 @@ export function ControlsPage() {
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       {/* Banner: Pending scheduled actions */}
       {pendingAction && (
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 p-5 animate-pulse">
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 backdrop-blur-sm p-5 animate-pulse">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
               <Power className="h-5 w-5 text-destructive" />
@@ -281,7 +281,7 @@ export function ControlsPage() {
       )}
 
       {/* 1. Mobile-Style Quick Toggles Grid */}
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
         <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider">Quick Toggles</h3>
         {!toggles ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -381,7 +381,7 @@ export function ControlsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 2. Audio Widget */}
-        <div className="rounded-xl border bg-card p-6 flex flex-col justify-between space-y-6">
+        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control</h3>
             {!audio ? (
@@ -462,7 +462,7 @@ export function ControlsPage() {
         </div>
 
         {/* 3. Display Widget */}
-        <div className="rounded-xl border bg-card p-6 flex flex-col justify-between space-y-6">
+        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Display & Brightness</h3>
             {!display ? (
@@ -531,8 +531,8 @@ export function ControlsPage() {
       </div>
 
       {/* 4. Power Controls & Scheduler Widget */}
-      <div className="rounded-xl border bg-card p-6">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b pb-4 mb-6">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6">
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Power Management</h3>
             <p className="text-xs text-muted-foreground mt-0.5">Shutdown, restart, or lock your computer remotely</p>
@@ -550,7 +550,7 @@ export function ControlsPage() {
               key={card.action}
               onClick={() => !pendingAction && handlePowerAction(card.action)}
               className={cn(
-                "rounded-2xl border bg-card p-5 text-left transition-colors hover:bg-accent/40 group relative overflow-hidden",
+                "rounded-2xl border border-border/50 bg-card backdrop-blur-sm p-5 text-left transition-all duration-200 hover:bg-accent/40 group relative overflow-hidden",
                 card.destructive ? "hover:border-destructive/30" : "hover:border-primary/30",
                 pendingAction && "opacity-45 cursor-not-allowed"
               )}
@@ -572,7 +572,7 @@ export function ControlsPage() {
       {/* Scheduled Power Modal */}
       {isScheduleOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-card border rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-card backdrop-blur-2xl border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center border-b pb-3 mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Power className="h-5 w-5 text-primary" />

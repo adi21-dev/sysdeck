@@ -300,23 +300,23 @@ export function FilesPage() {
         <Breadcrumb path={currentPath} onNavigate={handleNavigate} />
         {currentPath !== IS_HOME && (
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
-              className="p-2 rounded-lg border bg-background hover:bg-accent transition-colors"
-              title={viewMode === "table" ? "Grid view" : "List view"}
-            >
-              {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
-            </button>
-            <button className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="h-4 w-4" />
-              Upload
-            </button>
+              <button
+                onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
+                className="p-2 rounded-xl border border-border/50 bg-background/50 backdrop-blur-sm hover:bg-accent transition-all duration-200"
+                title={viewMode === "table" ? "Grid view" : "List view"}
+              >
+                {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
+              </button>
+              <button className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 active:scale-[0.97] transition-all duration-200 shadow-sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="h-4 w-4" />
+                Upload
+              </button>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
           <span>{error}</span>
           <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
         </div>
@@ -327,21 +327,21 @@ export function FilesPage() {
       ) : currentPath === IS_HOME ? null : (
         <>
       {uploads.length > 0 && (
-        <div className="space-y-2">
+        <div className="space-y-2 rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
           {uploads.map((u) => (
             <div key={u.name} className="flex items-center gap-3 text-sm">
               <span className="truncate max-w-[200px]">{u.name}</span>
-              <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${u.progress}%` }} />
+              <div className="flex-1 h-2 rounded-full bg-muted/50 overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${u.progress}%` }} />
               </div>
-              <span className="text-muted-foreground w-10 text-right">{u.progress}%</span>
+              <span className="text-muted-foreground w-10 text-right tabular-nums">{u.progress}%</span>
             </div>
           ))}
         </div>
       )}
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-2 rounded-md bg-accent">
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-accent/50 backdrop-blur-sm border border-border/50">
           <span className="text-sm text-muted-foreground mr-2">{selected.size} selected</span>
           <Button variant="outline" size="sm" onClick={handleBulkDelete}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button>
           <Button variant="ghost" size="sm" onClick={clearSelection}>Clear</Button>
@@ -353,8 +353,8 @@ export function FilesPage() {
           <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading...
         </div>
       ) : viewMode === "table" ? (
-        <div className="rounded-xl border bg-card overflow-hidden">
-          <div className="divide-y">
+        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl overflow-hidden">
+          <div className="divide-y divide-border/20">
             {sorted.map((entry) => (
               <div
                 key={entry.path}
@@ -448,7 +448,7 @@ export function FilesPage() {
 
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors"
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg hover:opacity-90 active:scale-[0.95] transition-all duration-200"
         title="Upload file"
       >
         <Plus className="h-5 w-5" />

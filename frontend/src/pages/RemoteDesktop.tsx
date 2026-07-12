@@ -21,8 +21,8 @@ export function RemoteDesktopPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${
-              tab === t ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium capitalize transition-all duration-200 ${
+              tab === t ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 backdrop-blur-sm hover:bg-muted/80 border border-border/30"
             }`}
           >
             {t}

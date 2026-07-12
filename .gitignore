@@ -43,3 +43,6 @@ graphify-out/
 AGENTS.md
 opencode.json
 CONTEXT.md
+
+# Generated design system artifacts
+design-system/

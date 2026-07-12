@@ -39,21 +39,27 @@ function absoluteTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString()
 }
 
-async function fetchLogs(
-  cursor: number | null,
-  limit: number,
-  event: string,
-  from: string,
-  to: string,
-): Promise<{ entries: AuditEntry[]; next_cursor: number | null; has_more: boolean }> {
-  const params = new URLSearchParams()
-  if (cursor != null) params.set("cursor", String(cursor))
-  params.set("limit", String(limit))
-  if (event) params.set("event", event)
-  if (from) params.set("from", String(Math.floor(new Date(from).getTime() / 1000)))
-  if (to) params.set("to", String(Math.floor(new Date(to).getTime() / 1000)))
-  const res = await fetch(`/api/audit/logs?${params}`)
-  return res.json()
+function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all appearance-none"
+    >
+      {children}
+    </select>
+  )
+}
+
+function FilterDate({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
+    />
+  )
 }
 
 export function AuditPage() {
@@ -100,30 +106,16 @@ export function AuditPage() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
         <div className="flex flex-col sm:flex-row gap-3">
-          <select
-            value={filters.event}
-            onChange={(e) => handleFilterChange("event", e.target.value)}
-            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
-          >
+          <FilterSelect value={filters.event} onChange={(v) => handleFilterChange("event", v)}>
             <option value="">All Events</option>
             {EVENT_TYPES.filter(Boolean).map((ev) => (
               <option key={ev} value={ev}>{EVENT_ICONS[ev]?.label || ev}</option>
             ))}
-          </select>
-          <input
-            type="date"
-            value={filters.from}
-            onChange={(e) => handleFilterChange("from", e.target.value)}
-            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
-          />
-          <input
-            type="date"
-            value={filters.to}
-            onChange={(e) => handleFilterChange("to", e.target.value)}
-            className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/20"
-          />
+          </FilterSelect>
+          <FilterDate value={filters.from} onChange={(v) => handleFilterChange("from", v)} />
+          <FilterDate value={filters.to} onChange={(v) => handleFilterChange("to", v)} />
           <Button variant="outline" onClick={loadLogs} disabled={loading}>
             {loading ? "Loading..." : "Apply Filters"}
           </Button>
@@ -131,7 +123,7 @@ export function AuditPage() {
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             <span>{error}</span>
@@ -140,27 +132,27 @@ export function AuditPage() {
         </div>
       )}
 
-      <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl overflow-hidden">
         {entries.length === 0 && !loading ? (
           <div className="py-16 text-center text-muted-foreground">No audit entries match your filters</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 border-b">
-                <tr>
-                  <th className="text-left p-4 font-medium">Timestamp</th>
-                  <th className="text-left p-4 font-medium">Event</th>
-                  <th className="text-left p-4 font-medium">Details</th>
-                  <th className="text-left p-4 font-medium">IP Address</th>
+              <thead>
+                <tr className="border-b border-border/30">
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Timestamp</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Event</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Details</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">IP Address</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-border/20">
                 {entries.map((entry) => {
                   const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event }
                   const Icon = eventInfo.icon
                   return (
-                    <tr key={entry.id} className="hover:bg-accent/50 transition-colors cursor-pointer">
-                      <td className="p-4 text-muted-foreground whitespace-nowrap" title={absoluteTime(entry.created_at)}>
+                    <tr key={entry.id} className="hover:bg-accent/30 transition-colors">
+                      <td className="p-4 text-muted-foreground whitespace-nowrap text-xs" title={absoluteTime(entry.created_at)}>
                         {relativeTime(entry.created_at)}
                       </td>
                       <td className="p-4">
@@ -169,7 +161,7 @@ export function AuditPage() {
                           <span className="font-medium">{eventInfo.label}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-muted-foreground max-w-xs truncate">{entry.details || "—"}</td>
+                      <td className="p-4 text-muted-foreground max-w-xs truncate text-sm">{entry.details || "—"}</td>
                       <td className="p-4 text-muted-foreground font-mono text-xs">{entry.ip_address || "—"}</td>
                     </tr>
                   )
@@ -179,7 +171,7 @@ export function AuditPage() {
           </div>
         )}
         {hasMore && entries.length > 0 && (
-          <div className="p-4 border-t flex items-center justify-between">
+          <div className="p-4 border-t border-border/30 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Showing {entries.length} entries</p>
             <Button variant="outline" onClick={handleLoadMore} disabled={loading}>
               {loading ? "Loading..." : "Load More"}
@@ -189,4 +181,21 @@ export function AuditPage() {
       </div>
     </div>
   )
+}
+
+async function fetchLogs(
+  cursor: number | null,
+  limit: number,
+  event: string,
+  from: string,
+  to: string,
+): Promise<{ entries: AuditEntry[]; next_cursor: number | null; has_more: boolean }> {
+  const params = new URLSearchParams()
+  if (cursor != null) params.set("cursor", String(cursor))
+  params.set("limit", String(limit))
+  if (event) params.set("event", event)
+  if (from) params.set("from", String(Math.floor(new Date(from).getTime() / 1000)))
+  if (to) params.set("to", String(Math.floor(new Date(to).getTime() / 1000)))
+  const res = await fetch(`/api/audit/logs?${params}`)
+  return res.json()
 }

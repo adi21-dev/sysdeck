@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **UI/UX Hardening Design Spec**: Comprehensive spec document for fixing ~33 UX issues across the frontend, organized into 4 waves (Hardening, Accessibility, Architecture, Polish). See `.opencode/plans/2026-07-13-ui-ux-hardening-design.md`.
+
 ## [1.1.0] - 2026-07-04
 
 ### Added
