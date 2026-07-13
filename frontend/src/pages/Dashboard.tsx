@@ -262,8 +262,8 @@ export function DashboardPage() {
               <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="cpu" stroke="var(--chart-1)" fill="url(#cpuGrad)" name="CPU %" dot={false} strokeWidth={2} />
-              <Area type="monotone" dataKey="ram" stroke="var(--chart-2)" fill="url(#ramGrad)" name="RAM %" dot={false} strokeWidth={2} />
+              <Area type="monotone" dataKey="cpu" stroke="var(--chart-1)" fill="url(#cpuGrad)" name="CPU %" dot={false} strokeWidth={2} isAnimationActive={false} />
+              <Area type="monotone" dataKey="ram" stroke="var(--chart-2)" fill="url(#ramGrad)" name="RAM %" dot={false} strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -279,8 +279,8 @@ export function DashboardPage() {
               <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <YAxis className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="rx" stroke="var(--chart-1)" fill="url(#rxGrad)" name="Down (MB/s)" dot={false} strokeWidth={2} />
-              <Area type="monotone" dataKey="tx" stroke="var(--chart-2)" fill="url(#txGrad)" name="Up (MB/s)" dot={false} strokeWidth={2} />
+              <Area type="monotone" dataKey="rx" stroke="var(--chart-1)" fill="url(#rxGrad)" name="Down (MB/s)" dot={false} strokeWidth={2} isAnimationActive={false} />
+              <Area type="monotone" dataKey="tx" stroke="var(--chart-2)" fill="url(#txGrad)" name="Up (MB/s)" dot={false} strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -295,7 +295,7 @@ export function DashboardPage() {
               <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <YAxis domain={[0, 100]} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="battery" stroke="var(--chart-3)" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls strokeWidth={2} />
+              <Area type="monotone" dataKey="battery" stroke="var(--chart-3)" fill="url(#batGrad)" name="Battery %" dot={false} connectNulls strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -311,8 +311,8 @@ export function DashboardPage() {
               <XAxis dataKey="time" className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <YAxis domain={['auto', 'auto']} className="text-xs" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} stroke="var(--border)" />
               <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="temperature_cpu" stroke="var(--chart-5)" fill="url(#tempCpuGrad)" name="CPU (°C)" dot={false} connectNulls strokeWidth={2} />
-              <Area type="monotone" dataKey="temperature_gpu" stroke="var(--chart-2)" fill="url(#tempGpuGrad)" name="GPU (°C)" dot={false} connectNulls strokeWidth={2} />
+              <Area type="monotone" dataKey="temperature_cpu" stroke="var(--chart-5)" fill="url(#tempCpuGrad)" name="CPU (°C)" dot={false} connectNulls strokeWidth={2} isAnimationActive={false} />
+              <Area type="monotone" dataKey="temperature_gpu" stroke="var(--chart-2)" fill="url(#tempGpuGrad)" name="GPU (°C)" dot={false} connectNulls strokeWidth={2} isAnimationActive={false} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>

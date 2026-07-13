@@ -18,6 +18,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
             state.system_tx,
             state.tunnel_state.tx.clone(),
             state.clipboard_tx,
+            state.hardware_tx,
             state.tunnel_state.clone(),
         )
     })
@@ -29,6 +30,7 @@ async fn handle_socket(
     system_tx: broadcast::Sender<String>,
     tunnel_tx: broadcast::Sender<Arc<TunnelEvent>>,
     clipboard_tx: broadcast::Sender<String>,
+    hardware_tx: broadcast::Sender<String>,
     tunnel_state: Arc<crate::tunnel::TunnelState>,
 ) {
     tracing::info!("WebSocket connected");
@@ -53,6 +55,7 @@ async fn handle_socket(
     let mut system_rx = system_tx.subscribe();
     let mut tunnel_rx = tunnel_tx.subscribe();
     let mut clipboard_rx = clipboard_tx.subscribe();
+    let mut hardware_rx = hardware_tx.subscribe();
 
     loop {
         tokio::select! {
@@ -112,6 +115,17 @@ async fn handle_socket(
                             "data": {"text": text},
                         });
                         if socket.send(Message::Text(msg.to_string())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            event = hardware_rx.recv() => {
+                match event {
+                    Ok(msg) => {
+                        if socket.send(Message::Text(msg)).await.is_err() {
                             break;
                         }
                     }

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.
+
+### Changed
+- **Mobile Tunnel Responsiveness**: Rearchitected hardware mutation handlers to be fire-and-forget (`tokio::spawn`) — return HTTP 200 immediately, broadcast result over a new `hardware_tx` WebSocket channel. Eliminates per-pixel slider lag over tunnel.
+- **WS-Driven State Sync**: Added `hardware_tx` broadcast channel to `AppState`. WebSocket handler subscribes and forwards JSON to clients. Frontend `applyHardwareUpdate()` dispatches on `type` field to keep Zustand store in sync without polling.
+- **Slider Optimization**: Volume/brightness sliders use local state + `onMouseUp`/`onTouchEnd` HTTP POST pattern (no per-pixel requests). Applied to both `Controls.tsx` and `ControlCenter.tsx`.
+- **Removed Polling**: Both `Controls.tsx` and `ControlCenter.tsx` no longer run 5-second `fetchAll()` intervals. Power status polling kept at 1s.
+- **GET Request Deduplication**: Fetch interceptor deduplicates in-flight GET requests via `inflightRequests` Map — prevents duplicate API calls.
+- **Haptic Feedback**: Added `navigator.vibrate(10)` on all toggle clicks in `Controls.tsx` and `ControlCenter.tsx`.
+- **Mobile Touch UX**: Added `touch-action: none` on all sliders to prevent vertical scroll interference. Added `safe-area-inset-bottom` padding to `BottomNav.tsx` for mobile notch/home bar clearance.
+- **Dashboard Chart Performance**: Set `isAnimationActive={false}` on all recharts Area elements to prevent frame drops on mobile.
+- **Page Visibility**: WebSocket reconnects on tab visibility change (via `visibilitychange` listener) to resume real-time updates after phone sleep.
+- **Toggle Name Validation**: Added synchronous toggle name validation (`dark_mode`/`wifi`/`dnd`) to `control_center_toggle_handler` before spawning async task.
+
 ## [2.0.0] - 2026-07-13
 
 ### Added

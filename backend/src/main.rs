@@ -133,6 +133,7 @@ async fn main() {
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
     let (system_tx, _) = broadcast::channel::<String>(16);
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
+    let (hardware_tx, _) = broadcast::channel::<String>(16);
 
     // ── Init step 5: telemetry ──
     {
@@ -259,6 +260,7 @@ async fn main() {
         telemetry_tx,
         system_tx,
         clipboard_tx,
+        hardware_tx,
         db: conn,
         jwt_key,
         lockout,

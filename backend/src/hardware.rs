@@ -1,4 +1,5 @@
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -936,48 +937,60 @@ pub async fn audio_status_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn audio_volume_handler(Json(req): Json<VolumeRequest>) -> impl IntoResponse {
-    match set_audio_volume(req.volume).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn audio_volume_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<VolumeRequest>,
+) -> impl IntoResponse {
+    let tx = state.hardware_tx.clone();
+    let volume = req.volume;
+    tokio::spawn(async move {
+        let _ = set_audio_volume(volume).await;
+        let msg =
+            serde_json::json!({"event": "hardware", "data": {"type": "volume", "volume": volume}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
-pub async fn audio_mute_handler(Json(req): Json<MuteRequest>) -> impl IntoResponse {
-    match set_audio_mute(req.muted).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn audio_mute_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<MuteRequest>,
+) -> impl IntoResponse {
+    let tx = state.hardware_tx.clone();
+    let muted = req.muted;
+    tokio::spawn(async move {
+        let _ = set_audio_mute(muted).await;
+        let msg =
+            serde_json::json!({"event": "hardware", "data": {"type": "mute", "muted": muted}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
-pub async fn audio_device_handler(Json(req): Json<DeviceRequest>) -> impl IntoResponse {
-    match set_audio_device(req.device).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn audio_device_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<DeviceRequest>,
+) -> impl IntoResponse {
+    let tx = state.hardware_tx.clone();
+    let device = req.device;
+    tokio::spawn(async move {
+        let _ = set_audio_device(device).await;
+        let msg = serde_json::json!({"event": "hardware", "data": {"type": "device"}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
-pub async fn audio_media_handler(Json(req): Json<MediaRequest>) -> impl IntoResponse {
-    match trigger_media_key(req.action).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn audio_media_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<MediaRequest>,
+) -> impl IntoResponse {
+    let _tx = state.hardware_tx.clone();
+    let action = req.action;
+    tokio::spawn(async move {
+        let _ = trigger_media_key(action).await;
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
 pub async fn display_status_handler() -> impl IntoResponse {
@@ -991,15 +1004,18 @@ pub async fn display_status_handler() -> impl IntoResponse {
     }
 }
 
-pub async fn display_brightness_handler(Json(req): Json<BrightnessRequest>) -> impl IntoResponse {
-    match set_display_brightness(req.brightness).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn display_brightness_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<BrightnessRequest>,
+) -> impl IntoResponse {
+    let tx = state.hardware_tx.clone();
+    let brightness = req.brightness;
+    tokio::spawn(async move {
+        let _ = set_display_brightness(brightness).await;
+        let msg = serde_json::json!({"event": "hardware", "data": {"type": "brightness", "brightness": brightness}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
 pub async fn toggles_status_handler() -> impl IntoResponse {
@@ -1014,16 +1030,17 @@ pub async fn toggles_status_handler() -> impl IntoResponse {
 }
 
 pub async fn toggle_dark_mode_handler(
+    State(state): State<crate::AppState>,
     Json(req): Json<ControlCenterToggleReq>,
 ) -> impl IntoResponse {
-    match set_toggle_dark_mode(req.enabled).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+    let tx = state.hardware_tx.clone();
+    let enabled = req.enabled;
+    tokio::spawn(async move {
+        let _ = set_toggle_dark_mode(enabled).await;
+        let msg = serde_json::json!({"event": "hardware", "data": {"type": "dark_mode", "enabled": enabled}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
 pub async fn control_center_status_handler() -> impl IntoResponse {
@@ -1038,34 +1055,41 @@ pub async fn control_center_status_handler() -> impl IntoResponse {
 }
 
 pub async fn control_center_toggle_handler(
+    State(state): State<crate::AppState>,
     Json(req): Json<ControlCenterToggleReq>,
 ) -> impl IntoResponse {
-    match set_control_center_toggle(req.toggle, req.enabled).await {
-        Ok(_) => match get_control_center_status().await {
-            Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),
-            Err(e) => (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "message": e })),
-            )
-                .into_response(),
-        },
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
+    if !matches!(req.toggle.as_str(), "dark_mode" | "wifi" | "dnd") {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "success": false,
+                "message": format!("Unknown toggle: {}", req.toggle)
+            })),
         )
-            .into_response(),
+            .into_response();
     }
+    let tx = state.hardware_tx.clone();
+    let toggle = req.toggle;
+    let enabled = req.enabled;
+    tokio::spawn(async move {
+        let _ = set_control_center_toggle(toggle.clone(), enabled).await;
+        let msg =
+            serde_json::json!({"event": "hardware", "data": {"type": toggle, "enabled": enabled}});
+        let _ = tx.send(msg.to_string());
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
-pub async fn display_monitor_handler(Json(req): Json<MonitorRequest>) -> impl IntoResponse {
-    match set_display_monitor(&req.action).await {
-        Ok(_) => Json(json!({ "success": true })).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "success": false, "message": e })),
-        )
-            .into_response(),
-    }
+pub async fn display_monitor_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<MonitorRequest>,
+) -> impl IntoResponse {
+    let _tx = state.hardware_tx.clone();
+    let action = req.action;
+    tokio::spawn(async move {
+        let _ = set_display_monitor(&action).await;
+    });
+    Json(json!({ "success": true })).into_response()
 }
 
 // --- Scheduled power handler ---

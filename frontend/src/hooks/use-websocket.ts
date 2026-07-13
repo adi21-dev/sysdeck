@@ -1,10 +1,13 @@
 import { useEffect, useRef, useCallback } from "react"
-import { useTelemetryStore, useConnectionStore, useTunnelStore } from "@/lib/store"
+import { useTelemetryStore, useConnectionStore, useTunnelStore, applyHardwareUpdate } from "@/lib/store"
 
 const MAX_RECONNECT_DELAY = 30000
 
+let visibilityBound = false
+
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
+  const connectRef = useRef<(() => void) | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttempts = useRef(0)
   const setCurrent = useTelemetryStore((s) => s.setCurrent)
@@ -54,13 +57,16 @@ export function useWebSocket() {
           setTunnel({ status: data.status, url: data.url ?? null })
           return
         }
+        if (data.event === "hardware") {
+          applyHardwareUpdate(data.data)
+          return
+        }
       } catch {
         // ignore non-json messages
       }
     }
 
-    ws.onclose = (event) => {
-      console.log("WS onclose fired", event)
+    ws.onclose = (_event) => {
       setStatus("disconnected")
       fetch("/api/auth/refresh", { method: "POST" }).finally(() => {
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), MAX_RECONNECT_DELAY)
@@ -74,6 +80,7 @@ export function useWebSocket() {
     }
 
     wsRef.current = ws
+    connectRef.current = connect
     setRetryConnection(() => {
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current)
@@ -86,6 +93,18 @@ export function useWebSocket() {
 
   useEffect(() => {
     connect()
+
+    if (!visibilityBound) {
+      visibilityBound = true
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          if (connectRef.current && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+            connectRef.current()
+          }
+        }
+      })
+    }
+
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()

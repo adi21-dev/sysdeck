@@ -74,6 +74,7 @@ pub struct AppState {
     pub telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
     pub system_tx: broadcast::Sender<String>,
     pub clipboard_tx: broadcast::Sender<String>,
+    pub hardware_tx: broadcast::Sender<String>,
     pub db: Arc<Mutex<Connection>>,
     pub jwt_key: Arc<Vec<u8>>,
     pub lockout: Arc<LockoutState>,

@@ -120,22 +120,15 @@ export function ControlCenterPage() {
   }, [display, isDraggingBrightness])
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     fetchAll()
     fetchNetwork()
     fetchWifiNetworks()
     fetchControlCenter()
-    syncPollRef.current = setInterval(() => {
-      if (Date.now() > skipPollUntilRef.current) {
-        fetchAll()
-      }
-    }, 5000)
     checkPowerStatus()
     pollRef.current = setInterval(checkPowerStatus, 1000)
     return () => {
-      if (syncPollRef.current) clearInterval(syncPollRef.current)
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [fetchAll, fetchNetwork, fetchWifiNetworks, fetchControlCenter])
@@ -275,7 +268,10 @@ export function ControlCenterPage() {
     }
   }
 
+  const haptic = () => { if (navigator.vibrate) navigator.vibrate(10) }
+
   const handleToggle = async (type: "dark", val: boolean) => {
+    haptic()
     try {
       if (type === "dark") await setDarkMode(val)
       toastStore.addToast("Theme mode updated.", "success")
@@ -306,7 +302,7 @@ export function ControlCenterPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {controlCenter.wifi_on !== null && (
               <button
-                onClick={() => toggleControlCenter("wifi", !controlCenter.wifi_on)}
+                onClick={() => { haptic(); toggleControlCenter("wifi", !controlCenter.wifi_on) }}
                 className={cn(
                     "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                     controlCenter.wifi_on
@@ -323,7 +319,7 @@ export function ControlCenterPage() {
             )}
             {controlCenter.dnd_on !== null && (
               <button
-                onClick={() => toggleControlCenter("dnd", !controlCenter.dnd_on)}
+                onClick={() => { haptic(); toggleControlCenter("dnd", !controlCenter.dnd_on) }}
                 className={cn(
                     "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                     controlCenter.dnd_on
@@ -396,7 +392,7 @@ export function ControlCenterPage() {
                         const val = parseInt((e.target as HTMLInputElement).value, 10)
                         try { await setVolume(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set volume.", "error") }
                       }}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none"
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none touch-none"
                     />
                   </div>
                 </div>
@@ -474,7 +470,7 @@ export function ControlCenterPage() {
                         const val = parseInt((e.target as HTMLInputElement).value, 10)
                         try { await setBrightness(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set brightness.", "error") }
                       }}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none"
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none touch-none"
                     />
                   </div>
                 </div>

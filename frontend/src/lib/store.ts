@@ -226,6 +226,36 @@ interface HardwareState {
   setDnd: (enabled: boolean) => Promise<void>
 }
 
+export function applyHardwareUpdate(update: { type: string; [key: string]: any }) {
+  const state = useHardwareStore.getState()
+  switch (update.type) {
+    case "volume":
+      if (state.audio) useHardwareStore.setState({ audio: { ...state.audio, volume: update.volume } })
+      break
+    case "mute":
+      if (state.audio) useHardwareStore.setState({ audio: { ...state.audio, muted: update.muted } })
+      break
+    case "brightness":
+      if (state.display) useHardwareStore.setState({ display: { ...state.display, brightness: update.brightness } })
+      break
+    case "dark_mode":
+      if (state.toggles) useHardwareStore.setState({ toggles: { ...state.toggles, dark_mode: update.enabled } })
+      if (state.controlCenter) useHardwareStore.setState({ controlCenter: { ...state.controlCenter, dark_mode: update.enabled } })
+      break
+    case "wifi":
+      if (state.toggles) useHardwareStore.setState({ toggles: { ...state.toggles, wifi: update.enabled } })
+      if (state.controlCenter) useHardwareStore.setState({ controlCenter: { ...state.controlCenter, wifi_on: update.enabled } })
+      break
+    case "dnd":
+      if (state.toggles) useHardwareStore.setState({ toggles: { ...state.toggles, dnd: update.enabled } })
+      if (state.controlCenter) useHardwareStore.setState({ controlCenter: { ...state.controlCenter, dnd_on: update.enabled } })
+      break
+    case "device":
+      state.fetchAudio()
+      break
+  }
+}
+
 export const useHardwareStore = create<HardwareState>((set, get) => {
   const handleApiCall = async <T>(url: string, method: string, body?: any): Promise<T> => {
     const options: RequestInit = {

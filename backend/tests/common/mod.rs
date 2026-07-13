@@ -72,6 +72,7 @@ fn test_app_inner(
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
     let (system_tx, _) = broadcast::channel::<String>(16);
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
+    let (hardware_tx, _) = broadcast::channel::<String>(16);
     let power_state = Arc::new(PowerState::with_commands(commands));
     let script_state = Arc::new(ScriptState::new());
 
@@ -80,6 +81,7 @@ fn test_app_inner(
         telemetry_tx,
         system_tx,
         clipboard_tx,
+        hardware_tx,
         db,
         jwt_key,
         lockout,

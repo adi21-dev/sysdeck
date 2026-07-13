@@ -83,6 +83,10 @@ const cards = [
   { action: "lock", label: "Lock", desc: "Lock the workstation", icon: Lock, destructive: false },
 ]
 
+function haptic() {
+  if (navigator.vibrate) navigator.vibrate(10)
+}
+
 export function ControlsPage() {
   const toastStore = useToastStore()
   const {
@@ -111,16 +115,31 @@ export function ControlsPage() {
   const [scheduleForce, setScheduleForce] = useState(false)
   const [powerLoading, setPowerLoading] = useState(false)
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Local slider state for instant drag response
+  const [localVolume, setLocalVolume] = useState(50)
+  const [isDraggingVolume, setIsDraggingVolume] = useState(false)
+  const [localBrightness, setLocalBrightness] = useState(50)
+  const [isDraggingBrightness, setIsDraggingBrightness] = useState(false)
+  const skipPollUntilRef = useRef<number>(0)
 
-  // Fetch initial hardware states & start polling
+  // Sync local state from server updates (when not dragging)
+  useEffect(() => {
+    if (audio && !isDraggingVolume && Date.now() > skipPollUntilRef.current) {
+      setLocalVolume(audio.volume)
+    }
+  }, [audio, isDraggingVolume])
+
+  useEffect(() => {
+    if (display && !isDraggingBrightness && Date.now() > skipPollUntilRef.current) {
+      setLocalBrightness(display.brightness)
+    }
+  }, [display, isDraggingBrightness])
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Fetch initial hardware states
   useEffect(() => {
     fetchAll()
-    // Poll hardware state every 5 seconds to stay in sync
-    syncPollRef.current = setInterval(() => {
-      fetchAll()
-    }, 5000)
 
     // Check power scheduler status initially
     checkPowerStatus()
@@ -128,7 +147,6 @@ export function ControlsPage() {
     pollRef.current = setInterval(checkPowerStatus, 1000)
 
     return () => {
-      if (syncPollRef.current) clearInterval(syncPollRef.current)
       if (pollRef.current) clearInterval(pollRef.current)
     }
   }, [fetchAll])
@@ -240,6 +258,7 @@ export function ControlsPage() {
 
   // Toggles wrapper
   const handleToggle = async (type: "wifi" | "bluetooth" | "dark" | "dnd", val: boolean) => {
+    haptic()
     try {
       if (type === "wifi") await setWifi(val)
       else if (type === "bluetooth") await setBluetooth(val)
@@ -407,13 +426,23 @@ export function ControlsPage() {
                     <span className="text-primary font-semibold">{audio.volume}%</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={audio.volume}
-                      onChange={(e) => setVolume(parseInt(e.target.value, 10))}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none"
+                    <input type="range" min="0" max="100" value={localVolume}
+                      onMouseDown={() => setIsDraggingVolume(true)}
+                      onTouchStart={() => setIsDraggingVolume(true)}
+                      onChange={(e) => setLocalVolume(parseInt(e.target.value, 10))}
+                      onMouseUp={async (e) => {
+                        setIsDraggingVolume(false)
+                        skipPollUntilRef.current = Date.now() + 4000
+                        const val = parseInt((e.target as HTMLInputElement).value, 10)
+                        try { await setVolume(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set volume.", "error") }
+                      }}
+                      onTouchEnd={async (e) => {
+                        setIsDraggingVolume(false)
+                        skipPollUntilRef.current = Date.now() + 4000
+                        const val = parseInt((e.target as HTMLInputElement).value, 10)
+                        try { await setVolume(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set volume.", "error") }
+                      }}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none touch-none"
                     />
                   </div>
                 </div>
@@ -488,13 +517,23 @@ export function ControlsPage() {
                     <span className="text-primary font-semibold">{display.brightness}%</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={display.brightness}
-                      onChange={(e) => setBrightness(parseInt(e.target.value, 10))}
-                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none"
+                    <input type="range" min="0" max="100" value={localBrightness}
+                      onMouseDown={() => setIsDraggingBrightness(true)}
+                      onTouchStart={() => setIsDraggingBrightness(true)}
+                      onChange={(e) => setLocalBrightness(parseInt(e.target.value, 10))}
+                      onMouseUp={async (e) => {
+                        setIsDraggingBrightness(false)
+                        skipPollUntilRef.current = Date.now() + 4000
+                        const val = parseInt((e.target as HTMLInputElement).value, 10)
+                        try { await setBrightness(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set brightness.", "error") }
+                      }}
+                      onTouchEnd={async (e) => {
+                        setIsDraggingBrightness(false)
+                        skipPollUntilRef.current = Date.now() + 4000
+                        const val = parseInt((e.target as HTMLInputElement).value, 10)
+                        try { await setBrightness(val) } catch (err: any) { toastStore.addToast(err.message || "Failed to set brightness.", "error") }
+                      }}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-muted accent-primary focus:outline-none touch-none"
                     />
                   </div>
                 </div>

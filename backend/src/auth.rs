@@ -664,7 +664,7 @@ pub async fn login_handler(
         token, JWT_EXPIRY_SECS,
     );
     let refresh_cookie = format!(
-        "refresh_token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
+        "refresh_token={}; HttpOnly; SameSite=Lax; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
         raw_refresh, REFRESH_TOKEN_EXPIRY_SECS,
     );
 
@@ -833,7 +833,7 @@ pub async fn refresh_handler(
         access_token, JWT_EXPIRY_SECS,
     );
     let refresh_cookie = format!(
-        "refresh_token={}; HttpOnly; SameSite=Strict; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
+        "refresh_token={}; HttpOnly; SameSite=Lax; Max-Age={}; Path=/api/auth/refresh{secure_flag}",
         new_raw, REFRESH_TOKEN_EXPIRY_SECS,
     );
 
@@ -873,7 +873,7 @@ pub async fn logout_handler(
 
                 let access_cookie = "token=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/";
                 let refresh_cookie =
-                    "refresh_token=; HttpOnly; SameSite=Strict; Max-Age=0; Path=/api/auth/refresh";
+                    "refresh_token=; HttpOnly; SameSite=Lax; Max-Age=0; Path=/api/auth/refresh";
 
                 let body = serde_json::to_string(&LoginResponse {
                     success: true,

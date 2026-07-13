@@ -637,7 +637,6 @@ async fn test_control_center_toggle_dark_mode() {
     assert_eq!(resp.status(), StatusCode::OK);
     let data = body_json(resp).await;
     assert_eq!(data["success"], true);
-    assert!(data["data"]["dark_mode"].is_boolean());
 }
 
 #[tokio::test]
