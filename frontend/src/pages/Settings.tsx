@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import {
-  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key,
+  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key, Server, HardDrive,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 import { useTunnelStore } from "@/lib/store"
 import {
   AlertDialog,
@@ -22,17 +24,19 @@ export function WolSection() {
   const [label, setLabel] = useState("")
   const [mac, setMac] = useState("")
   const [waking, setWaking] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchMacs = () => {
     fetch("/api/wol/macs").then(r => r.json()).then(d => {
       if (d.success) setMacs(d.macs || [])
-    }).catch(() => {})
+    }).catch(() => setError("Failed to load MAC addresses"))
   }
 
   useEffect(() => { fetchMacs() }, [])
 
   const addMac = async () => {
     if (!label.trim() || !mac.trim()) return
+    setError(null)
     const res = await fetch("/api/wol/macs", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -40,6 +44,7 @@ export function WolSection() {
     })
     const d = await res.json()
     if (d.success) { setMacs(d.macs); setLabel(""); setMac("") }
+    else setError(d.message || "Failed to save")
   }
 
   const deleteMac = async (m: string) => {
@@ -64,6 +69,12 @@ export function WolSection() {
 
   return (
     <div className="space-y-3">
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
       <div className="flex gap-2">
         <Input placeholder="Label" value={label} onChange={e => setLabel(e.target.value)} className="flex-1" />
         <Input placeholder="XX:XX:XX:XX:XX:XX" value={mac} onChange={e => setMac(e.target.value)} className="w-44 font-mono text-xs" />
@@ -99,8 +110,14 @@ export function WolSection() {
 }
 
 export function SettingsPage() {
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState<string | null>(null)
+
+  const setSectionError = (section: string, msg: string) =>
+    setErrors((e) => ({ ...e, [section]: msg }))
+  const clearSectionError = (section: string) =>
+    setErrors((e) => { const n = { ...e }; delete n[section]; return n })
+  const showSuccess = (msg: string) => { setSuccess(msg); setTimeout(() => setSuccess(null), 3000) }
 
   // Password
   const [currentPw, setCurrentPw] = useState("")
@@ -136,6 +153,7 @@ export function SettingsPage() {
   const [sessions, setSessions] = useState<any[]>([])
   const [currentJti, setCurrentJti] = useState<string | null>(null)
   const [revokeTarget, setRevokeTarget] = useState<{ jti: string; type: "one" | "all" } | null>(null)
+  const [sessionErr, setSessionErr] = useState<string | null>(null)
 
   // Revoke dialog
   const [showRevokeDialog, setShowRevokeDialog] = useState(false)
@@ -145,44 +163,48 @@ export function SettingsPage() {
   const [tunnelLoading, setTunnelLoading] = useState(false)
   const [relayEnabled, setRelayEnabled] = useState(false)
   const [relayLoading, setRelayLoading] = useState(false)
+  const [tunnelErr, setTunnelErr] = useState<string | null>(null)
+  const [relayErr, setRelayErr] = useState<string | null>(null)
+  const [pathsErr, setPathsErr] = useState<string | null>(null)
+  const [portErr, setPortErr] = useState<string | null>(null)
 
   const fetchSessions = () => {
+    setSessionErr(null)
     fetch("/api/settings/sessions").then((r) => r.json()).then((d) => {
       if (d.success) {
         setSessions(d.sessions || [])
         setCurrentJti(d.current_jti || null)
-      }
-    }).catch(() => showError("Failed to load sessions"))
+      } else setSessionErr(d.message || "Failed to load sessions")
+    }).catch(() => setSessionErr("Failed to load sessions"))
   }
 
+  // Fetch all settings on mount — stable dependency
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
       if (d.success) setPort(String(d.port))
-    }).catch(() => showError("Failed to load port setting"))
+    }).catch(() => setPortErr("Failed to load port setting"))
     fetch("/api/settings/paths").then((r) => r.json()).then((d) => {
       if (d.success) {
         setAllowedPaths(d.allowed || [])
         setBlockedPaths(d.blocked || [])
       }
-    }).catch(() => showError("Failed to load path settings"))
+    }).catch(() => setPathsErr("Failed to load path settings"))
     fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
-      if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null })
-    }).catch(() => showError("Failed to load tunnel status"))
+      if (d.success) useTunnelStore.getState().setTunnel({ status: d.status, url: d.url ?? null })
+    }).catch(() => setTunnelErr("Failed to load tunnel status"))
     fetch("/api/settings/relay").then((r) => r.json()).then((d) => {
       if (d.success) setRelayEnabled(d.enabled)
-    }).catch(() => showError("Failed to load relay settings"))
+    }).catch(() => setRelayErr("Failed to load relay settings"))
     fetchSessions()
-  }, [tunnel])
-
-  const showError = (msg: string) => { setError(msg); setSuccess(null) }
-  const showSuccess = (msg: string) => { setSuccess(msg); setError(null) }
+  }, []) // stable mount-only
 
   const [isSubmittingPw, setIsSubmittingPw] = useState(false)
 
   const handleChangePassword = async () => {
-    if (newPw !== confirmPw) { showError("Passwords do not match"); return }
-    if (newPw.length < 8) { showError("Password must be at least 8 characters"); return }
+    if (newPw !== confirmPw) { setSectionError("password", "Passwords do not match"); return }
+    if (newPw.length < 8) { setSectionError("password", "Password must be at least 8 characters"); return }
     setIsSubmittingPw(true)
+    clearSectionError("password")
     try {
       const res = await fetch("/api/settings/change-password", {
         method: "POST",
@@ -194,9 +216,9 @@ export function SettingsPage() {
         showSuccess("Password changed")
         setCurrentPw(""); setNewPw(""); setConfirmPw("")
       } else {
-        showError(data.message || "Failed")
+        setSectionError("password", data.message || "Failed")
       }
-    } catch { showError("Network error") }
+    } catch { setSectionError("password", "Network error") }
     finally { setIsSubmittingPw(false) }
   }
 
@@ -210,9 +232,9 @@ export function SettingsPage() {
         setTotpStep("verify")
         setTotpCode("")
       } else {
-        showError(data.message || "Failed")
+        setSectionError("totp", data.message || "Failed")
       }
-    } catch { showError("Network error") }
+    } catch { setSectionError("totp", "Network error") }
   }
 
   const handleVerifyTotp = async () => {
@@ -231,9 +253,9 @@ export function SettingsPage() {
         setTotpSecret(null)
         setTotpCode("")
       } else {
-        showError(data.message || "Invalid code")
+        setSectionError("totp", data.message || "Invalid code")
       }
-    } catch { showError("Network error") }
+    } catch { setSectionError("totp", "Network error") }
   }
 
   const handleRegenCodes = async () => {
@@ -245,9 +267,9 @@ export function SettingsPage() {
         setShowCodes(true)
         showSuccess("Recovery codes regenerated")
       } else {
-        showError(data.message || "Failed")
+        setSectionError("codes", data.message || "Failed")
       }
-    } catch { showError("Network error") }
+    } catch { setSectionError("codes", "Network error") }
   }
 
   const handleRevoke = async () => {
@@ -271,9 +293,9 @@ export function SettingsPage() {
           fetchSessions()
         }
       } else {
-        showError(data.message || "Failed")
+        setSectionError("sessions", data.message || "Failed")
       }
-    } catch { showError("Network error") }
+    } catch { setSectionError("sessions", "Network error") }
     setShowRevokeDialog(false)
     setRevokeTarget(null)
   }
@@ -305,6 +327,7 @@ export function SettingsPage() {
 
   const handleSavePaths = async () => {
     setIsSavingPaths(true)
+    clearSectionError("paths")
     try {
       const res = await fetch("/api/settings/paths", {
         method: "POST",
@@ -313,8 +336,8 @@ export function SettingsPage() {
       })
       const data = await res.json()
       if (data.success) showSuccess("Paths saved")
-      else showError(data.message || "Failed")
-    } catch { showError("Network error") }
+      else setSectionError("paths", data.message || "Failed")
+    } catch { setSectionError("paths", "Network error") }
     finally { setIsSavingPaths(false) }
   }
 
@@ -322,8 +345,9 @@ export function SettingsPage() {
 
   const handleSavePort = async () => {
     const p = parseInt(port, 10)
-    if (isNaN(p) || p < 1024 || p > 65535) { showError("Port must be 1024-65535"); return }
+    if (isNaN(p) || p < 1024 || p > 65535) { setSectionError("port", "Port must be 1024-65535"); return }
     setIsSavingPort(true)
+    clearSectionError("port")
     try {
       const res = await fetch("/api/settings/port", {
         method: "POST",
@@ -332,24 +356,26 @@ export function SettingsPage() {
       })
       const data = await res.json()
       if (data.success) showSuccess(data.message || "Port saved")
-      else showError(data.message || "Failed")
-    } catch { showError("Network error") }
+      else setSectionError("port", data.message || "Failed")
+    } catch { setSectionError("port", "Network error") }
     finally { setIsSavingPort(false) }
   }
 
   const handleTunnelStart = async () => {
     setTunnelLoading(true)
+    setTunnelErr(null)
     try {
       const res = await fetch("/api/tunnel/start", { method: "POST" })
       const data = await res.json()
       if (data.success) showSuccess("Tunnel starting...")
-      else showError(data.error || "Failed")
-    } catch { showError("Network error") }
+      else setTunnelErr(data.error || "Failed")
+    } catch { setTunnelErr("Network error") }
     setTunnelLoading(false)
   }
 
   const handleToggleRelay = async () => {
     setRelayLoading(true)
+    setRelayErr(null)
     try {
       const res = await fetch("/api/settings/relay", {
         method: "POST",
@@ -361,18 +387,19 @@ export function SettingsPage() {
         setRelayEnabled(!relayEnabled)
         showSuccess(data.message)
       }
-    } catch { showError("Failed to update auto-start") }
+    } catch { setRelayErr("Failed to update auto-start") }
     setRelayLoading(false)
   }
 
   const handleTunnelStop = async () => {
     setTunnelLoading(true)
+    setTunnelErr(null)
     try {
       const res = await fetch("/api/tunnel/stop", { method: "POST" })
       const data = await res.json()
       if (data.success) showSuccess("Tunnel stopped")
-      else showError(data.error || "Failed")
-    } catch { showError("Network error") }
+      else setTunnelErr(data.error || "Failed")
+    } catch { setTunnelErr("Network error") }
     setTunnelLoading(false)
   }
 
@@ -386,23 +413,29 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      {error && (
-        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
-          <AlertTriangle className="h-4 w-4" />
-          <span>{error}</span>
-        </div>
-      )}
       {success && (
-        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-green-400 border border-green-500/10">
+        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm p-3 text-sm text-green-400 border border-green-500/10">
           <Check className="h-4 w-4" />
           <span>{success}</span>
         </div>
       )}
 
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Change Password<InfoButton content={"Password must be 8+ characters.\n\nExample: after rotating credentials, set a new passphrase here (e.g. \"blue-elephant-jumps-42\")."} className="ml-1.5" /></h3>
-        <div className="space-y-4 max-w-md">
+      {/* Password */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Key className="h-4 w-4" />
+            Change Password
+            <InfoButton content={"Password must be 8+ characters.\n\nExample: after rotating credentials, set a new passphrase here (e.g. \"blue-elephant-jumps-42\")."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 max-w-md">
+          {errors.password && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{errors.password}</span>
+            </div>
+          )}
           <div>
             <label htmlFor="settings-current-pw" className="block text-sm font-medium mb-2">Current Password</label>
             <input
@@ -441,63 +474,105 @@ export function SettingsPage() {
               className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
-          <Button onClick={handleChangePassword} size="sm" disabled={isSubmittingPw}><Key className="h-4 w-4 mr-1" /> {isSubmittingPw ? "Updating..." : "Update Password"}</Button>
-        </div>
-      </div>
+          <Button onClick={handleChangePassword} size="sm" disabled={isSubmittingPw}>
+            <Key className="h-4 w-4 mr-1.5" /> {isSubmittingPw ? "Updating..." : "Update Password"}
+          </Button>
+        </CardContent>
+      </Card>
 
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Two-Factor Authentication<InfoButton content={"TOTP second factor — requires password + 6-digit code from an authenticator app to sign in.\n\nExample: scan the QR with Authy on your phone, enter the code it shows to verify setup."} className="ml-1.5" /></h3>
-        {totpStep === "idle" && (
-          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
-            <div>
-              <p className="font-medium">TOTP Authentication</p>
-              <p className="text-sm text-muted-foreground">Currently enabled</p>
+      {/* Two-Factor Auth */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Shield className="h-4 w-4" />
+            Two-Factor Authentication
+            <InfoButton content={"TOTP second factor — requires password + 6-digit code from an authenticator app to sign in.\n\nExample: scan the QR with Authy on your phone, enter the code it shows to verify setup."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {errors.totp && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive mb-4">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{errors.totp}</span>
             </div>
-            <Button onClick={handleResetTotp} size="sm" variant="outline">Reset TOTP</Button>
-          </div>
-        )}
-        {totpStep === "verify" && totpQr && (
-          <div className="space-y-3">
-            <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
-            <p className="text-xs text-muted-foreground">Scan this QR with your authenticator app, then enter the 6-digit code:</p>
-            <div className="flex gap-2">
-              <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} className="w-32" maxLength={6} />
-              <Button onClick={handleVerifyTotp} size="sm" disabled={totpCode.length !== 6}>Verify</Button>
+          )}
+          {totpStep === "idle" && (
+            <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+              <div>
+                <p className="font-medium">TOTP Authentication</p>
+                <p className="text-sm text-muted-foreground">Currently enabled</p>
+              </div>
+              <Button onClick={handleResetTotp} size="sm" variant="outline">Reset TOTP</Button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+          {totpStep === "verify" && totpQr && (
+            <div className="space-y-3">
+              <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
+              <p className="text-xs text-muted-foreground">Scan this QR with your authenticator app, then enter the 6-digit code:</p>
+              <div className="flex gap-2">
+                <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} className="w-32" maxLength={6} />
+                <Button onClick={handleVerifyTotp} size="sm" disabled={totpCode.length !== 6}>Verify</Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Recovery Codes<InfoButton content={"Backup codes for when you can't access your authenticator.\nEach code works exactly once — save them somewhere safe.\n\nExample: store in Bitwarden or print a copy for your wallet before locking yourself out."} className="ml-1.5" /></h3>
-        {recoveryCodes.length > 0 && showCodes && (
-          <div className="p-4 rounded-lg border bg-muted/50 mb-4">
-            <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-              {recoveryCodes.map((code, i) => (
-                <code key={i}>{code}</code>
-              ))}
+      {/* Recovery Codes */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <RefreshCw className="h-4 w-4" />
+            Recovery Codes
+            <InfoButton content={"Backup codes for when you can't access your authenticator.\nEach code works exactly once — save them somewhere safe.\n\nExample: store in Bitwarden or print a copy for your wallet before locking yourself out."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {errors.codes && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive mb-4">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{errors.codes}</span>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => {
-              navigator.clipboard.writeText(recoveryCodes.join("\n"))
-              setCodesCopied(true)
-              setTimeout(() => setCodesCopied(false), 2000)
-            }} className="mt-2">
-              {codesCopied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy all</>}
-            </Button>
-          </div>
-        )}
-        <Button onClick={handleRegenCodes} size="sm" variant="outline">
-          <RefreshCw className="h-4 w-4 mr-1" /> Generate New Codes
-        </Button>
-      </div>
+          )}
+          {recoveryCodes.length > 0 && showCodes && (
+            <div className="p-4 rounded-lg border bg-muted/50 mb-4">
+              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                {recoveryCodes.map((code, i) => (
+                  <code key={i}>{code}</code>
+                ))}
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => {
+                navigator.clipboard.writeText(recoveryCodes.join("\n"))
+                setCodesCopied(true)
+                setTimeout(() => setCodesCopied(false), 2000)
+              }} className="mt-2">
+                {codesCopied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy all</>}
+              </Button>
+            </div>
+          )}
+          <Button onClick={handleRegenCodes} size="sm" variant="outline">
+            <RefreshCw className="h-4 w-4 mr-1.5" /> Generate New Codes
+          </Button>
+        </CardContent>
+      </Card>
 
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Active Sessions<InfoButton content={"All active login sessions across devices.\nRevoke any session to force-logout that device.\n\nExample: if you signed in from a shared computer, revoke that session remotely."} className="ml-1.5 align-middle" /></h3>
-        <div className="space-y-3">
-          {sessions.length === 0 && (
+      {/* Active Sessions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Monitor className="h-4 w-4" />
+            Active Sessions
+            <InfoButton content={"All active login sessions across devices.\nRevoke any session to force-logout that device.\n\nExample: if you signed in from a shared computer, revoke that session remotely."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {sessionErr && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{sessionErr}</span>
+            </div>
+          )}
+          {sessions.length === 0 && !sessionErr && (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
                 <Monitor className="w-5 h-5 text-muted-foreground/60" />
@@ -531,142 +606,210 @@ export function SettingsPage() {
               </Button>
             </div>
           ))}
-        </div>
-        <Button
-          onClick={() => { setRevokeTarget({ jti: "", type: "all" }); setShowRevokeDialog(true) }}
-          size="sm" variant="destructive" className="mt-4"
-        >
-          <Shield className="h-4 w-4 mr-1" /> Revoke All Sessions
-        </Button>
-      </div>
-
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Remote Access<InfoButton content={"Cloudflare Tunnel creates a secure outbound tunnel to the internet — no port forwarding needed.\nAuto-start launches the tunnel when the app boots.\n\nExample: start the tunnel, copy the URL, and access your server from any browser anywhere."} className="ml-1.5" /></h3>
-        <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50 mb-4">
-          <div>
-            <p className="font-medium">Cloudflare Tunnel</p>
-            <p className="text-sm text-muted-foreground">Status: {tunnel.status}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : tunnel.status === "idle" ? "bg-gray-400" : "bg-yellow-500 status-dot"}`} />
-            <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : tunnel.status === "idle" ? "text-muted-foreground" : "text-muted-foreground"}`}>
-              {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : tunnel.status === "idle" ? "Stopped" : "Connecting"}
-            </span>
-          </div>
-        </div>
-        {tunnel.url && (
-          <div className="flex items-center gap-2 p-3 rounded-lg border bg-background">
-            <code className="flex-1 text-sm truncate">{tunnel.url}</code>
-            <button className="p-2 rounded hover:bg-accent" onClick={() => {
-              navigator.clipboard.writeText(tunnel.url!)
-              showSuccess("URL copied")
-            }}>
-              <Copy className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-        <div className="flex gap-2 mt-4">
-          {tunnel.status === "running" ? (
-            <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>Stop Tunnel</Button>
-          ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
-            <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>Start Tunnel</Button>
-          ) : (
-            <Button size="sm" disabled>
-              {tunnel.status === "downloading" ? "Downloading..." : tunnel.status === "starting" ? "Starting..." : "—"}
-            </Button>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg border p-4 mt-4">
-          <div>
-            <p className="text-sm font-medium">Auto-start Tunnel</p>
-            <p className="text-xs text-muted-foreground">Start tunnel automatically when the app launches</p>
-          </div>
           <Button
-            size="sm"
-            variant={relayEnabled ? "default" : "outline"}
-            disabled={relayLoading}
-            onClick={handleToggleRelay}
+            onClick={() => { setRevokeTarget({ jti: "", type: "all" }); setShowRevokeDialog(true) }}
+            size="sm" variant="destructive"
           >
-            {relayEnabled ? "On" : "Off"}
+            <Shield className="h-4 w-4 mr-1.5" /> Revoke All Sessions
           </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Wake-on-LAN<InfoButton content={"Send a magic packet to wake a sleeping computer on the LAN.\nTarget needs WoL enabled in BIOS and must be on the same subnet.\n\nExample: save the MAC address of your media server, then wake it remotely instead of walking over to press the power button."} className="ml-1.5 align-middle" /></h3>
-        <WolSection />
-      </div>
-
-      <div className="glass-card p-6 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Configuration</h3>
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <span className="text-sm font-medium block">File Access Paths<InfoButton content={"Whitelist directories the file manager can browse.\nPaths not listed here are blocked for security.\nBlocked paths override allowed paths.\n\nExample: allow C:\\Users\\Public\\Share but block C:\\Windows\\System32."} className="ml-1.5 align-middle" /></span>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Allowed Paths</p>
-                <div className="flex gap-2 mb-2">
-                  <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
-                  <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
-                    <FolderOpen className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => { addPath(allowedPaths, setAllowedPaths, newAllowed); setNewAllowed("") }}>Add</Button>
-                </div>
-                <div className="space-y-1">
-                  {allowedPaths.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
-                      <span className="truncate">{p}</span>
-                      <button onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="w-10 h-10 flex items-center justify-center text-destructive shrink-0">×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Blocked Paths</p>
-                <div className="flex gap-2 mb-2">
-                  <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
-                  <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
-                    <FolderOpen className="h-4 w-4" />
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => { addPath(blockedPaths, setBlockedPaths, newBlocked); setNewBlocked("") }}>Add</Button>
-                </div>
-                <div className="space-y-1">
-                  {blockedPaths.map((p, i) => (
-                    <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
-                      <span className="truncate">{p}</span>
-                      <button onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="w-10 h-10 flex items-center justify-center text-destructive shrink-0">×</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+      {/* Remote Access - Cloudflare Tunnel */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Server className="h-4 w-4" />
+            Remote Access
+            <InfoButton content={"Cloudflare Tunnel creates a secure outbound tunnel to the internet — no port forwarding needed.\nAuto-start launches the tunnel when the app boots.\n\nExample: start the tunnel, copy the URL, and access your server from any browser anywhere."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {tunnelErr && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{tunnelErr}</span>
             </div>
-            <Button onClick={handleSavePaths} size="sm" disabled={isSavingPaths}>{isSavingPaths ? "Saving..." : "Save Paths"}</Button>
+          )}
+          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
+            <div>
+              <p className="font-medium">Cloudflare Tunnel</p>
+              <p className="text-sm text-muted-foreground">Status: {tunnel.status}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : tunnel.status === "idle" ? "bg-gray-400" : "bg-yellow-500 status-dot"}`} />
+              <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : tunnel.status === "idle" ? "text-muted-foreground" : "text-muted-foreground"}`}>
+                {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : tunnel.status === "idle" ? "Stopped" : "Connecting"}
+              </span>
+            </div>
+          </div>
+          {tunnel.url && (
+            <div className="flex items-center gap-2 p-3 rounded-lg border bg-background">
+              <code className="flex-1 text-sm truncate">{tunnel.url}</code>
+              <button className="p-2 rounded hover:bg-accent" onClick={() => {
+                navigator.clipboard.writeText(tunnel.url!)
+                showSuccess("URL copied")
+              }}>
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            {tunnel.status === "running" ? (
+              <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>Stop Tunnel</Button>
+            ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
+              <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>Start Tunnel</Button>
+            ) : (
+              <Button size="sm" disabled>
+                {tunnel.status === "downloading" ? "Downloading..." : tunnel.status === "starting" ? "Starting..." : "—"}
+              </Button>
+            )}
           </div>
 
-          <div className="space-y-3">
-            <label htmlFor="local-server-port" className="text-sm font-medium">Local Server Port<InfoButton content={"Backend listen port (default 3939). Requires app restart to take effect.\nUse ports above 1024 to avoid admin rights.\n\nExample: change to 9090 if 3939 conflicts with another service."} className="ml-1.5" /></label>
-            <div className="flex gap-2">
-              <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
-              <Button onClick={handleSavePort} size="sm" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save"}</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
-          </div>
+          <Separator />
 
+          {relayErr && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{relayErr}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <p className="text-sm font-medium">Auto-start Tunnel</p>
+              <p className="text-xs text-muted-foreground">Start tunnel automatically when the app launches</p>
+            </div>
+            <Button
+              size="sm"
+              variant={relayEnabled ? "default" : "outline"}
+              disabled={relayLoading}
+              onClick={handleToggleRelay}
+            >
+              {relayEnabled ? "On" : "Off"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Wake-on-LAN */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Monitor className="h-4 w-4" />
+            Wake-on-LAN
+            <InfoButton content={"Send a magic packet to wake a sleeping computer on the LAN.\nTarget needs WoL enabled in BIOS and must be on the same subnet.\n\nExample: save the MAC address of your media server, then wake it remotely instead of walking over to press the power button."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <WolSection />
+        </CardContent>
+      </Card>
+
+      {/* File Access Paths */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <FolderOpen className="h-4 w-4" />
+            File Access Paths
+            <InfoButton content={"Whitelist directories the file manager can browse.\nPaths not listed here are blocked for security.\nBlocked paths override allowed paths.\n\nExample: allow C:\\Users\\Public\\Share but block C:\\Windows\\System32."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pathsErr && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{pathsErr}</span>
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5 font-medium">Allowed Paths</p>
+              <div className="flex gap-2 mb-2">
+                <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
+                <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
+                  <FolderOpen className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { addPath(allowedPaths, setAllowedPaths, newAllowed); setNewAllowed("") }}>Add</Button>
+              </div>
+              <div className="space-y-1">
+                {allowedPaths.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
+                    <span className="truncate">{p}</span>
+                    <button onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="size-6 flex items-center justify-center text-destructive shrink-0 rounded hover:bg-destructive/10">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1.5 font-medium">Blocked Paths</p>
+              <div className="flex gap-2 mb-2">
+                <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
+                <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
+                  <FolderOpen className="h-4 w-4" />
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { addPath(blockedPaths, setBlockedPaths, newBlocked); setNewBlocked("") }}>Add</Button>
+              </div>
+              <div className="space-y-1">
+                {blockedPaths.map((p, i) => (
+                  <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
+                    <span className="truncate">{p}</span>
+                    <button onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="size-6 flex items-center justify-center text-destructive shrink-0 rounded hover:bg-destructive/10">×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <Button onClick={handleSavePaths} size="sm" disabled={isSavingPaths}>
+            {isSavingPaths ? "Saving..." : "Save Paths"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Server Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <HardDrive className="h-4 w-4" />
+            Server Configuration
+            <InfoButton content={"Backend listen port (default 3939). Requires app restart to take effect.\nUse ports above 1024 to avoid admin rights.\n\nExample: change to 9090 if 3939 conflicts with another service."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {portErr && (
+            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>{portErr}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <label htmlFor="local-server-port" className="text-sm font-medium whitespace-nowrap">Port</label>
+            <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
+            <Button onClick={handleSavePort} size="sm" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save"}</Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
+        </CardContent>
+      </Card>
+
+      {/* Backup & Export */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5">
+            <Download className="h-4 w-4" />
+            Backup &amp; Export
+            <InfoButton content={"Export the full database as a JSON file for backup or inspection.\nDownload logs for troubleshooting — they contain recent server activity without sensitive credentials."} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={handleExportDb} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-1" /> Export Database
+              <Download className="h-4 w-4 mr-1.5" /> Export Database
             </Button>
             <Button onClick={handleDownloadLogs} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-1" /> Download Logs
+              <Download className="h-4 w-4 mr-1.5" /> Download Logs
             </Button>
-            <InfoButton content="Export the full database as a JSON file for backup or inspection. Download logs for troubleshooting — they contain recent server activity without sensitive credentials." className="ml-1" />
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 

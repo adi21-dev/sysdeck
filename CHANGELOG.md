@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Auth Redirect**: `handleUnauthenticated` in the fetch interceptor now uses React Router `navigate` (via `setGlobalNavigate`) instead of `window.location.href` for smooth client-side redirect.
 - **Tunnel URL Extraction**: Improved ANSI escape code stripping with proper CSI/OSC handling and more robust URL pattern matching.
 - **AppState**: Added `init_history: Arc<Mutex<InitHistory>>` field for sharing init progress with the API.
+- **Settings Page Redesign**: Split monolithic Configuration card into dedicated cards (File Access Paths, Server Configuration, Backup & Export) with proper shadcn/ui `Card` components, icons, and per-section error states instead of one global error banner.
+- **Settings Data Loading**: Changed `useEffect` dependency from `[tunnel]` (Zustand store object, causes re-render loop) to `[]` with `useTunnelStore.getState().setTunnel()` — fixes random "Failed to load..." errors on every settings page reload.
 
 ### Removed
 - **Unused Store Fields**: Cleaned up unused fields from `audit-store` and `files-store`.
