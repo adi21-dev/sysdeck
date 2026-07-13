@@ -62,6 +62,13 @@ pub use terminal::TerminalState;
 
 pub use tunnel::TunnelState;
 
+/// History of init steps recorded during startup. The frontend polls this to
+/// show real-time progress before transitioning to the setup wizard.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct InitHistory {
+    pub steps: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
@@ -77,6 +84,7 @@ pub struct AppState {
     pub terminal_state: Arc<TerminalState>,
     pub tunnel_state: Arc<TunnelState>,
     pub port: u16,
+    pub init_history: Arc<std::sync::Mutex<InitHistory>>,
 }
 
 pub fn new_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
@@ -533,6 +541,13 @@ pub fn parse_range(s: &str) -> Option<i64> {
     }
 }
 
+pub async fn init_history_handler(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let history = state.init_history.lock().unwrap().clone();
+    Json(history)
+}
+
 pub fn build_router(state: AppState) -> Router {
     // Admin-only routes (settings/configuration) - require localhost access
     let admin_routes = Router::new()
@@ -598,6 +613,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(admin_routes)
         .route("/ws", get(ws::ws_handler))
         .route("/api/telemetry/history", get(history_handler))
+        .route("/api/setup/init-history", get(init_history_handler))
         .route("/api/setup/status", get(setup::setup_status_handler))
         .route("/api/setup/password", post(setup::api_password_handler))
         .route("/api/setup/totp", post(setup::api_totp_handler))

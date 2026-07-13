@@ -2,6 +2,11 @@ import { useAuthStore } from "@/lib/store"
 
 const EXCLUDED_PATHS = ["/login", "/api/auth/refresh", "/api/auth/check", "/api/setup"]
 let refreshPromise: Promise<boolean> | null = null
+let globalNavigate: ((path: string) => void) | null = null
+
+export function setGlobalNavigate(fn: (path: string) => void) {
+  globalNavigate = fn
+}
 
 async function refreshTokens(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
@@ -36,7 +41,8 @@ function shouldIntercept(url: string): boolean {
 
 function handleUnauthenticated(): void {
   useAuthStore.getState().setAuthenticated(false)
-  window.location.href = "/login"
+  if (globalNavigate) globalNavigate("/login")
+  else window.location.href = "/login"
 }
 
 const originalFetch = window.fetch.bind(window)

@@ -17,8 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Error State Handling**: Root redirect now displays an error state with a retry button on failure.
 - **Saved Scripts**: New `saved_scripts` backend module with CRUD API routes (`GET/POST/PUT/DELETE /api/scripts/saved`), and frontend `info-button` UI component.
 - **Custom Script Timeout**: `ExecuteRequest` now accepts an optional `timeout_seconds` field — frontend sends custom timeout, backend passes it to `run_script`.
-- **Background Daemon Mode**: New `--daemon` CLI flag spawns a detached process with no console. Runs the server and tray without any terminal output — the browser opens automatically on startup.
 - **Telemetry Rounding**: CPU usage and temperature values are now rounded to one decimal place for cleaner display.
+- **Init Progress Screen**: New `InitProgress` component shown at app startup. Polls `/api/setup/init-history` and animates through each init step (database, security keys, server, telemetry) with checkmark transitions before redirecting to setup/login.
+- **Init History API**: New `GET /api/setup/init-history` endpoint returns the list of init steps recorded during startup.
+- **Global Navigate**: New `setGlobalNavigate` in `api.ts` — the 401 interceptor now uses React Router's `navigate` via a lightweight `NavigateProvider` in `App.tsx` instead of a full-page `window.location.href` reload.
 
 ### Changed
 - **Visual Redesign**: All pages (Dashboard, Controls, ControlCenter, Audit, Files, Scripts, Settings, Login, Setup, RemoteDesktop) updated to teal glassmorphism theme with consistent frosted glass styling.
@@ -27,12 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **UI Components**: Upgraded Card, Input, Badge, Button, Toast, and Skeleton components with enhanced glass styling.
 - **Interactive Elements**: Quick toggle buttons and interactive elements use neumorphism; progress bars and toggle switches have glow shadows.
 - **Audit Page**: Redesigned with glass cards and improved layout.
-- **Windows Console Strategy**: Removed `windows_subsystem = "windows"` — app is now console subsystem so it inherits the parent terminal instead of creating a separate console window. On Enter press, spawns a detached daemon (`DETACHED_PROCESS`, `--daemon`) and exits, giving the terminal back to the user.
+- **Windows Console Strategy**: Re-added `windows_subsystem = "windows"` — zero console popup on double-click. Removed all `AllocConsole`/`FreeConsole`/`SetConsoleCtrlHandler` / daemon-spawn code. The app runs silently in the system tray; browser auto-opens to the init progress screen. When run from `cargo run` the parent terminal is inherited, so log output is still visible during development.
+- **Root Redirect**: Replaced inlined setup-status check with the `InitProgress` component, which polls init-history first, then checks setup status.
+- **Init Progress UX**: `InitProgress` now checks setup status on mount first. Fresh installs show full step-by-step animation with "Continue to Setup" button. Returning users see a brief "Starting up..." spinner then "Continue to Dashboard" — no unnecessary `/login` hop.
+- **Auth Redirect**: `handleUnauthenticated` in the fetch interceptor now uses React Router `navigate` (via `setGlobalNavigate`) instead of `window.location.href` for smooth client-side redirect.
 - **Tunnel URL Extraction**: Improved ANSI escape code stripping with proper CSI/OSC handling and more robust URL pattern matching.
+- **AppState**: Added `init_history: Arc<Mutex<InitHistory>>` field for sharing init progress with the API.
 
 ### Removed
 - **Unused Store Fields**: Cleaned up unused fields from `audit-store` and `files-store`.
-- **Splash Console Code**: Removed all `AllocConsole`/`FreeConsole`/`SetConsoleCtrlHandler` logic (~80 lines). Replaced with background-daemon spawn approach that eliminates the separate console window entirely — closing the terminal no longer kills the app (the daemon survives).
+- **All Splash & Daemon Code**: Removed `--daemon` flag, `spawn_background_daemon()`, all `AllocConsole`/`FreeConsole`/`SetConsoleCtrlHandler` logic, and the interactive/daemon branching in `main.rs`. No more separate console window, no more process re-spawn.
 
 ### CI
 - **Release Body Extraction**: Release workflow now extracts the relevant changelog section and passes it to `action-gh-release` for curated release notes.

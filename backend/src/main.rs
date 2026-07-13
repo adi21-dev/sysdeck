@@ -1,6 +1,7 @@
-// Console subsystem — inherit the parent's console (cargo terminal) so there's
-// no separate window the user can accidentally close. On standalone launch
-// a console appears briefly, then we re-spawn as a hidden process.
+// Windows subsystem — no console window on double-click. The app runs silently
+// in the system tray. When launched from `cargo run` the parent's terminal is
+// inherited, so the startup banner is still visible during development.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::sync::Arc;
 
@@ -14,7 +15,8 @@ use sysdeck_agent::db::{self, TelemetrySnapshot};
 use sysdeck_agent::tunnel::TunnelStatus;
 use sysdeck_agent::{
     build_router, find_available_port, get_data_dir, init_db, init_dirs, spawn_tray, AppState,
-    LockoutState, PowerState, ScriptState, SetupManager, TerminalState, TrayCommand, TunnelState,
+    InitHistory, LockoutState, PowerState, ScriptState, SetupManager, TerminalState, TrayCommand,
+    TunnelState,
 };
 
 #[cfg(target_os = "windows")]
@@ -58,11 +60,7 @@ fn spawn_windows_shutdown_listener() {
             WS_EX_TOOLWINDOW,
             class_name.as_ptr(),
             std::ptr::null(),
-            0,
-            0,
-            0,
-            0,
-            0,
+            0, 0, 0, 0, 0,
             HWND_MESSAGE,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -76,46 +74,17 @@ fn spawn_windows_shutdown_listener() {
     });
 }
 
-// ── Windows background daemon ─────────────────────────────────────────────────
-//
-// When the user presses Enter we spawn a detached sibling process and exit,
-// so `cargo run` returns to the prompt while the app keeps running in the
-// system tray. The `--daemon` instance skips the console banner and just
-// runs the server + tray.
-#[cfg(windows)]
-fn spawn_background_daemon() {
-    use std::os::windows::process::CommandExt;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static ONCE: AtomicBool = AtomicBool::new(false);
-    if ONCE.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        // DETACHED_PROCESS = 0x00000100 — no console inherited or allocated.
-        if std::process::Command::new(exe)
-            .arg("--daemon")
-            .creation_flags(0x00000100)
-            .spawn()
-            .is_ok()
-        {
-            std::process::exit(0);
-        }
-        // fall through — if spawn failed, keep running in current process
-    }
-}
-// ── end Windows background daemon ─────────────────────────────────────────────
-
 #[tokio::main]
 async fn main() {
-    let daemon_mode = std::env::args().any(|a| a == "--daemon");
+    // Shared init history — the frontend polls this to show step-by-step progress.
+    let init_history = Arc::new(std::sync::Mutex::new(InitHistory::default()));
 
+    // Log to file only.
     let filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
     let logs_dir = sysdeck_agent::get_logs_dir();
     let file_appender = tracing_appender::rolling::never(&logs_dir, "sysdeck.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-    // File appender only — stdout logging is replaced by the banner below.
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -124,35 +93,49 @@ async fn main() {
         )
         .init();
 
-    println!();
-    println!("  ⚡  SysDeck Agent  v{}", env!("CARGO_PKG_VERSION"));
-    println!();
-
     #[cfg(target_os = "windows")]
     spawn_windows_shutdown_listener();
 
+    // ── Init step 1: directories ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Initializing data directories...".into());
+    }
     init_dirs();
-    println!("  ✓  Data directory ready");
 
+    // ── Init step 2: database ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Setting up database...".into());
+    }
     let conn = Arc::new(Mutex::new(init_db()));
     let db_for_shutdown = conn.clone();
-    println!("  ✓  Database initialized");
 
-    // Load or create JWT signing key (OS Keychain via keyring)
+    // ── Init step 3: JWT signing key ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Generating security keys...".into());
+    }
     let jwt_key = Arc::new(auth::load_or_create_jwt_key().expect("Failed to load JWT signing key"));
-    println!("  ✓  JWT signing key loaded");
 
+    // ── Init step 4: network ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Starting server...".into());
+    }
     let (port, listener) = find_available_port().await;
-    println!("  ✓  Server bound to localhost:{}", port);
 
     // Create broadcast channels
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
     let (system_tx, _) = broadcast::channel::<String>(16);
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
 
-    // Start telemetry engine
+    // ── Init step 5: telemetry ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Starting telemetry engine...".into());
+    }
     sysdeck_agent::telemetry::start_engine(telemetry_tx.clone(), conn.clone());
-    println!("  ✓  Telemetry engine started");
 
     // Auth state
     let lockout = Arc::new(LockoutState::new());
@@ -177,19 +160,11 @@ async fn main() {
                 Ok(event) => match event.status.as_str() {
                     "running" => {
                         tray_cmd_tx.send(TrayCommand::SetConnected).ok();
-                        tray_cmd_tx
-                            .send(TrayCommand::SetUrl(event.url.clone()))
-                            .ok();
+                        tray_cmd_tx.send(TrayCommand::SetUrl(event.url.clone())).ok();
                     }
-                    "starting" | "downloading" => {
-                        tray_cmd_tx.send(TrayCommand::SetReconnecting).ok();
-                    }
-                    "failed" => {
-                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
-                    }
-                    "idle" => {
-                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
-                    }
+                    "starting" | "downloading" => { tray_cmd_tx.send(TrayCommand::SetReconnecting).ok(); }
+                    "failed" => { tray_cmd_tx.send(TrayCommand::SetOffline).ok(); }
+                    "idle" => { tray_cmd_tx.send(TrayCommand::SetOffline).ok(); }
                     _ => {}
                 },
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -238,7 +213,7 @@ async fn main() {
         }
     }
 
-    // Start clipboard polling task
+    // Clipboard polling
     let clipboard_tx_clone = clipboard_tx.clone();
     tokio::spawn(async move {
         let mut last = String::new();
@@ -262,6 +237,12 @@ async fn main() {
 
     let system_tx_clone = system_tx.clone();
 
+    // ── Mark init complete ──
+    {
+        let mut h = init_history.lock().unwrap();
+        h.steps.push("Ready".into());
+    }
+
     let app_state = AppState {
         telemetry_tx,
         system_tx,
@@ -276,6 +257,7 @@ async fn main() {
         terminal_state,
         tunnel_state: tunnel_state.clone(),
         port,
+        init_history,
     };
 
     let app = build_router(app_state.clone());
@@ -283,7 +265,6 @@ async fn main() {
     // Signal channel for server readiness
     let (server_ready_tx, server_ready_rx) = oneshot::channel::<()>();
 
-    // Start server in a background task, signal when it begins accepting connections
     let shutdown_tunnel = tunnel_state.clone();
     let system_tx_clone2 = system_tx_clone.clone();
 
@@ -336,38 +317,8 @@ async fn main() {
 
     server_ready_rx.await.ok();
 
-    if daemon_mode {
-        // ── Daemon mode — no console, no banner, just the tray ──
-        let _ = open::that(format!("http://localhost:{}", port));
-        server_handle.await.expect("Server task panicked");
-    } else {
-        // ── Interactive mode — show banner, spawn daemon on Enter ──
-        println!();
-        println!("┌────────────────────────────────────────────────────────┐");
-        println!("│  ⚡ SysDeck is running!                                │");
-        println!("├────────────────────────────────────────────────────────┤");
-        println!("│  The app is now active in your system tray.            │");
-        println!("│                                                        │");
-        println!("│  Press [Enter] to minimize to tray and open the browser│");
-        println!("│  Press [Ctrl+C] to stop the app                        │");
-        println!("└────────────────────────────────────────────────────────┘");
-        println!();
+    // Open the browser to the setup wizard / dashboard.
+    let _ = open::that(format!("http://localhost:{}", port));
 
-        let port_for_block = port;
-        tokio::task::spawn_blocking(move || {
-            let mut buf = String::new();
-            let _ = std::io::stdin().read_line(&mut buf);
-            let _ = open::that(format!("http://localhost:{}", port_for_block));
-        })
-        .await
-        .ok();
-
-        // Spawn a detached daemon and exit, giving the terminal back to the user.
-        // On non-Windows the process just keeps running (user can Ctrl+C).
-        #[cfg(windows)]
-        spawn_background_daemon();
-
-        server_handle.await.expect("Server task panicked");
-        println!("SysDeck Agent stopped.");
-    }
+    server_handle.await.expect("Server task panicked");
 }
