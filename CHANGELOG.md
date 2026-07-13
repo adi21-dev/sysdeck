@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-07-13
 
 ### Added
 - **UI/UX Hardening Design Spec**: Comprehensive spec document for fixing ~33 UX issues across the frontend, organized into 4 waves (Hardening, Accessibility, Architecture, Polish). See `.opencode/plans/2026-07-13-ui-ux-hardening-design.md`.
@@ -81,3 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cloudflare Tunnels**: Integrated `cloudflared` tunnel creation for secure remote access without port forwarding.
 - **System Tray Widget**: Native system tray application displaying active status, quick tunnel actions, and port configurations.
 - **Security & MFA**: Cryptographic password hashing (Argon2id), mandatory TOTP multi-factor authentication setup, recovery code generation, and automated lockout policies.
+
+[2.0.0]: https://github.com/adi21-dev/sysdeck/compare/v1.1.0...v2.0.0
+[1.1.0]: https://github.com/adi21-dev/sysdeck/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/adi21-dev/sysdeck/releases/tag/v1.0.0
