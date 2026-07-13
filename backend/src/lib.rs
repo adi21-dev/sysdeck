@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::response::{IntoResponse, Json};
-use axum::routing::{get, post, put, delete};
+use axum::routing::{delete, get, post, put};
 use axum::{middleware, Router};
 use rusqlite::Connection;
 use std::time::Duration;
@@ -541,9 +541,7 @@ pub fn parse_range(s: &str) -> Option<i64> {
     }
 }
 
-pub async fn init_history_handler(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn init_history_handler(State(state): State<AppState>) -> impl IntoResponse {
     let history = state.init_history.lock().unwrap().clone();
     Json(history)
 }
@@ -740,18 +738,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/sessions", get(sessions::list_handler))
         .route("/api/sessions/action", post(sessions::action_handler))
         // Saved Scripts
-        .route(
-            "/api/scripts/saved",
-            get(saved_scripts::list_handler),
-        )
-        .route(
-            "/api/scripts/saved",
-            post(saved_scripts::create_handler),
-        )
-        .route(
-            "/api/scripts/saved/:id",
-            put(saved_scripts::update_handler),
-        )
+        .route("/api/scripts/saved", get(saved_scripts::list_handler))
+        .route("/api/scripts/saved", post(saved_scripts::create_handler))
+        .route("/api/scripts/saved/:id", put(saved_scripts::update_handler))
         .route(
             "/api/scripts/saved/:id",
             delete(saved_scripts::delete_handler),

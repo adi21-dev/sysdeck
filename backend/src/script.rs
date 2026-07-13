@@ -160,7 +160,8 @@ pub(crate) async fn execute_handler(
     let history = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
     let completed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    let timeout = req.timeout_seconds
+    let timeout = req
+        .timeout_seconds
         .map(Duration::from_secs)
         .unwrap_or(SCRIPT_TIMEOUT);
 

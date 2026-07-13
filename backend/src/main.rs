@@ -60,7 +60,11 @@ fn spawn_windows_shutdown_listener() {
             WS_EX_TOOLWINDOW,
             class_name.as_ptr(),
             std::ptr::null(),
-            0, 0, 0, 0, 0,
+            0,
+            0,
+            0,
+            0,
+            0,
             HWND_MESSAGE,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -160,11 +164,19 @@ async fn main() {
                 Ok(event) => match event.status.as_str() {
                     "running" => {
                         tray_cmd_tx.send(TrayCommand::SetConnected).ok();
-                        tray_cmd_tx.send(TrayCommand::SetUrl(event.url.clone())).ok();
+                        tray_cmd_tx
+                            .send(TrayCommand::SetUrl(event.url.clone()))
+                            .ok();
                     }
-                    "starting" | "downloading" => { tray_cmd_tx.send(TrayCommand::SetReconnecting).ok(); }
-                    "failed" => { tray_cmd_tx.send(TrayCommand::SetOffline).ok(); }
-                    "idle" => { tray_cmd_tx.send(TrayCommand::SetOffline).ok(); }
+                    "starting" | "downloading" => {
+                        tray_cmd_tx.send(TrayCommand::SetReconnecting).ok();
+                    }
+                    "failed" => {
+                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
+                    }
+                    "idle" => {
+                        tray_cmd_tx.send(TrayCommand::SetOffline).ok();
+                    }
                     _ => {}
                 },
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,

@@ -226,7 +226,9 @@ fn strip_ansi(s: &str) -> String {
                 Some('[') => {
                     // CSI: \x1b[<params>m — consume until an alphabetic byte
                     for n in chars.by_ref() {
-                        if n.is_ascii_alphabetic() { break; }
+                        if n.is_ascii_alphabetic() {
+                            break;
+                        }
                     }
                 }
                 Some(']') => {
@@ -234,7 +236,10 @@ fn strip_ansi(s: &str) -> String {
                     loop {
                         match chars.next() {
                             None => break,
-                            Some('\x1b') => { let _ = chars.next(); break; }
+                            Some('\x1b') => {
+                                let _ = chars.next();
+                                break;
+                            }
                             _ => {}
                         }
                     }
@@ -514,10 +519,7 @@ mod tests {
     #[test]
     fn test_extract_url_subdomain_required() {
         // must have . before trycloudflare.com — ensures a subdomain
-        assert_eq!(
-            extract_tunnel_url("https://trycloudflare.com"),
-            None
-        );
+        assert_eq!(extract_tunnel_url("https://trycloudflare.com"), None);
     }
 
     #[test]
@@ -530,7 +532,8 @@ mod tests {
     #[test]
     fn test_extract_false_positive_casual_mention() {
         // another common log line
-        let line = "2025-01-01T00:00:00Z INF Your quick Tunnel has been created on trycloudflare.com";
+        let line =
+            "2025-01-01T00:00:00Z INF Your quick Tunnel has been created on trycloudflare.com";
         assert_eq!(extract_tunnel_url(line), None);
     }
 
@@ -562,10 +565,7 @@ mod tests {
 
     #[test]
     fn test_extract_no_match_http_not_https() {
-        assert_eq!(
-            extract_tunnel_url("http://abc.trycloudflare.com"),
-            None
-        );
+        assert_eq!(extract_tunnel_url("http://abc.trycloudflare.com"), None);
     }
 
     #[test]
@@ -600,9 +600,6 @@ mod tests {
         let first = extract_tunnel_url(line);
         let second = extract_tunnel_url(line);
         assert_eq!(first, second);
-        assert_eq!(
-            first.unwrap(),
-            "https://persistent-id.trycloudflare.com"
-        );
+        assert_eq!(first.unwrap(), "https://persistent-id.trycloudflare.com");
     }
 }
