@@ -86,10 +86,29 @@ jobs:
           cd backend/target/${{ matrix.target }}/release
           tar -czf ../../../../${{ matrix.artifact_name }} ${{ matrix.binary_name }}
 
-      # 6. Upload Assets to GitHub Releases
+      # 6. Extract changelog entry for this release
+      - name: Extract changelog entry
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            BEGIN { found = 0 }
+            /^## \[/ {
+              if (found) exit
+              gsub(/^## \[/, ""); gsub(/\].*$/, "")
+              if ($0 == ver) found = 1
+              next
+            }
+            found { print }
+          ' CHANGELOG.md > release_body.md
+          echo "body_file=release_body.md" >> "$GITHUB_OUTPUT"
+
+      # 7. Upload Assets to GitHub Releases
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact_name }}
+          body_path: ${{ steps.changelog.outputs.body_file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

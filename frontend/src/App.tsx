@@ -1,46 +1,36 @@
-import { useEffect, useState } from "react"
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { lazy, useEffect } from "react"
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute"
 import { WebSocketProvider } from "@/components/layout/WebSocketProvider"
-import { useAuthStore } from "@/lib/store"
 import { ToastContainer } from "@/components/ui/toast"
 import { LoginPage } from "@/pages/Login"
 import { SetupPage } from "@/pages/Setup"
-import { DashboardPage } from "@/pages/Dashboard"
-import { FilesPage } from "@/pages/Files"
-import { ScriptsPage } from "@/pages/Scripts"
-import { ControlsPage } from "@/pages/Controls"
-import { ControlCenterPage } from "@/pages/ControlCenter"
-import { AuditPage } from "@/pages/Audit"
-import { SettingsPage } from "@/pages/Settings"
-import { RemoteDesktopPage } from "@/pages/RemoteDesktop"
+import { InitProgress } from "@/components/InitProgress"
+import { setGlobalNavigate } from "@/lib/api"
+
+const DashboardPage = lazy(() => import("@/pages/Dashboard").then(m => ({ default: m.DashboardPage })))
+const FilesPage = lazy(() => import("@/pages/Files").then(m => ({ default: m.FilesPage })))
+const ScriptsPage = lazy(() => import("@/pages/Scripts").then(m => ({ default: m.ScriptsPage })))
+const ControlsPage = lazy(() => import("@/pages/Controls").then(m => ({ default: m.ControlsPage })))
+const AuditPage = lazy(() => import("@/pages/Audit").then(m => ({ default: m.AuditPage })))
+const SettingsPage = lazy(() => import("@/pages/Settings").then(m => ({ default: m.SettingsPage })))
+const RemoteDesktopPage = lazy(() => import("@/pages/RemoteDesktop").then(m => ({ default: m.RemoteDesktopPage })))
 
 function RootRedirect() {
-  const [status, setStatus] = useState<"loading" | "setup" | "login" | "dashboard">("loading")
+  return <InitProgress />
+}
 
-  useEffect(() => {
-    fetch("/api/setup/status")
-      .then((r) => r.json())
-      .then((data) => {
-        useAuthStore.getState().setSetupComplete(data.is_setup_complete)
-        if (!data.is_setup_complete) {
-          setStatus("setup")
-        } else {
-          setStatus("login")
-        }
-      })
-      .catch(() => setStatus("setup"))
-  }, [])
-
-  if (status === "loading") return null
-  if (status === "setup") return <Navigate to="/setup" replace />
-  return <Navigate to="/login" replace />
+function NavigateProvider() {
+  const navigate = useNavigate()
+  useEffect(() => { setGlobalNavigate(navigate) }, [navigate])
+  return null
 }
 
 function App() {
   return (
     <BrowserRouter>
+      <NavigateProvider />
       <ToastContainer />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
@@ -59,7 +49,6 @@ function App() {
             <Route path="/scripts" element={<ScriptsPage />} />
             <Route path="/remote" element={<RemoteDesktopPage />} />
             <Route path="/controls" element={<ControlsPage />} />
-            <Route path="/control-center" element={<ControlCenterPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

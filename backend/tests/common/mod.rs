@@ -90,6 +90,7 @@ fn test_app_inner(
         terminal_state: Arc::new(TerminalState::default()),
         tunnel_state: Arc::new(tunnel_state),
         port: 3939,
+        init_history: Arc::new(std::sync::Mutex::new(sysdeck_agent::InitHistory::default())),
     };
 
     let router = sysdeck_agent::build_router(app_state.clone());

@@ -83,6 +83,8 @@ pub struct ExecuteRequest {
     pub content: String,
     #[serde(default)]
     pub mode: String,
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
 }
 
 pub(crate) async fn execute_handler(
@@ -158,8 +160,12 @@ pub(crate) async fn execute_handler(
     let history = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
     let completed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+    let timeout = req.timeout_seconds
+        .map(Duration::from_secs)
+        .unwrap_or(SCRIPT_TIMEOUT);
+
     if req.mode == "wait" {
-        let result = run_script(&req.script_type, &req.content, output_tx, None).await;
+        let result = run_script(&req.script_type, &req.content, output_tx, None, timeout).await;
         tracing::info!("script_complete: id={}, exit_code={}", id, result.exit_code);
         return Json(json!({
             "success": true,
@@ -196,6 +202,7 @@ pub(crate) async fn execute_handler(
             &req.content,
             output_tx.clone(),
             Some(history_clone),
+            timeout,
         )
         .await;
 
@@ -216,6 +223,7 @@ async fn run_script(
     content: &str,
     output_tx: broadcast::Sender<ScriptOutput>,
     history: Option<std::sync::Arc<tokio::sync::Mutex<Vec<ScriptOutput>>>>,
+    timeout: Duration,
 ) -> ScriptResult {
     let child = if script_type.eq_ignore_ascii_case("powershell") {
         let ps_content = format!(
@@ -296,7 +304,7 @@ async fn run_script(
         tokio::spawn(async move { read_stream(stderr, "stderr", tx, hist).await })
     });
 
-    let status = tokio::time::timeout(SCRIPT_TIMEOUT, child.wait()).await;
+    let status = tokio::time::timeout(timeout, child.wait()).await;
 
     let (stdout_output, stdout_truncated) = match stdout_task {
         Some(h) => match h.await {

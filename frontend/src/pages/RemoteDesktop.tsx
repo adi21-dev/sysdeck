@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react"
+import { Monitor } from "lucide-react"
 import { useConnectionStore, useToastStore } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,8 +13,7 @@ export function RemoteDesktopPage() {
   const [tab, setTab] = useState<Tab>("trackpad")
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Remote Desktop</h1>
+      <div className="flex justify-end">
         <LockButton />
       </div>
       <div className="flex gap-2 flex-wrap">
@@ -21,8 +21,8 @@ export function RemoteDesktopPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${
-              tab === t ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80"
+            className={`px-3 py-1.5 rounded-xl text-sm font-medium capitalize transition-all duration-200 ${
+              tab === t ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 backdrop-blur-sm hover:bg-muted/80 border border-border/30"
             }`}
           >
             {t}
@@ -103,7 +103,8 @@ function TrackpadTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
+      <Card className="p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div
           ref={padRef}
           // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
@@ -183,7 +184,8 @@ function KeyboardTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Type Text</h3>
         <div className="flex gap-2">
           <Input
@@ -196,7 +198,8 @@ function KeyboardTab() {
           <Button onClick={sendType} disabled={!connected}>Send</Button>
         </div>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Hotkeys</h3>
         <div className="flex gap-2 flex-wrap">
           {hotkeys.map((h) => (
@@ -206,7 +209,8 @@ function KeyboardTab() {
           ))}
         </div>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Media Keys</h3>
         <div className="flex gap-2 flex-wrap">
           {["play_pause", "next", "prev", "volume_up", "volume_down", "mute"].map((k) => (
@@ -252,7 +256,8 @@ function ClipboardTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Remote Clipboard</h3>
         <pre className="bg-muted p-3 rounded text-sm max-h-40 overflow-auto whitespace-pre-wrap break-words">
           {remoteText || "(empty)"}
@@ -261,7 +266,8 @@ function ClipboardTab() {
           Refresh
         </Button>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Push to Remote Clipboard</h3>
         <div className="flex gap-2">
           <Input
@@ -314,7 +320,8 @@ function VisionTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex gap-2 items-center flex-wrap">
           <Button onClick={takeScreenshot} disabled={!connected || loading}>
             {loading ? "Capturing..." : "Take Screenshot"}
@@ -367,7 +374,8 @@ function BrowserTab() {
   }, [url, connected, addToast])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <h3 className="text-sm font-medium">Open URL in Remote Browser</h3>
       <div className="flex gap-2">
         <Input
@@ -424,7 +432,8 @@ function DisksTab() {
   useEffect(() => { fetchDisks() }, [fetchDisks])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Storage Drives</h3>
         <Button size="sm" variant="outline" onClick={fetchDisks} disabled={!connected}>Refresh</Button>
@@ -442,7 +451,15 @@ function DisksTab() {
             <p className="text-xs text-muted-foreground mt-1">{d.free_gb} GB free — {d.percent_used}% used</p>
           </div>
         ))}
-        {disks.length === 0 && <p className="text-sm text-muted-foreground">No disk info available</p>}
+        {disks.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No disk info available</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see storage drives</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -474,7 +491,8 @@ function ProcessesTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Top Processes (by CPU)</h3>
         <Button size="sm" variant="outline" onClick={fetchProcs} disabled={!connected}>Refresh</Button>
@@ -489,7 +507,15 @@ function ProcessesTab() {
             <button onClick={() => kill(p.pid)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">Kill</button>
           </div>
         ))}
-        {processes.length === 0 && <p className="text-sm text-muted-foreground">No process data</p>}
+        {processes.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No process data</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see running processes</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -521,7 +547,8 @@ function SessionsTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">User Sessions</h3>
         <Button size="sm" variant="outline" onClick={fetchSessions} disabled={!connected}>Refresh</Button>
@@ -541,7 +568,15 @@ function SessionsTab() {
             </div>
           </div>
         ))}
-        {sessions.length === 0 && <p className="text-sm text-muted-foreground">No sessions found</p>}
+        {sessions.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No sessions found</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">No active user sessions detected on the remote machine</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -574,7 +609,8 @@ function WindowsTab() {
   }, [refresh])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Open Windows ({windows.length})</h3>
         <Button size="sm" variant="outline" onClick={refresh} disabled={!connected}>Refresh</Button>
@@ -588,7 +624,15 @@ function WindowsTab() {
             <button onClick={() => act("close", w.hwnd)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">X</button>
           </div>
         ))}
-        {windows.length === 0 && <p className="text-sm text-muted-foreground">No windows found</p>}
+        {windows.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No windows found</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">No open windows detected on the remote machine</p>
+          </div>
+        )}
       </div>
     </Card>
   )
