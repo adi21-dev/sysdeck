@@ -294,8 +294,9 @@ export function ControlCenterPage() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       {/* Quick Toggles */}
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider">Quick Toggles</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider relative">Quick Toggles</h3>
         {!controlCenter ? (
           <div className="grid grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
@@ -306,13 +307,13 @@ export function ControlCenterPage() {
               <button
                 onClick={() => toggleControlCenter("wifi", !controlCenter.wifi_on)}
                 className={cn(
-                    "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center backdrop-blur-sm",
+                    "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                     controlCenter.wifi_on
-                      ? "bg-primary/10 border-primary/30 text-primary shadow-sm"
-                      : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50"
+                      ? "bg-primary/10 border-primary/30 text-primary shadow-sm backdrop-blur-sm"
+                      : "neu-hover text-muted-foreground"
                 )}
               >
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                   {controlCenter.wifi_on ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
                 </div>
                 <span className="font-medium text-xs">Wi-Fi</span>
@@ -323,13 +324,13 @@ export function ControlCenterPage() {
               <button
                 onClick={() => toggleControlCenter("dnd", !controlCenter.dnd_on)}
                 className={cn(
-                    "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center backdrop-blur-sm",
+                    "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                     controlCenter.dnd_on
-                      ? "bg-primary/10 border-primary/30 text-primary shadow-sm"
-                      : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50"
+                      ? "bg-primary/10 border-primary/30 text-primary shadow-sm backdrop-blur-sm"
+                      : "neu-hover text-muted-foreground"
                 )}
               >
-                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                   {controlCenter.dnd_on ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
                 </div>
                 <span className="font-medium text-xs">DND</span>
@@ -339,13 +340,13 @@ export function ControlCenterPage() {
             <button
               onClick={() => handleToggle("dark", !(controlCenter?.dark_mode ?? false))}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center backdrop-blur-sm",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 controlCenter?.dark_mode
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm"
-                  : "bg-muted/30 border-border/50 text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                 {controlCenter?.dark_mode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </div>
               <span className="font-medium text-xs">Dark Mode</span>
@@ -357,7 +358,8 @@ export function ControlCenterPage() {
 
       {/* Audio + Display */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control</h3>
             {!audio ? (
@@ -435,9 +437,10 @@ export function ControlCenterPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Display & Brightness</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Display & Brightness</h3>
             {!display ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
@@ -502,8 +505,9 @@ export function ControlCenterPage() {
       </div>
 
       {/* Network */}
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Network</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Network</h3>
         {!network ? (
           <Skeleton className="h-32 w-full" />
         ) : (
@@ -626,7 +630,7 @@ export function ControlCenterPage() {
       </div>
 
       {pendingAction && (
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 backdrop-blur-sm p-5">
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 backdrop-blur-sm saturate-[1.4] p-5">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
               <Power className="h-5 w-5 text-destructive" />
@@ -646,8 +650,9 @@ export function ControlCenterPage() {
       )}
 
       {/* Power */}
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6">
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6 relative">
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Power Management</h3>
             <p className="text-xs text-muted-foreground mt-0.5">Shutdown, restart, or lock your computer remotely</p>
@@ -662,20 +667,21 @@ export function ControlCenterPage() {
           {powerCards.map((card) => (
             <button key={card.action} onClick={() => !pendingAction && handlePowerAction(card.action)}
               className={cn(
-                "rounded-2xl border border-border/50 bg-card backdrop-blur-sm p-5 text-left transition-all duration-200 hover:bg-accent/40 group relative overflow-hidden",
+                "rounded-2xl border border-border/50 bg-card backdrop-blur-sm saturate-[1.4] p-5 text-left transition-all duration-200 hover:bg-accent/40 group relative overflow-hidden hover:-translate-y-0.5 hover:shadow-lg",
                 card.destructive ? "hover:border-destructive/30" : "hover:border-primary/30",
                 pendingAction && "opacity-45 cursor-not-allowed"
               )}
               disabled={pendingAction != null}
             >
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
               <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors",
+                "w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors relative",
                 card.destructive ? "bg-destructive/10 group-hover:bg-destructive/15" : "bg-primary/10 group-hover:bg-primary/15"
               )}>
                 <card.icon className={cn("w-5 h-5", card.destructive ? "text-destructive" : "text-primary")} />
               </div>
-              <h4 className="font-semibold text-sm">{card.label}</h4>
-              <p className="text-[11px] text-muted-foreground leading-tight mt-1">{card.desc}</p>
+              <h4 className="font-semibold text-sm relative">{card.label}</h4>
+              <p className="text-[11px] text-muted-foreground leading-tight mt-1 relative">{card.desc}</p>
             </button>
           ))}
         </div>
@@ -683,8 +689,8 @@ export function ControlCenterPage() {
 
       {/* Schedule Modal */}
       {isScheduleOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card backdrop-blur-2xl border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm saturate-[1.4] flex items-center justify-center z-50 p-4">
+          <div className="bg-card backdrop-blur-2xl saturate-[1.6] border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <div className="flex justify-between items-center border-b pb-3 mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Power className="h-5 w-5 text-primary" />

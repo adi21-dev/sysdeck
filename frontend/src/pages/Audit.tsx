@@ -1,6 +1,8 @@
-import { useEffect, useCallback } from "react"
+import { useEffect, useCallback, useMemo } from "react"
+import { useSearchParams } from "react-router-dom"
 import { ScrollText, LogIn, LogOut, FolderUp, FolderX, Pencil, Settings, AlertTriangle, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useAuditStore, type AuditEntry } from "@/lib/audit-store"
 
 const EVENT_ICONS: Record<string, { icon: typeof LogIn; label: string }> = {
@@ -63,9 +65,16 @@ function FilterDate({ value, onChange }: { value: string; onChange: (v: string) 
 }
 
 export function AuditPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const qs = searchParams.toString()
+  const filters = useMemo(() => ({
+    event: searchParams.get("event") || "",
+    from: searchParams.get("from") || "",
+    to: searchParams.get("to") || "",
+  }), [qs]) // eslint-disable-line react-hooks/exhaustive-deps
   const {
-    entries, nextCursor, hasMore, filters, loading, error,
-    setEntries, appendEntries, setFilters, setLoading, setError,
+    entries, nextCursor, hasMore, loading, error,
+    setEntries, appendEntries, setLoading, setError,
   } = useAuditStore()
 
   const loadLogs = useCallback(async () => {
@@ -97,16 +106,22 @@ export function AuditPage() {
   }
 
   const handleFilterChange = (key: string, value: string) => {
-    const newFilters = { ...filters, [key]: value }
-    setFilters(newFilters)
-    fetchLogs(null, 50, newFilters.event, newFilters.from, newFilters.to)
+    const next = new URLSearchParams(searchParams)
+    if (value) {
+      next.set(key, value)
+    } else {
+      next.delete(key)
+    }
+    setSearchParams(next, { replace: true })
+    fetchLogs(null, 50, key === "event" ? value : filters.event, key === "from" ? value : filters.from, key === "to" ? value : filters.to)
       .then((data) => setEntries(data.entries, data.next_cursor, data.has_more))
       .catch(() => setError("Failed to load audit log"))
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-4 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex flex-col sm:flex-row gap-3">
           <FilterSelect value={filters.event} onChange={(v) => handleFilterChange("event", v)}>
             <option value="">All Events</option>
@@ -123,7 +138,7 @@ export function AuditPage() {
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
+        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
             <span>{error}</span>
@@ -132,8 +147,32 @@ export function AuditPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl overflow-hidden">
-        {entries.length === 0 && !loading ? (
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        {loading && entries.length === 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/30">
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Timestamp</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Event</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Details</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">IP Address</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/20">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    <td className="p-4"><Skeleton className="h-4 w-24" /></td>
+                    <td className="p-4"><Skeleton className="h-4 w-32" /></td>
+                    <td className="p-4"><Skeleton className="h-4 w-48" /></td>
+                    <td className="p-4"><Skeleton className="h-4 w-28" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : entries.length === 0 && !loading ? (
           <div className="py-16 text-center text-muted-foreground">No audit entries match your filters</div>
         ) : (
           <div className="overflow-x-auto">
@@ -152,17 +191,17 @@ export function AuditPage() {
                   const Icon = eventInfo.icon
                   return (
                     <tr key={entry.id} className="hover:bg-accent/30 transition-colors">
-                      <td className="p-4 text-muted-foreground whitespace-nowrap text-xs" title={absoluteTime(entry.created_at)}>
+                      <td className="p-4 text-foreground/70 whitespace-nowrap text-xs" title={absoluteTime(entry.created_at)}>
                         {relativeTime(entry.created_at)}
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <Icon className="h-4 w-4 text-foreground/70 shrink-0" />
                           <span className="font-medium">{eventInfo.label}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-muted-foreground max-w-xs truncate text-sm">{entry.details || "—"}</td>
-                      <td className="p-4 text-muted-foreground font-mono text-xs">{entry.ip_address || "—"}</td>
+                      <td className="p-4 text-foreground/70 max-w-xs truncate text-sm">{entry.details || "—"}</td>
+                      <td className="p-4 text-foreground/70 font-mono text-xs">{entry.ip_address || "—"}</td>
                     </tr>
                   )
                 })}

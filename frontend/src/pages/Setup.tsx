@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Check, Copy, Download, Eye, EyeOff } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { useAuthStore } from "@/lib/store"
+import { TotpInput } from "@/components/ui/totp-input"
+import { useAuthStore, useToastStore } from "@/lib/store"
 
 const BASE_STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay"] as const
 
@@ -212,17 +213,7 @@ function StepTotp({
       )}
       <div>
         <label htmlFor="totp-code" className="text-sm font-medium">TOTP Code</label>
-        <Input
-          id="totp-code"
-          type="text"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="000000"
-          required
-          maxLength={6}
-        />
+        <TotpInput value={code} onChange={setCode} id="totp-code" />
       </div>
       {error && fetched && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" className="w-full" disabled={loading || code.length !== 6 || !fetched}>
@@ -473,6 +464,7 @@ export function SetupPage() {
   const handleRelayComplete = useCallback(async (enabled: boolean) => {
     const token = sessionStorage.getItem("setup_token")
     if (!token) return
+    let success = false
     try {
       const res = await fetch(`/api/setup/relay?token=${token}`, {
         method: "POST",
@@ -481,15 +473,24 @@ export function SetupPage() {
       })
       const data = await res.json()
       if (data.success && data.token) {
-        await fetch(`/api/setup/finish?token=${data.token}`, { method: "POST" }).catch(() => {})
+        const finishRes = await fetch(`/api/setup/finish?token=${data.token}`, { method: "POST" })
+        success = finishRes.ok
       }
     } catch {
-      // proceed anyway
+      // network error, proceed to login anyway
     }
-    sessionStorage.removeItem("setup_token")
-    sessionStorage.removeItem("recovery_codes")
-    useAuthStore.getState().setSetupComplete(true)
-    navigate("/login", { replace: true })
+    if (success) {
+      sessionStorage.removeItem("setup_token")
+      sessionStorage.removeItem("recovery_codes")
+      useAuthStore.getState().setSetupComplete(true)
+      navigate("/login", { replace: true })
+    } else {
+      useToastStore.getState().addToast("Setup completed but finish confirmation failed — try logging in", "info")
+      sessionStorage.removeItem("setup_token")
+      sessionStorage.removeItem("recovery_codes")
+      useAuthStore.getState().setSetupComplete(true)
+      navigate("/login", { replace: true })
+    }
   }, [navigate])
 
   if (checking) {
@@ -514,7 +515,8 @@ export function SetupPage() {
           <p className="text-muted-foreground mt-1 text-sm">Configure your agent</p>
         </div>
         {step > 0 && <StepIndicator current={step - 1} steps={BASE_STEPS} />}
-        <Card>
+        <Card className="relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <CardHeader>
             <CardTitle>
               {step === 0 ? "Welcome to SysDeck" : BASE_STEPS[step - 1]}

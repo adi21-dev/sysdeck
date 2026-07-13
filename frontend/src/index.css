@@ -43,6 +43,11 @@
   --glass-shadow: 0 8px 32px hsl(0 0% 0% / 0.06);
   --glow-teal: 0 0 20px hsl(173 80% 30% / 0.3);
   --glow-indigo: 0 0 20px hsl(210 80% 50% / 0.3);
+  --neu-bg: hsl(180 10% 94%);
+  --neu-shadow-light: hsl(0 0% 100% / 0.8);
+  --neu-shadow-dark: hsl(180 8% 78%);
+  --neu-inset-shadow-light: inset 2px 2px 5px hsl(180 8% 78%), inset -3px -3px 7px hsl(0 0% 100% / 0.7);
+  --glass-shine: linear-gradient(135deg, hsl(0 0% 100% / 0.25) 0%, transparent 50%);
 }
 
 .dark {
@@ -83,6 +88,11 @@
   --glass-shadow: 0 8px 32px hsl(0 0% 0% / 0.3);
   --glow-teal: 0 0 20px hsl(173 80% 40% / 0.15);
   --glow-indigo: 0 0 20px hsl(210 80% 55% / 0.15);
+  --neu-bg: hsl(180 5% 6%);
+  --neu-shadow-light: hsl(0 0% 100% / 0.03);
+  --neu-shadow-dark: hsl(0 0% 0% / 0.4);
+  --neu-inset-shadow-light: inset 2px 2px 5px hsl(0 0% 0% / 0.35), inset -3px -3px 7px hsl(0 0% 100% / 0.03);
+  --glass-shine: linear-gradient(135deg, hsl(0 0% 100% / 0.06) 0%, transparent 50%);
 }
 
 @theme inline {
@@ -187,10 +197,80 @@ html {
 
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
   border: 1px solid var(--glass-border);
   box-shadow: var(--glass-shadow);
+}
+
+.glass-strong {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow), 0 1px 0 hsl(0 0% 100% / 0.05) inset;
+}
+
+.glass-shine {
+  position: relative;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+.glass-shine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--glass-shine);
+  pointer-events: none;
+}
+
+.glass-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-hover:hover {
+  background: hsl(0 0% 100% / 0.65);
+  border-color: hsl(0 0% 100% / 0.35);
+  box-shadow: var(--glass-shadow), 0 8px 40px hsl(0 0% 0% / 0.08);
+  transform: translateY(-1px);
+}
+
+.dark .glass-hover:hover {
+  background: hsl(0 0% 100% / 0.06);
+  border-color: hsl(0 0% 100% / 0.08);
+  box-shadow: var(--glass-shadow), 0 8px 40px hsl(0 0% 0% / 0.4);
+}
+
+.neu {
+  background: var(--neu-bg);
+  box-shadow: 4px 4px 10px var(--neu-shadow-dark), -4px -4px 10px var(--neu-shadow-light);
+  border: none;
+}
+
+.neu-inset {
+  background: var(--neu-bg);
+  box-shadow: var(--neu-inset-shadow-light);
+  border: none;
+}
+
+.neu-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--neu-bg);
+  box-shadow: 4px 4px 10px var(--neu-shadow-dark), -4px -4px 10px var(--neu-shadow-light);
+  border: none;
+}
+
+.neu-hover:active {
+  box-shadow: var(--neu-inset-shadow-light);
+}
+
+.dark .neu-hover:active {
+  box-shadow: inset 2px 2px 5px hsl(0 0% 0% / 0.35), inset -3px -3px 7px hsl(0 0% 100% / 0.03);
 }
 
 .glow-teal {

@@ -43,7 +43,19 @@ export function ProtectedRoute() {
     checkAuth()
   }, [isAuthenticated, setAuthenticated, setLocal])
 
-  if (checking) return null
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center"
+        style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(173 80% 30% / 0.08) 0%, transparent 60%), var(--background)" }}>
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+          <p className="text-muted-foreground">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />
   return <Outlet />
 }

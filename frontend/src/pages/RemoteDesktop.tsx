@@ -103,7 +103,8 @@ function TrackpadTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
+      <Card className="p-4 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div
           ref={padRef}
           // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
@@ -183,7 +184,8 @@ function KeyboardTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Type Text</h3>
         <div className="flex gap-2">
           <Input
@@ -196,7 +198,8 @@ function KeyboardTab() {
           <Button onClick={sendType} disabled={!connected}>Send</Button>
         </div>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Hotkeys</h3>
         <div className="flex gap-2 flex-wrap">
           {hotkeys.map((h) => (
@@ -206,7 +209,8 @@ function KeyboardTab() {
           ))}
         </div>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Media Keys</h3>
         <div className="flex gap-2 flex-wrap">
           {["play_pause", "next", "prev", "volume_up", "volume_down", "mute"].map((k) => (
@@ -252,7 +256,8 @@ function ClipboardTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Remote Clipboard</h3>
         <pre className="bg-muted p-3 rounded text-sm max-h-40 overflow-auto whitespace-pre-wrap break-words">
           {remoteText || "(empty)"}
@@ -261,7 +266,8 @@ function ClipboardTab() {
           Refresh
         </Button>
       </Card>
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-medium">Push to Remote Clipboard</h3>
         <div className="flex gap-2">
           <Input
@@ -314,7 +320,8 @@ function VisionTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3">
+      <Card className="p-4 space-y-3 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex gap-2 items-center flex-wrap">
           <Button onClick={takeScreenshot} disabled={!connected || loading}>
             {loading ? "Capturing..." : "Take Screenshot"}
@@ -367,7 +374,8 @@ function BrowserTab() {
   }, [url, connected, addToast])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <h3 className="text-sm font-medium">Open URL in Remote Browser</h3>
       <div className="flex gap-2">
         <Input
@@ -424,7 +432,8 @@ function DisksTab() {
   useEffect(() => { fetchDisks() }, [fetchDisks])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Storage Drives</h3>
         <Button size="sm" variant="outline" onClick={fetchDisks} disabled={!connected}>Refresh</Button>
@@ -474,7 +483,8 @@ function ProcessesTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Top Processes (by CPU)</h3>
         <Button size="sm" variant="outline" onClick={fetchProcs} disabled={!connected}>Refresh</Button>
@@ -521,7 +531,8 @@ function SessionsTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">User Sessions</h3>
         <Button size="sm" variant="outline" onClick={fetchSessions} disabled={!connected}>Refresh</Button>
@@ -574,7 +585,8 @@ function WindowsTab() {
   }, [refresh])
 
   return (
-    <Card className="p-4 space-y-3">
+    <Card className="p-4 space-y-3 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Open Windows ({windows.length})</h3>
         <Button size="sm" variant="outline" onClick={refresh} disabled={!connected}>Refresh</Button>

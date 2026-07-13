@@ -18,7 +18,9 @@ import {
   SkipForward,
   Monitor,
   Loader2,
-  Sliders
+  Sliders,
+  Bluetooth,
+  Play
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -261,7 +263,7 @@ export function ControlsPage() {
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       {/* Banner: Pending scheduled actions */}
       {pendingAction && (
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 backdrop-blur-sm p-5 animate-pulse">
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-destructive/20 bg-destructive/5 backdrop-blur-sm saturate-[1.4] p-5 animate-pulse">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
               <Power className="h-5 w-5 text-destructive" />
@@ -281,8 +283,9 @@ export function ControlsPage() {
       )}
 
       {/* 1. Mobile-Style Quick Toggles Grid */}
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider">Quick Toggles</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider relative">Quick Toggles</h3>
         {!toggles ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -295,13 +298,13 @@ export function ControlsPage() {
             <button
               onClick={() => handleToggle("wifi", !toggles.wifi)}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 toggles.wifi
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10"
-                  : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                 {toggles.wifi ? <Wifi className="h-5 w-5" /> : <WifiOff className="h-5 w-5" />}
               </div>
               <span className="font-medium text-xs">Wi-Fi</span>
@@ -312,14 +315,14 @@ export function ControlsPage() {
             <button
               onClick={() => handleToggle("bluetooth", !toggles.bluetooth)}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 toggles.bluetooth
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10"
-                  : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
-                <BluetoothIcon className="h-5 w-5" />
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
+                <Bluetooth className="h-5 w-5" />
               </div>
               <span className="font-medium text-xs">Bluetooth</span>
               <span className="text-[10px] text-muted-foreground mt-0.5">{toggles.bluetooth ? "Enabled" : "Disabled"}</span>
@@ -329,13 +332,13 @@ export function ControlsPage() {
             <button
               onClick={() => handleToggle("dark", !toggles.dark_mode)}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 toggles.dark_mode
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10"
-                  : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                 {toggles.dark_mode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               </div>
               <span className="font-medium text-xs">Dark Mode</span>
@@ -346,13 +349,13 @@ export function ControlsPage() {
             <button
               onClick={() => audio && setMuted(!audio.muted)}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 audio?.muted
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10"
-                  : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                 {audio?.muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
               </div>
               <span className="font-medium text-xs">Audio Muted</span>
@@ -363,13 +366,13 @@ export function ControlsPage() {
             <button
               onClick={() => handleToggle("dnd", !toggles.dnd)}
               className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center",
+                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
                 toggles.dnd
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10"
-                  : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
+                  : "neu-hover text-muted-foreground"
               )}
             >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background border mb-2">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
                 {toggles.dnd ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
               </div>
               <span className="font-medium text-xs">Do Not Disturb</span>
@@ -381,7 +384,8 @@ export function ControlsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 2. Audio Widget */}
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control</h3>
             {!audio ? (
@@ -445,7 +449,7 @@ export function ControlsPage() {
                 <SkipBack className="h-5 w-5" />
               </Button>
               <Button size="icon" variant="ghost" className="rounded-full p-2.5 bg-primary/10 hover:bg-primary/20 text-primary" onClick={() => handleMedia("play_pause")} title="Play/Pause">
-                <PlayPauseIcon className="h-5 w-5" />
+                <Play className="h-5 w-5" />
               </Button>
               <Button size="icon" variant="ghost" className="rounded-full" onClick={() => handleMedia("next")} title="Next">
                 <SkipForward className="h-5 w-5" />
@@ -462,7 +466,8 @@ export function ControlsPage() {
         </div>
 
         {/* 3. Display Widget */}
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6 flex flex-col justify-between space-y-6">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Display & Brightness</h3>
             {!display ? (
@@ -500,6 +505,8 @@ export function ControlsPage() {
                     <p className="text-xs text-muted-foreground">Reduce blue light to help sleep</p>
                   </div>
                   <button
+                    role="switch"
+                    aria-checked={display.night_light}
                     aria-label="Toggle Night Light"
                     onClick={() => {
                       setNightLight(!display.night_light).catch((err) => {
@@ -507,8 +514,8 @@ export function ControlsPage() {
                       })
                     }}
                     className={cn(
-                      "w-12 h-6 flex items-center rounded-full p-1 transition-all outline-none",
-                      display.night_light ? "bg-primary" : "bg-muted border"
+                      "w-12 h-6 flex items-center rounded-full p-1 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
+                      display.night_light ? "bg-primary shadow-[0_0_10px_hsl(173_80%_30%_/_0.3)]" : "bg-muted border shadow-inner"
                     )}
                   >
                     <div
@@ -531,8 +538,9 @@ export function ControlsPage() {
       </div>
 
       {/* 4. Power Controls & Scheduler Widget */}
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6">
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6 relative">
           <div>
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Power Management</h3>
             <p className="text-xs text-muted-foreground mt-0.5">Shutdown, restart, or lock your computer remotely</p>
@@ -550,20 +558,21 @@ export function ControlsPage() {
               key={card.action}
               onClick={() => !pendingAction && handlePowerAction(card.action)}
               className={cn(
-                "rounded-2xl border border-border/50 bg-card backdrop-blur-sm p-5 text-left transition-all duration-200 hover:bg-accent/40 group relative overflow-hidden",
+                "rounded-2xl border border-border/50 bg-card backdrop-blur-sm saturate-[1.4] p-5 text-left transition-all duration-200 hover:bg-accent/40 group relative overflow-hidden hover:-translate-y-0.5 hover:shadow-lg",
                 card.destructive ? "hover:border-destructive/30" : "hover:border-primary/30",
                 pendingAction && "opacity-45 cursor-not-allowed"
               )}
               disabled={pendingAction != null}
             >
+              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
               <div className={cn(
-                "w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors",
+                "w-10 h-10 rounded-xl flex items-center justify-center mb-3 transition-colors relative",
                 card.destructive ? "bg-destructive/10 group-hover:bg-destructive/15" : "bg-primary/10 group-hover:bg-primary/15"
               )}>
                 <card.icon className={cn("w-5 h-5", card.destructive ? "text-destructive" : "text-primary")} />
               </div>
-              <h4 className="font-semibold text-sm">{card.label}</h4>
-              <p className="text-[11px] text-muted-foreground leading-tight mt-1">{card.desc}</p>
+              <h4 className="font-semibold text-sm relative">{card.label}</h4>
+              <p className="text-[11px] text-muted-foreground leading-tight mt-1 relative">{card.desc}</p>
             </button>
           ))}
         </div>
@@ -571,8 +580,8 @@ export function ControlsPage() {
 
       {/* Scheduled Power Modal */}
       {isScheduleOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-card backdrop-blur-2xl border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm saturate-[1.4] flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-card backdrop-blur-2xl saturate-[1.6] border border-border/50 rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center border-b pb-3 mb-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Power className="h-5 w-5 text-primary" />
@@ -647,11 +656,13 @@ export function ControlsPage() {
                   <p className="text-[10px] text-muted-foreground">Force close running programs immediately</p>
                 </div>
                 <button
+                  role="switch"
+                  aria-checked={scheduleForce}
                   aria-label="Force Action"
                   onClick={() => setScheduleForce(!scheduleForce)}
                   className={cn(
-                    "w-10 h-5 flex items-center rounded-full p-0.5 transition-all outline-none",
-                    scheduleForce ? "bg-destructive" : "bg-muted border"
+                    "w-10 h-5 flex items-center rounded-full p-0.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
+                    scheduleForce ? "bg-destructive shadow-[0_0_8px_hsl(0_80%_55%_/_0.3)]" : "bg-muted border shadow-inner"
                   )}
                 >
                   <div
@@ -688,43 +699,4 @@ export function ControlsPage() {
   )
 }
 
-// Icon Helper Components
 
-function BluetoothIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="m7 7 10 10-5 5V2l5 5L7 17" />
-    </svg>
-  )
-}
-
-function PlayPauseIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-      <path d="M4 18V6l10 6-10 6Z" />
-    </svg>
-  )
-}

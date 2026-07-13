@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import {
   Download, Trash2, Pencil, RefreshCw,
   Grid3X3, List, Folder, File, ChevronRight, X, Upload, Plus, FolderOpen,
@@ -119,8 +120,9 @@ function RootSelector({ paths, onNavigate }: { paths: string[]; onNavigate: (p: 
 }
 
 export function FilesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const currentPath = searchParams.get("path") || IS_HOME
   const {
-    currentPath,
     entries,
     selected,
     viewMode,
@@ -128,7 +130,6 @@ export function FilesPage() {
     loading,
     error,
     allowedPaths,
-    setCurrentPath,
     setEntries,
     setViewMode,
     toggleSelected,
@@ -157,7 +158,6 @@ export function FilesPage() {
       try {
         const data = await listPath(path)
         if (data.success) {
-          setCurrentPath(fromApiPath(data.path))
           setEntries((data.entries || []).map((e: FileEntry) => ({ ...e, path: fromApiPath(e.path) })))
         } else {
           setError(data.error || "Failed to list directory")
@@ -167,23 +167,23 @@ export function FilesPage() {
       }
       setLoading(false)
     },
-    [setCurrentPath, setEntries, setLoading, setError],
+    [setEntries, setLoading, setError],
   )
 
   useEffect(() => {
     fetch("/api/settings/paths").then((r) => r.json()).then((d) => {
       if (d.success && d.allowed?.length > 0) {
-        const paths: string[] = d.allowed
-        setAllowedPaths(paths)
-        if (paths.length === 1) {
-          const first = fromApiPath(paths[0])
-          handleNavigate(first)
+        setAllowedPaths(d.allowed)
+        if (!searchParams.has("path") && d.allowed.length === 1) {
+          setSearchParams({ path: fromApiPath(d.allowed[0]) }, { replace: true })
         }
       } else {
         setAllowedPaths([])
-        setError("No allowed paths configured. Go to Settings to add file access paths.")
+        if (!searchParams.has("path")) {
+          setError("No allowed paths configured. Go to Settings to add file access paths.")
+        }
       }
-    }).catch(() => {})
+    }).catch(() => setError("Failed to load allowed paths"))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -191,19 +191,20 @@ export function FilesPage() {
     if (currentPath !== IS_HOME) {
       loadDir(currentPath)
     }
-  }, [loadDir, currentPath])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath])
 
   const handleNavigate = useCallback(
     (path: string) => {
       clearSelection()
+      setSearchParams(path === IS_HOME ? {} : { path }, { replace: true })
       if (path === IS_HOME) {
-        setCurrentPath(IS_HOME)
         setEntries([])
       } else {
         loadDir(path)
       }
     },
-    [loadDir, clearSelection, setCurrentPath, setEntries],
+    [loadDir, clearSelection, setSearchParams, setEntries],
   )
 
 
@@ -304,6 +305,7 @@ export function FilesPage() {
                 onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
                 className="p-2 rounded-xl border border-border/50 bg-background/50 backdrop-blur-sm hover:bg-accent transition-all duration-200"
                 title={viewMode === "table" ? "Grid view" : "List view"}
+                aria-label={viewMode === "table" ? "Switch to grid view" : "Switch to list view"}
               >
                 {viewMode === "table" ? <Grid3X3 className="h-4 w-4" /> : <List className="h-4 w-4" />}
               </button>
@@ -316,7 +318,7 @@ export function FilesPage() {
       </div>
 
       {error && (
-        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
+        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
           <span>{error}</span>
           <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
         </div>
@@ -327,7 +329,8 @@ export function FilesPage() {
       ) : currentPath === IS_HOME ? null : (
         <>
       {uploads.length > 0 && (
-        <div className="space-y-2 rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
+        <div className="relative space-y-2 rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-4 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           {uploads.map((u) => (
             <div key={u.name} className="flex items-center gap-3 text-sm">
               <span className="truncate max-w-[200px]">{u.name}</span>
@@ -341,7 +344,7 @@ export function FilesPage() {
       )}
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-accent/50 backdrop-blur-sm border border-border/50">
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-accent/50 backdrop-blur-sm saturate-[1.4] border border-border/50">
           <span className="text-sm text-muted-foreground mr-2">{selected.size} selected</span>
           <Button variant="outline" size="sm" onClick={handleBulkDelete}><Trash2 className="h-4 w-4 mr-1" /> Delete</Button>
           <Button variant="ghost" size="sm" onClick={clearSelection}>Clear</Button>
@@ -353,63 +356,68 @@ export function FilesPage() {
           <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading...
         </div>
       ) : viewMode === "table" ? (
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl overflow-hidden">
-          <div className="divide-y divide-border/20">
-            {sorted.map((entry) => (
-              <div
-                key={entry.path}
-                className={cn(
-                  "flex items-center gap-3 p-4 hover:bg-accent/50 transition-colors group cursor-pointer",
-                  selected.has(entry.path) && "bg-accent",
-                )}
-                onDoubleClick={() => handleDoubleClick(entry)}
-                onTouchStart={(e) => handleTouchStart(e, entry.path)}
-                onTouchEnd={handleTouchEnd}
-              >
-                {entry.is_dir ? (
-                  <Folder className="w-5 h-5 text-primary shrink-0" />
-                ) : (
-                  <File className="w-5 h-5 text-muted-foreground shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  {renaming === entry.path ? (
-                    <Input
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={commitRename}
-                      onKeyDown={(e) => e.key === "Enter" && commitRename()}
-                      className="h-7 text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm font-medium truncate">{entry.name}</p>
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+          <table className="w-full">
+            <tbody className="divide-y divide-border/20">
+              {sorted.map((entry) => (
+                <tr
+                  key={entry.path}
+                  className={cn(
+                    "hover:bg-accent/50 transition-colors group cursor-pointer",
+                    selected.has(entry.path) && "bg-accent",
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    {entry.is_dir ? "Folder" : `${formatSize(entry.size)} • `}Modified {formatTime(entry.modified)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {!entry.is_dir && (
-                    <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDownload(entry)} title="Download">
-                      <Download className="w-4 h-4" />
+                  onDoubleClick={() => handleDoubleClick(entry)}
+                  onTouchStart={(e) => handleTouchStart(e, entry.path)}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  <td className="p-4 w-[1%] whitespace-nowrap align-top">
+                    {entry.is_dir ? (
+                      <Folder className="w-5 h-5 text-primary" />
+                    ) : (
+                      <File className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </td>
+                  <td className="p-4 w-full align-top">
+                    {renaming === entry.path ? (
+                      <Input
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => e.key === "Enter" && commitRename()}
+                        className="h-7 text-sm"
+                      />
+                    ) : (
+                      <p className="text-sm font-medium truncate">{entry.name}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {entry.is_dir ? "Folder" : `${formatSize(entry.size)} • `}Modified {formatTime(entry.modified)}
+                    </p>
+                  </td>
+                  <td className="p-4 w-[1%] whitespace-nowrap align-top opacity-0 group-hover:opacity-100 transition-opacity">
+                    {!entry.is_dir && (
+                      <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDownload(entry)} title="Download" aria-label={`Download ${entry.name}`}>
+                        <Download className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button className="p-1.5 rounded hover:bg-accent" onClick={() => startRename(entry)} title="Rename" aria-label={`Rename ${entry.name}`}>
+                      <Pencil className="w-4 h-4" />
                     </button>
-                  )}
-                  <button className="p-1.5 rounded hover:bg-accent" onClick={() => startRename(entry)} title="Rename">
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDelete(entry)} title="Delete">
-                    <Trash2 className="w-4 h-4 text-destructive" />
-                  </button>
-                </div>
-              </div>
-            ))}
-            {entries.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
-                <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
-                <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
-              </div>
-            )}
-          </div>
+                    <button className="p-1.5 rounded hover:bg-accent" onClick={() => handleDelete(entry)} title="Delete" aria-label={`Delete ${entry.name}`}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {entries.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
+              <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
+              <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -450,6 +458,7 @@ export function FilesPage() {
         onClick={() => fileInputRef.current?.click()}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg hover:opacity-90 active:scale-[0.95] transition-all duration-200"
         title="Upload file"
+        aria-label="Upload file"
       >
         <Plus className="h-5 w-5" />
       </button>

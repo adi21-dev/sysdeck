@@ -143,34 +143,37 @@ export function SettingsPage() {
         setSessions(d.sessions || [])
         setCurrentJti(d.current_jti || null)
       }
-    }).catch(() => {})
+    }).catch(() => showError("Failed to load sessions"))
   }
 
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
       if (d.success) setPort(String(d.port))
-    }).catch(() => {})
+    }).catch(() => showError("Failed to load port setting"))
     fetch("/api/settings/paths").then((r) => r.json()).then((d) => {
       if (d.success) {
         setAllowedPaths(d.allowed || [])
         setBlockedPaths(d.blocked || [])
       }
-    }).catch(() => {})
+    }).catch(() => showError("Failed to load path settings"))
     fetch("/api/tunnel/status").then((r) => r.json()).then((d) => {
       if (d.success) tunnel.setTunnel({ status: d.status, url: d.url ?? null })
-    }).catch(() => {})
+    }).catch(() => showError("Failed to load tunnel status"))
     fetch("/api/settings/relay").then((r) => r.json()).then((d) => {
       if (d.success) setRelayEnabled(d.enabled)
-    }).catch(() => {})
+    }).catch(() => showError("Failed to load relay settings"))
     fetchSessions()
   }, [tunnel])
 
   const showError = (msg: string) => { setError(msg); setSuccess(null) }
   const showSuccess = (msg: string) => { setSuccess(msg); setError(null) }
 
+  const [isSubmittingPw, setIsSubmittingPw] = useState(false)
+
   const handleChangePassword = async () => {
     if (newPw !== confirmPw) { showError("Passwords do not match"); return }
     if (newPw.length < 8) { showError("Password must be at least 8 characters"); return }
+    setIsSubmittingPw(true)
     try {
       const res = await fetch("/api/settings/change-password", {
         method: "POST",
@@ -185,6 +188,7 @@ export function SettingsPage() {
         showError(data.message || "Failed")
       }
     } catch { showError("Network error") }
+    finally { setIsSubmittingPw(false) }
   }
 
   const handleResetTotp = async () => {
@@ -288,7 +292,10 @@ export function SettingsPage() {
   const handleExportDb = () => { window.open("/api/settings/export-db", "_blank") }
   const handleDownloadLogs = () => { window.open("/api/settings/download-logs", "_blank") }
 
+  const [isSavingPaths, setIsSavingPaths] = useState(false)
+
   const handleSavePaths = async () => {
+    setIsSavingPaths(true)
     try {
       const res = await fetch("/api/settings/paths", {
         method: "POST",
@@ -299,11 +306,15 @@ export function SettingsPage() {
       if (data.success) showSuccess("Paths saved")
       else showError(data.message || "Failed")
     } catch { showError("Network error") }
+    finally { setIsSavingPaths(false) }
   }
+
+  const [isSavingPort, setIsSavingPort] = useState(false)
 
   const handleSavePort = async () => {
     const p = parseInt(port, 10)
     if (isNaN(p) || p < 1024 || p > 65535) { showError("Port must be 1024-65535"); return }
+    setIsSavingPort(true)
     try {
       const res = await fetch("/api/settings/port", {
         method: "POST",
@@ -314,6 +325,7 @@ export function SettingsPage() {
       if (data.success) showSuccess(data.message || "Port saved")
       else showError(data.message || "Failed")
     } catch { showError("Network error") }
+    finally { setIsSavingPort(false) }
   }
 
   const handleTunnelStart = async () => {
@@ -366,20 +378,21 @@ export function SettingsPage() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
           <AlertTriangle className="h-4 w-4" />
           <span>{error}</span>
         </div>
       )}
       {success && (
-        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm p-3 text-sm text-green-400 border border-green-500/10">
+        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-green-400 border border-green-500/10">
           <Check className="h-4 w-4" />
           <span>{success}</span>
         </div>
       )}
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Change Password</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Change Password</h3>
         <div className="space-y-4 max-w-md">
           <div>
             <label htmlFor="settings-current-pw" className="block text-sm font-medium mb-2">Current Password</label>
@@ -419,12 +432,13 @@ export function SettingsPage() {
               className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
             />
           </div>
-          <Button onClick={handleChangePassword} size="sm"><Key className="h-4 w-4 mr-1" /> Update Password</Button>
+          <Button onClick={handleChangePassword} size="sm" disabled={isSubmittingPw}><Key className="h-4 w-4 mr-1" /> {isSubmittingPw ? "Updating..." : "Update Password"}</Button>
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Two-Factor Authentication</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Two-Factor Authentication</h3>
         {totpStep === "idle" && (
           <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
             <div>
@@ -446,8 +460,9 @@ export function SettingsPage() {
         )}
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Recovery Codes</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Recovery Codes</h3>
         {recoveryCodes.length > 0 && showCodes && (
           <div className="p-4 rounded-lg border bg-muted/50 mb-4">
             <div className="grid grid-cols-2 gap-2 font-mono text-sm">
@@ -469,8 +484,9 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Active Sessions</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Active Sessions</h3>
         <div className="space-y-3">
           {sessions.length === 0 && (
             <p className="text-sm text-muted-foreground">No active sessions</p>
@@ -509,8 +525,9 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Remote Access</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Remote Access</h3>
         <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50 mb-4">
           <div>
             <p className="font-medium">Cloudflare Tunnel</p>
@@ -562,13 +579,15 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Wake-on-LAN</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Wake-on-LAN</h3>
         <WolSection />
       </div>
 
-      <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-6">
-        <h3 className="font-semibold mb-4">Configuration</h3>
+      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        <h3 className="font-semibold mb-4 relative">Configuration</h3>
         <div className="space-y-6">
           <div className="space-y-3">
             <span className="text-sm font-medium block">File Access Paths</span>
@@ -586,7 +605,7 @@ export function SettingsPage() {
                   {allowedPaths.map((p, i) => (
                     <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
                       <span className="truncate">{p}</span>
-                      <button onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="text-destructive ml-1 shrink-0">×</button>
+                      <button onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="w-10 h-10 flex items-center justify-center text-destructive shrink-0">×</button>
                     </div>
                   ))}
                 </div>
@@ -604,20 +623,20 @@ export function SettingsPage() {
                   {blockedPaths.map((p, i) => (
                     <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
                       <span className="truncate">{p}</span>
-                      <button onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="text-destructive ml-1 shrink-0">×</button>
+                      <button onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="w-10 h-10 flex items-center justify-center text-destructive shrink-0">×</button>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-            <Button onClick={handleSavePaths} size="sm">Save Paths</Button>
+            <Button onClick={handleSavePaths} size="sm" disabled={isSavingPaths}>{isSavingPaths ? "Saving..." : "Save Paths"}</Button>
           </div>
 
           <div className="space-y-3">
             <label htmlFor="local-server-port" className="text-sm font-medium">Local Server Port</label>
             <div className="flex gap-2">
               <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
-              <Button onClick={handleSavePort} size="sm">Save</Button>
+              <Button onClick={handleSavePort} size="sm" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save"}</Button>
             </div>
             <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
           </div>

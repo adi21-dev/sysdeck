@@ -1,9 +1,9 @@
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, memo } from "react"
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
 } from "recharts"
-import { Cpu, MemoryStick, Thermometer, HardDrive, Activity, BatteryCharging, Zap, ArrowDown, ArrowUp, Gauge } from "lucide-react"
-import { useTelemetryStore } from "@/lib/store"
+import { Cpu, MemoryStick, Thermometer, HardDrive, Activity, BatteryCharging, Zap, ArrowDown, ArrowUp, Gauge, Loader2 } from "lucide-react"
+import { useTelemetryStore, useToastStore } from "@/lib/store"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -22,10 +22,11 @@ const RANGES = [
   { label: "7d", value: "7d" },
 ]
 
-function StatCard({ icon: Icon, label, children, className }: { icon: any; label: string; children: React.ReactNode; className?: string }) {
+const StatCard = memo(function StatCard({ icon: Icon, label, children, className }: { icon: any; label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("rounded-xl border border-border/50 bg-card backdrop-blur-xl p-5 hover:border-border/80 transition-all duration-300", className)}>
-      <div className="flex items-center justify-between mb-4">
+    <div className={cn("relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden", className)}>
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      <div className="flex items-center justify-between mb-4 relative">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Icon className="w-4 h-4 text-primary" />
@@ -36,7 +37,7 @@ function StatCard({ icon: Icon, label, children, className }: { icon: any; label
       </div>
     </div>
   )
-}
+})
 
 function GradientArea({ id, color }: { id: string; color: string }) {
   return (
@@ -49,9 +50,10 @@ function GradientArea({ id, color }: { id: string; color: string }) {
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-5 hover:border-border/80 transition-all duration-300">
-      <h3 className="text-sm font-semibold mb-4 text-muted-foreground">{title}</h3>
-      <div className="h-64">
+    <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      <h3 className="text-sm font-semibold mb-4 text-muted-foreground relative">{title}</h3>
+      <div className="h-64 relative">
         {children}
       </div>
     </div>
@@ -88,7 +90,7 @@ export function DashboardPage() {
       .then((data) => {
         if (Array.isArray(data)) setHistorical(data)
       })
-      .catch(() => {})
+      .catch(() => useToastStore.getState().addToast("Failed to load history", "error"))
       .finally(() => setLoadingHistory(false))
   }, [range])
 
@@ -141,15 +143,26 @@ export function DashboardPage() {
             <p className="text-sm text-muted-foreground">Real-time system telemetry</p>
           </div>
         </div>
-        <div className="flex gap-1 bg-muted/50 p-1 rounded-lg border border-border/30">
+        <div className="flex gap-1 bg-muted/50 backdrop-blur-sm p-1 rounded-xl border border-border/30">
           {RANGES.map((r) => (
-            <Button key={r.value} size="sm" variant={range === r.value ? "default" : "ghost"} onClick={() => setRange(r.value)} disabled={loadingHistory} className="rounded-md">
+            <Button key={r.value} size="sm" variant={range === r.value ? "default" : "ghost"} onClick={() => setRange(r.value)} disabled={loadingHistory} className="rounded-lg">
               {r.label}
             </Button>
           ))}
         </div>
       </div>
 
+      {!loadingHistory && !current && chartData.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          </div>
+          <h2 className="text-xl font-semibold mb-2">Waiting for telemetry data</h2>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Collecting first system metrics. This usually takes a few seconds after connecting.
+          </p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard icon={Cpu} label="CPU Usage">
           <span className="text-2xl font-bold tracking-tight">{cpu ?? "—"}<span className="text-sm text-muted-foreground font-normal">%</span></span>
@@ -207,27 +220,30 @@ export function DashboardPage() {
           </div>
         </StatCard>
       </div>
+      )}
 
       {ramPct != null && (
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-5">
-          <div className="flex items-center justify-between mb-3">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+          <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Memory Usage</span>
             <span className="text-sm font-medium tabular-nums">{ramPct}%</span>
           </div>
-          <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden">
-            <div className="bg-primary h-2 rounded-full transition-all duration-500" style={{ width: `${ramPct}%` }} />
+          <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden relative">
+            <div className="bg-primary h-2 rounded-full transition-all duration-500 shadow-[0_0_6px_hsl(173_80%_30%_/_0.4)]" style={{ width: `${ramPct}%` }} />
           </div>
         </div>
       )}
 
       {diskPct != null && (
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-5">
-          <div className="flex items-center justify-between mb-3">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+          <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Disk Usage</span>
             <span className="text-sm font-medium tabular-nums">{diskPct}%</span>
           </div>
-          <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden">
-            <div className="bg-chart-3 h-2 rounded-full transition-all duration-500" style={{ width: `${diskPct}%` }} />
+          <div className="w-full bg-muted/50 rounded-full h-2 overflow-hidden relative">
+            <div className="bg-chart-3 h-2 rounded-full transition-all duration-500 shadow-[0_0_6px_hsl(40_90%_50%_/_0.4)]" style={{ width: `${diskPct}%` }} />
           </div>
         </div>
       )}

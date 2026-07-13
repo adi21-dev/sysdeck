@@ -173,7 +173,8 @@ export function ScriptsPage() {
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 space-y-4">
+          <div className="relative rounded-xl border bg-card backdrop-blur-xl saturate-[1.4] p-4 space-y-4 overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
             <div className="flex flex-col sm:flex-row gap-3">
               <select
                 value={predefined}
@@ -234,10 +235,11 @@ export function ScriptsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-border/50 bg-card backdrop-blur-xl p-4">
+        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-4 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold">Output</h3>
+              <h3 className="text-sm font-semibold relative">Output</h3>
               {statusBadge()}
             </div>
             <button
@@ -275,7 +277,7 @@ export function ScriptsPage() {
       </div>
 
       {localError && (
-        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm p-3 text-sm text-destructive border border-destructive/10">
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
           <AlertTriangle className="h-4 w-4" />
           <span>{localError}</span>
         </div>

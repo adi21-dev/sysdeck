@@ -1,17 +1,18 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { Monitor, AlertTriangle, Eye, EyeOff } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
+import { TotpInput } from "@/components/ui/totp-input"
 
 export function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [totp, setTotp] = useState(["", "", "", "", "", ""])
+  const [totp, setTotp] = useState("")
   const [error, setError] = useState("")
   const [checking, setChecking] = useState(true)
   const navigate = useNavigate()
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
-  const inputsRef = useRef<(HTMLInputElement | null)[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/check")
@@ -28,30 +29,15 @@ export function LoginPage() {
 
   if (checking) return null
 
-  const handleTotpChange = (index: number, value: string) => {
-    if (value.length > 1) return
-    const next = [...totp]
-    next[index] = value
-    setTotp(next)
-    if (value && index < 5) {
-      inputsRef.current[index + 1]?.focus()
-    }
-  }
-
-  const handleTotpKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !totp[index] && index > 0) {
-      inputsRef.current[index - 1]?.focus()
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError("")
+    setIsSubmitting(true)
     try {
       const res = await fetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ password, totp_code: totp.join("") }),
+        body: new URLSearchParams({ password, totp_code: totp }),
       })
       const data = await res.json()
       if (data.success) {
@@ -64,6 +50,8 @@ export function LoginPage() {
       }
     } catch {
       setError("Connection error")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -78,7 +66,8 @@ export function LoginPage() {
         <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-chart-2/5 blur-3xl animate-float" style={{ animationDelay: "-3s" }} />
       </div>
       <div className="w-full max-w-md relative">
-        <div className="rounded-2xl border border-border/50 bg-card backdrop-blur-2xl p-8 shadow-lg">
+        <div className="relative rounded-2xl border border-border/50 bg-card backdrop-blur-2xl saturate-[1.6] p-8 shadow-lg overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent pointer-events-none dark:from-white/5" />
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-5 glow-teal">
               <Monitor className="w-7 h-7 text-primary" />
@@ -109,24 +98,8 @@ export function LoginPage() {
               </div>
             </div>
             <div>
-              <span className="block text-sm font-medium mb-2">Authentication Code</span>
-              <div className="flex gap-2 justify-center">
-                {totp.map((digit, i) => (
-                  <input
-                    key={i}
-                    ref={(el) => { inputsRef.current[i] = el }}
-                    type="text"
-                    maxLength={1}
-                    value={digit}
-                    onChange={(e) => handleTotpChange(i, e.target.value)}
-                    onKeyDown={(e) => handleTotpKeyDown(i, e)}
-                    className="w-11 h-12 text-center text-lg font-bold rounded-xl border border-input bg-background/50 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-primary/50 transition-all"
-                    inputMode="numeric"
-                    autoComplete={i === 0 ? "one-time-code" : "off"}
-                    required
-                  />
-                ))}
-              </div>
+              <label htmlFor="login-totp-0" className="block text-sm font-medium mb-2">Authentication Code</label>
+              <TotpInput value={totp} onChange={setTotp} id="login-totp-0" />
             </div>
             {error && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 backdrop-blur-sm text-destructive text-sm border border-destructive/10">
@@ -134,8 +107,8 @@ export function LoginPage() {
                 <span>{error}</span>
               </div>
             )}
-            <button type="submit" className="w-full py-2.5 px-4 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-200 shadow-sm">
-              Sign In
+            <button type="submit" disabled={isSubmitting} className="w-full py-2.5 px-4 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? "Signing in..." : "Sign In"}
             </button>
           </form>
         </div>

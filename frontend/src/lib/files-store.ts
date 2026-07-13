@@ -15,7 +15,6 @@ export interface UploadState {
 }
 
 interface FilesState {
-  currentPath: string
   entries: FileEntry[]
   selected: Set<string>
   viewMode: "table" | "grid"
@@ -23,7 +22,6 @@ interface FilesState {
   loading: boolean
   error: string | null
   allowedPaths: string[]
-  setCurrentPath: (path: string) => void
   setEntries: (entries: FileEntry[]) => void
   setViewMode: (mode: "table" | "grid") => void
   toggleSelected: (path: string) => void
@@ -37,7 +35,6 @@ interface FilesState {
 }
 
 export const useFilesStore = create<FilesState>((set, get) => ({
-  currentPath: "/C:",
   entries: [],
   selected: new Set(),
   viewMode: "table",
@@ -46,7 +43,6 @@ export const useFilesStore = create<FilesState>((set, get) => ({
   error: null,
   allowedPaths: [],
   setAllowedPaths: (paths) => set({ allowedPaths: paths }),
-  setCurrentPath: (path) => set({ currentPath: path }),
   setEntries: (entries) => set({ entries }),
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleSelected: (path) => {

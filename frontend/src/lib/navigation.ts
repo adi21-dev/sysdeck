@@ -20,7 +20,7 @@ export const navItems: NavItem[] = [
   { to: "/files", icon: FolderOpen, label: "Files" },
   { to: "/scripts", icon: Terminal, label: "Scripts" },
   { to: "/remote", icon: MousePointer2, label: "Remote Desktop" },
-  { to: "/control-center", icon: Smartphone, label: "Control Center" },
+  { to: "/controls", icon: Smartphone, label: "Controls" },
   { to: "/audit", icon: ScrollText, label: "Audit" },
 ]
 

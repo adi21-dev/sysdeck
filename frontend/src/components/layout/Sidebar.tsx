@@ -33,8 +33,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
                 isActive
-                  ? "bg-primary/10 text-primary shadow-sm"
-                  : "text-sidebar-foreground hover:text-foreground hover:bg-accent/50"
+                  ? "bg-primary/10 text-primary shadow-sm backdrop-blur-sm"
+                  : "text-sidebar-foreground hover:text-foreground hover:bg-accent/50 hover:backdrop-blur-sm"
               )}
             >
               <item.icon className={cn("h-4 w-4 transition-colors", isActive && "text-primary")} />
@@ -47,7 +47,7 @@ export function Sidebar() {
       <div className="p-3 border-t border-border/30 space-y-0.5">
         <button
           onClick={toggle}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:text-foreground hover:bg-accent/50 transition-all duration-200"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:text-foreground hover:bg-accent/50 hover:backdrop-blur-sm transition-all duration-200"
         >
           <Sun className="h-4 w-4 hidden dark:block" />
           <Moon className="h-4 w-4 block dark:hidden" />
@@ -60,7 +60,7 @@ export function Sidebar() {
             useAuthStore.getState().setAuthenticated(false)
             navigate("/login")
           }}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive/80 hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-destructive/80 hover:text-destructive hover:bg-destructive/10 hover:backdrop-blur-sm transition-all duration-200"
         >
           <LogOut className="h-4 w-4" />
           Sign Out

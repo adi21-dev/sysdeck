@@ -1,9 +1,9 @@
 import { Outlet, useLocation } from "react-router-dom"
-import { Menu } from "lucide-react"
+import { Suspense } from "react"
 import { Sidebar } from "./Sidebar"
 import { BottomNav } from "./BottomNav"
 import { useAuthStore, useConnectionStore, useTunnelStore, useToastStore } from "@/lib/store"
-import { Copy, Check } from "lucide-react"
+import { Copy, Check, Loader2 } from "lucide-react"
 import { useState } from "react"
 
 const PAGE_TITLES: Record<string, string> = {
@@ -11,7 +11,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/files": "Files",
   "/scripts": "Scripts",
   "/controls": "Controls",
-  "/control-center": "Control Center",
   "/audit": "Audit Log",
   "/settings": "Settings",
   "/remote": "Remote Desktop",
@@ -46,14 +45,14 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen">
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:p-3 focus:bg-background focus:z-50 focus:text-foreground focus:font-medium">
+        Skip to content
+      </a>
       <Sidebar />
-      <main className="flex-1 ml-0 md:ml-60 overflow-auto pb-16 md:pb-0">
+      <main id="main-content" className="flex-1 ml-0 md:ml-60 overflow-auto pb-16 md:pb-0">
         <header className="sticky top-0 z-30 border-b bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-4">
-              <button className="md:hidden p-2 -ml-2 rounded-lg hover:bg-accent transition-colors" onClick={() => addToast("Use bottom navigation", "info")}>
-                <Menu className="h-5 w-5" />
-              </button>
               <h2 className="text-lg font-semibold tracking-tight">{pageTitle}</h2>
             </div>
             <div className="flex items-center gap-4">
@@ -67,6 +66,7 @@ export function AppLayout() {
                 <button
                   onClick={handleCopy}
                   className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border/50 bg-background/50 backdrop-blur-sm text-sm font-medium hover:bg-accent transition-all duration-200 active:scale-[0.97]"
+                  aria-label={copied ? "Remote URL copied" : "Copy remote URL"}
                 >
                   {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   {copied ? "Copied!" : "Copy Remote URL"}
@@ -76,7 +76,13 @@ export function AppLayout() {
           </div>
         </header>
         <div className="p-4 md:p-6 lg:p-8 animate-fade-in">
-          <Outlet />
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-24 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading...
+            </div>
+          }>
+            <Outlet />
+          </Suspense>
         </div>
       </main>
       <BottomNav />
