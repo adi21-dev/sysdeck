@@ -120,7 +120,7 @@ export function AuditPage() {
 
   return (
     <div className="space-y-4">
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-4 overflow-hidden">
+      <div className="glass-card p-4 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex flex-col sm:flex-row gap-3">
           <FilterSelect value={filters.event} onChange={(v) => handleFilterChange("event", v)}>
@@ -147,7 +147,7 @@ export function AuditPage() {
         </div>
       )}
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] overflow-hidden">
+      <div className="glass-card overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         {loading && entries.length === 0 ? (
           <div className="overflow-x-auto">
@@ -173,7 +173,13 @@ export function AuditPage() {
             </table>
           </div>
         ) : entries.length === 0 && !loading ? (
-          <div className="py-16 text-center text-muted-foreground">No audit entries match your filters</div>
+          <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+              <ScrollText className="w-7 h-7 text-muted-foreground/60" />
+            </div>
+            <h3 className="text-base font-semibold text-foreground mb-1">No audit entries found</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">No entries match your current filters. Try adjusting the event type or date range.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

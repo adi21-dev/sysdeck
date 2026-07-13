@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **UI/UX Hardening Design Spec**: Comprehensive spec document for fixing ~33 UX issues across the frontend, organized into 4 waves (Hardening, Accessibility, Architecture, Polish). See `.opencode/plans/2026-07-13-ui-ux-hardening-design.md`.
+- **Teal Glassmorphism Theme**: Complete visual redesign with teal color palette, frosted glass surfaces (`glass-card`, `glass-panel`), and gradient shine overlays.
+- **Dashboard Components**: New `StatCard` and `ChartCard` components for telemetry display with recharts integration.
+- **TOTP Input Component**: New `totp-input` component for one-time password entry.
+- **Lazy Loading**: Page components are now lazy-loaded for improved initial bundle size.
+- **Neumorphism Effects**: CSS variables and utility classes (`.neu`, `.neu-inset`, `.neu-hover`) with `neu` variant added to the `Button` component.
+- **Error State Handling**: Root redirect now displays an error state with a retry button on failure.
+- **Saved Scripts**: New `saved_scripts` backend module with CRUD API routes (`GET/POST/PUT/DELETE /api/scripts/saved`), and frontend `info-button` UI component.
+- **Custom Script Timeout**: `ExecuteRequest` now accepts an optional `timeout_seconds` field — frontend sends custom timeout, backend passes it to `run_script`.
+- **Background Daemon Mode**: New `--daemon` CLI flag spawns a detached process with no console. Runs the server and tray without any terminal output — the browser opens automatically on startup.
+- **Telemetry Rounding**: CPU usage and temperature values are now rounded to one decimal place for cleaner display.
+
+### Changed
+- **Visual Redesign**: All pages (Dashboard, Controls, ControlCenter, Audit, Files, Scripts, Settings, Login, Setup, RemoteDesktop) updated to teal glassmorphism theme with consistent frosted glass styling.
+- **Glassmorphism Enhancement**: Enhanced with `saturate`, gradient shine overlays, and hover lift effects on cards and panels.
+- **Layout Components**: Redesigned Sidebar, BottomNav, AppLayout, ProtectedRoute, and WebSocketProvider with the new theme.
+- **UI Components**: Upgraded Card, Input, Badge, Button, Toast, and Skeleton components with enhanced glass styling.
+- **Interactive Elements**: Quick toggle buttons and interactive elements use neumorphism; progress bars and toggle switches have glow shadows.
+- **Audit Page**: Redesigned with glass cards and improved layout.
+- **Windows Console Strategy**: Removed `windows_subsystem = "windows"` — app is now console subsystem so it inherits the parent terminal instead of creating a separate console window. On Enter press, spawns a detached daemon (`DETACHED_PROCESS`, `--daemon`) and exits, giving the terminal back to the user.
+- **Tunnel URL Extraction**: Improved ANSI escape code stripping with proper CSI/OSC handling and more robust URL pattern matching.
+
+### Removed
+- **Unused Store Fields**: Cleaned up unused fields from `audit-store` and `files-store`.
+- **Splash Console Code**: Removed all `AllocConsole`/`FreeConsole`/`SetConsoleCtrlHandler` logic (~80 lines). Replaced with background-daemon spawn approach that eliminates the separate console window entirely — closing the terminal no longer kills the app (the daemon survives).
+
+### CI
+- **Release Body Extraction**: Release workflow now extracts the relevant changelog section and passes it to `action-gh-release` for curated release notes.
 
 ## [1.1.0] - 2026-07-04
 

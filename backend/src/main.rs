@@ -1,7 +1,6 @@
-// On Windows, "windows" subsystem means no console auto-attaches to the process.
-// We manually allocate one at startup for the splash screen via AllocConsole().
-// On Linux/macOS this attribute is silently ignored — the terminal is already there.
-#![cfg_attr(windows, windows_subsystem = "windows")]
+// Console subsystem — inherit the parent's console (cargo terminal) so there's
+// no separate window the user can accidentally close. On standalone launch
+// a console appears briefly, then we re-spawn as a hidden process.
 
 use std::sync::Arc;
 
@@ -77,96 +76,38 @@ fn spawn_windows_shutdown_listener() {
     });
 }
 
-// ── Windows splash console ──────────────────────────────────────────────────
+// ── Windows background daemon ─────────────────────────────────────────────────
 //
-// Atomics shared between the console ctrl handler (Win32 callback) and the
-// async Enter-wait task. The ctrl handler is a bare C function pointer, so
-// it cannot capture variables — globals are the only option here.
+// When the user presses Enter we spawn a detached sibling process and exit,
+// so `cargo run` returns to the prompt while the app keeps running in the
+// system tray. The `--daemon` instance skips the console banner and just
+// runs the server + tray.
 #[cfg(windows)]
-static CONSOLE_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
-#[cfg(windows)]
-static CONSOLE_ATTACHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Ensures the browser is opened at most once regardless of which path
-/// (X-button vs. Enter key) fires first.
-#[cfg(windows)]
-static BROWSER_OPENED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Registered with `SetConsoleCtrlHandler`.
-///
-/// When the user clicks the **X** on the splash console, Windows delivers
-/// `CTRL_CLOSE_EVENT`. Returning `1` (TRUE) tells Windows **not** to kill
-/// the process — we just detach the console and keep running via the tray.
-///
-/// Other signals (Ctrl+C, Ctrl+Break, logoff, shutdown) return `0` (FALSE)
-/// so the default handler runs and tokio's graceful-shutdown path takes over.
-#[cfg(windows)]
-unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> i32 {
-    use windows_sys::Win32::System::Console::{FreeConsole, CTRL_CLOSE_EVENT};
-    if ctrl_type == CTRL_CLOSE_EVENT {
-        // Detach the console window — closing it will NOT kill the process.
-        if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
-            FreeConsole();
-            // Closing stdin unblocks the Enter-wait read_line() below,
-            // which will then call open_dashboard_once() itself.
-            // We open the browser here only if Enter-wait hasn't already done it.
-            open_dashboard_once();
+fn spawn_background_daemon() {
+    use std::os::windows::process::CommandExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ONCE: AtomicBool = AtomicBool::new(false);
+    if ONCE.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        // DETACHED_PROCESS = 0x00000100 — no console inherited or allocated.
+        if std::process::Command::new(exe)
+            .arg("--daemon")
+            .creation_flags(0x00000100)
+            .spawn()
+            .is_ok()
+        {
+            std::process::exit(0);
         }
-        1 // TRUE — suppress OS default (process termination)
-    } else {
-        0 // FALSE — let Ctrl+C / shutdown etc. flow to tokio's signal handler
+        // fall through — if spawn failed, keep running in current process
     }
 }
-
-/// Open the dashboard in the default browser exactly once.
-/// Safe to call from both the ctrl handler and the Enter-wait task.
-#[cfg(windows)]
-fn open_dashboard_once() {
-    use std::sync::atomic::Ordering;
-    if BROWSER_OPENED.swap(true, Ordering::SeqCst) {
-        return; // already opened by the other code path
-    }
-    let port = CONSOLE_PORT.load(Ordering::SeqCst);
-    if port != 0 {
-        let _ = open::that(format!("http://localhost:{}", port));
-    }
-}
-
-/// Allocate a fresh console window for the startup splash.
-/// Must be called before any `println!` so output goes to the right place.
-#[cfg(windows)]
-fn init_splash_console() {
-    use windows_sys::Win32::System::Console::{
-        AllocConsole, SetConsoleCtrlHandler, SetConsoleOutputCP, SetConsoleTitleW,
-    };
-    unsafe {
-        AllocConsole();
-        // CP_UTF8 = 65001 — without this, ✓ and ⚡ render as garbage boxes.
-        SetConsoleOutputCP(65001);
-        CONSOLE_ATTACHED.store(true, std::sync::atomic::Ordering::SeqCst);
-        // Register handler AFTER setting CONSOLE_ATTACHED = true.
-        SetConsoleCtrlHandler(Some(console_ctrl_handler), 1);
-        let title: Vec<u16> = "SysDeck Agent\0".encode_utf16().collect();
-        SetConsoleTitleW(title.as_ptr());
-    }
-}
-
-/// Detach (close) the splash console. Idempotent — safe to call multiple times.
-#[cfg(windows)]
-fn detach_splash_console() {
-    use windows_sys::Win32::System::Console::FreeConsole;
-    if CONSOLE_ATTACHED.swap(false, std::sync::atomic::Ordering::SeqCst) {
-        unsafe {
-            FreeConsole();
-        }
-    }
-}
-// ── end Windows splash console ───────────────────────────────────────────────
+// ── end Windows background daemon ─────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() {
-    // Allocate the splash console before ANY println! so stdout is routed correctly.
-    #[cfg(windows)]
-    init_splash_console();
+    let daemon_mode = std::env::args().any(|a| a == "--daemon");
 
     let filter =
         tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
@@ -203,10 +144,6 @@ async fn main() {
 
     let (port, listener) = find_available_port().await;
     println!("  ✓  Server bound to localhost:{}", port);
-
-    // Store the port for the console ctrl handler (Windows: needed if user clicks X).
-    #[cfg(windows)]
-    CONSOLE_PORT.store(port, std::sync::atomic::Ordering::SeqCst);
 
     // Create broadcast channels
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
@@ -354,11 +291,9 @@ async fn main() {
     async fn wait_for_shutdown_signal() {
         use tokio::signal::windows;
         let mut ctrl_c = windows::ctrl_c().expect("Failed to bind Ctrl+C");
-        let mut ctrl_close = windows::ctrl_close().expect("Failed to bind Ctrl+Close");
         let mut ctrl_shutdown = windows::ctrl_shutdown().expect("Failed to bind Ctrl+Shutdown");
         tokio::select! {
             _ = ctrl_c.recv() => tracing::info!("Received Ctrl+C"),
-            _ = ctrl_close.recv() => tracing::info!("Received Ctrl+Close"),
             _ = ctrl_shutdown.recv() => tracing::info!("Received Windows Shutdown signal"),
         }
     }
@@ -401,39 +336,38 @@ async fn main() {
 
     server_ready_rx.await.ok();
 
-    // ── Startup banner ────────────────────────────────────────────
-    println!();
-    println!("┌────────────────────────────────────────────────────────┐");
-    println!("│  ⚡ SysDeck is running!                                │");
-    println!("├────────────────────────────────────────────────────────┤");
-    println!("│  The app is now active in your system tray.            │");
-    println!("│                                                        │");
-    println!("│  Press [Enter] to open the setup wizard in your browser│");
-    println!("│  Press [Ctrl+C] to stop the app                        │");
-    println!("└────────────────────────────────────────────────────────┘");
-    println!();
+    if daemon_mode {
+        // ── Daemon mode — no console, no banner, just the tray ──
+        let _ = open::that(format!("http://localhost:{}", port));
+        server_handle.await.expect("Server task panicked");
+    } else {
+        // ── Interactive mode — show banner, spawn daemon on Enter ──
+        println!();
+        println!("┌────────────────────────────────────────────────────────┐");
+        println!("│  ⚡ SysDeck is running!                                │");
+        println!("├────────────────────────────────────────────────────────┤");
+        println!("│  The app is now active in your system tray.            │");
+        println!("│                                                        │");
+        println!("│  Press [Enter] to minimize to tray and open the browser│");
+        println!("│  Press [Ctrl+C] to stop the app                        │");
+        println!("└────────────────────────────────────────────────────────┘");
+        println!();
 
-    // Spawn a blocking task to wait for Enter, then open the browser and
-    // detach the splash console. On Windows, if the user closes the window
-    // first (CTRL_CLOSE_EVENT), FreeConsole() closes stdin, read_line()
-    // returns EOF, and open_dashboard_once() is a no-op (already opened).
-    tokio::task::spawn_blocking(move || {
-        let mut buf = String::new();
-        // Returns Ok(0) on EOF (stdin closed by FreeConsole) or Ok(n) on Enter.
-        let _ = std::io::stdin().read_line(&mut buf);
+        let port_for_block = port;
+        tokio::task::spawn_blocking(move || {
+            let mut buf = String::new();
+            let _ = std::io::stdin().read_line(&mut buf);
+            let _ = open::that(format!("http://localhost:{}", port_for_block));
+        })
+        .await
+        .ok();
 
+        // Spawn a detached daemon and exit, giving the terminal back to the user.
+        // On non-Windows the process just keeps running (user can Ctrl+C).
         #[cfg(windows)]
-        {
-            detach_splash_console();
-            open_dashboard_once();
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = open::that(format!("http://localhost:{}", port));
-        }
-    });
+        spawn_background_daemon();
 
-    server_handle.await.expect("Server task panicked");
-
-    println!("SysDeck Agent stopped.");
+        server_handle.await.expect("Server task panicked");
+        println!("SysDeck Agent stopped.");
+    }
 }

@@ -24,16 +24,16 @@ const RANGES = [
 
 const StatCard = memo(function StatCard({ icon: Icon, label, children, className }: { icon: any; label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden", className)}>
+    <div className={cn("glass-card p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg h-full flex flex-col", className)}>
       <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <div className="flex items-center justify-between mb-4 relative">
+      <div className="flex items-center justify-between mb-4 relative flex-1">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Icon className="w-4 h-4 text-primary" />
           </div>
           <span className="text-sm font-medium text-muted-foreground">{label}</span>
         </div>
-        {children}
+        <div className="flex items-end">{children}</div>
       </div>
     </div>
   )
@@ -50,7 +50,7 @@ function GradientArea({ id, color }: { id: string; color: string }) {
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden">
+    <div className="glass-card p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg h-full">
       <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
       <h3 className="text-sm font-semibold mb-4 text-muted-foreground relative">{title}</h3>
       <div className="h-64 relative">
@@ -153,9 +153,11 @@ export function DashboardPage() {
       </div>
 
       {!loadingHistory && !current && chartData.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <div className="flex flex-col items-center justify-center py-24 text-center animate-fade-in-up">
+          <div className="w-20 h-20 rounded-3xl bg-primary/5 flex items-center justify-center mb-6 ring-1 ring-primary/10">
+            <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+              <Loader2 className="w-7 h-7 text-primary animate-spin" />
+            </div>
           </div>
           <h2 className="text-xl font-semibold mb-2">Waiting for telemetry data</h2>
           <p className="text-sm text-muted-foreground max-w-sm">
@@ -163,7 +165,7 @@ export function DashboardPage() {
           </p>
         </div>
       ) : (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 staggered-children">
         <StatCard icon={Cpu} label="CPU Usage">
           <span className="text-2xl font-bold tracking-tight">{cpu ?? "—"}<span className="text-sm text-muted-foreground font-normal">%</span></span>
         </StatCard>
@@ -223,7 +225,7 @@ export function DashboardPage() {
       )}
 
       {ramPct != null && (
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 overflow-hidden">
+        <div className="glass-card p-5 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Memory Usage</span>
@@ -236,7 +238,7 @@ export function DashboardPage() {
       )}
 
       {diskPct != null && (
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-5 overflow-hidden">
+        <div className="glass-card p-5 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Disk Usage</span>

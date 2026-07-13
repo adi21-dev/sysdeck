@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { InfoButton } from "@/components/ui/info-button"
 
 export function WolSection() {
   const [macs, setMacs] = useState<{label: string; mac: string}[]>([])
@@ -69,7 +70,15 @@ export function WolSection() {
         <Button size="sm" onClick={addMac} disabled={!label.trim() || !mac.trim()}>Save</Button>
       </div>
       <div className="space-y-2">
-        {macs.length === 0 && <p className="text-sm text-muted-foreground">No saved MAC addresses</p>}
+        {macs.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-5 h-5 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No saved MAC addresses</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Add a MAC address above to enable Wake-on-LAN</p>
+          </div>
+        )}
         {macs.map((m, i) => (
           <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
             <div>
@@ -390,9 +399,9 @@ export function SettingsPage() {
         </div>
       )}
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Change Password</h3>
+        <h3 className="font-semibold mb-4 relative">Change Password<InfoButton content={"Password must be 8+ characters.\n\nExample: after rotating credentials, set a new passphrase here (e.g. \"blue-elephant-jumps-42\")."} className="ml-1.5" /></h3>
         <div className="space-y-4 max-w-md">
           <div>
             <label htmlFor="settings-current-pw" className="block text-sm font-medium mb-2">Current Password</label>
@@ -436,9 +445,9 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Two-Factor Authentication</h3>
+        <h3 className="font-semibold mb-4 relative">Two-Factor Authentication<InfoButton content={"TOTP second factor — requires password + 6-digit code from an authenticator app to sign in.\n\nExample: scan the QR with Authy on your phone, enter the code it shows to verify setup."} className="ml-1.5" /></h3>
         {totpStep === "idle" && (
           <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
             <div>
@@ -460,9 +469,9 @@ export function SettingsPage() {
         )}
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Recovery Codes</h3>
+        <h3 className="font-semibold mb-4 relative">Recovery Codes<InfoButton content={"Backup codes for when you can't access your authenticator.\nEach code works exactly once — save them somewhere safe.\n\nExample: store in Bitwarden or print a copy for your wallet before locking yourself out."} className="ml-1.5" /></h3>
         {recoveryCodes.length > 0 && showCodes && (
           <div className="p-4 rounded-lg border bg-muted/50 mb-4">
             <div className="grid grid-cols-2 gap-2 font-mono text-sm">
@@ -484,12 +493,18 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Active Sessions</h3>
+        <h3 className="font-semibold mb-4 relative">Active Sessions<InfoButton content={"All active login sessions across devices.\nRevoke any session to force-logout that device.\n\nExample: if you signed in from a shared computer, revoke that session remotely."} className="ml-1.5 align-middle" /></h3>
         <div className="space-y-3">
           {sessions.length === 0 && (
-            <p className="text-sm text-muted-foreground">No active sessions</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+                <Monitor className="w-5 h-5 text-muted-foreground/60" />
+              </div>
+              <p className="text-sm font-medium text-muted-foreground">No active sessions</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">All sessions have been signed out or none exist yet</p>
+            </div>
           )}
           {sessions.map((s: any) => (
             <div key={s.jti} className="flex items-center justify-between p-3 rounded-lg border">
@@ -525,9 +540,9 @@ export function SettingsPage() {
         </Button>
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Remote Access</h3>
+        <h3 className="font-semibold mb-4 relative">Remote Access<InfoButton content={"Cloudflare Tunnel creates a secure outbound tunnel to the internet — no port forwarding needed.\nAuto-start launches the tunnel when the app boots.\n\nExample: start the tunnel, copy the URL, and access your server from any browser anywhere."} className="ml-1.5" /></h3>
         <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50 mb-4">
           <div>
             <p className="font-medium">Cloudflare Tunnel</p>
@@ -579,18 +594,18 @@ export function SettingsPage() {
         </div>
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="font-semibold mb-4 relative">Wake-on-LAN</h3>
+        <h3 className="font-semibold mb-4 relative">Wake-on-LAN<InfoButton content={"Send a magic packet to wake a sleeping computer on the LAN.\nTarget needs WoL enabled in BIOS and must be on the same subnet.\n\nExample: save the MAC address of your media server, then wake it remotely instead of walking over to press the power button."} className="ml-1.5 align-middle" /></h3>
         <WolSection />
       </div>
 
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="font-semibold mb-4 relative">Configuration</h3>
         <div className="space-y-6">
           <div className="space-y-3">
-            <span className="text-sm font-medium block">File Access Paths</span>
+            <span className="text-sm font-medium block">File Access Paths<InfoButton content={"Whitelist directories the file manager can browse.\nPaths not listed here are blocked for security.\nBlocked paths override allowed paths.\n\nExample: allow C:\\Users\\Public\\Share but block C:\\Windows\\System32."} className="ml-1.5 align-middle" /></span>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Allowed Paths</p>
@@ -633,7 +648,7 @@ export function SettingsPage() {
           </div>
 
           <div className="space-y-3">
-            <label htmlFor="local-server-port" className="text-sm font-medium">Local Server Port</label>
+            <label htmlFor="local-server-port" className="text-sm font-medium">Local Server Port<InfoButton content={"Backend listen port (default 3939). Requires app restart to take effect.\nUse ports above 1024 to avoid admin rights.\n\nExample: change to 9090 if 3939 conflicts with another service."} className="ml-1.5" /></label>
             <div className="flex gap-2">
               <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
               <Button onClick={handleSavePort} size="sm" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save"}</Button>
@@ -641,13 +656,14 @@ export function SettingsPage() {
             <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button onClick={handleExportDb} variant="outline" size="sm">
               <Download className="h-4 w-4 mr-1" /> Export Database
             </Button>
             <Button onClick={handleDownloadLogs} variant="outline" size="sm">
               <Download className="h-4 w-4 mr-1" /> Download Logs
             </Button>
+            <InfoButton content="Export the full database as a JSON file for backup or inspection. Download logs for troubleshooting — they contain recent server activity without sensitive credentials." className="ml-1" />
           </div>
         </div>
       </div>

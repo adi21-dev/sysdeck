@@ -116,7 +116,7 @@ pub fn start_engine(
             system.refresh_memory();
             networks.refresh();
 
-            let cpu_usage = system.global_cpu_info().cpu_usage();
+            let cpu_usage = (system.global_cpu_info().cpu_usage() * 10.0).round() / 10.0;
             let ram_used = system.used_memory();
             let ram_total = system.total_memory();
 
@@ -201,6 +201,8 @@ pub fn start_engine(
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis() as i64;
+
+            let temperature_cpu = temperature_cpu.map(|t| (t * 10.0).round() / 10.0);
 
             let snapshot = TelemetrySnapshot {
                 timestamp,

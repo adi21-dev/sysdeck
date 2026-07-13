@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useHardwareStore, useToastStore } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InfoButton } from "@/components/ui/info-button"
 
 interface PowerResponse {
   success: boolean
@@ -283,9 +284,9 @@ export function ControlsPage() {
       )}
 
       {/* 1. Mobile-Style Quick Toggles Grid */}
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider relative">Quick Toggles</h3>
+        <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider relative">Quick Toggles<InfoButton content={"Quick system toggles:\nWi-Fi/Bluetooth — radio on/off\nDark Mode — light/dark theme\nMute — silence all audio\nDND — suppress notifications\n\nExample: toggle Wi-Fi off when using wired ethernet to save power."} className="ml-1.5 align-middle" /></h3>
         {!toggles ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -384,10 +385,10 @@ export function ControlsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 2. Audio Widget */}
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+        <div className="glass-card p-6 flex flex-col justify-between space-y-6 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control<InfoButton content={"Volume control + output device selector.\n\nExample: switch from speakers to headphones without unplugging — just select the device from the dropdown."} className="ml-1.5 align-middle" /></h3>
             {!audio ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
@@ -419,7 +420,7 @@ export function ControlsPage() {
 
                  {/* Output Device */}
                 <div className="space-y-2">
-                  <label htmlFor="output-device-select-controls" className="text-xs font-semibold text-muted-foreground">Output Device</label>
+                  <label htmlFor="output-device-select-controls" className="text-xs font-semibold text-muted-foreground">Output Device<InfoButton content={"Lists connected audio devices. Select one to route all system sound there.\n\nExample: plug in USB headphones and select them here to switch audio output instantly."} className="ml-1.5 align-middle" /></label>
                   <select
                     id="output-device-select-controls"
                     value={audio.default_device}
@@ -466,10 +467,10 @@ export function ControlsPage() {
         </div>
 
         {/* 3. Display Widget */}
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+        <div className="glass-card p-6 flex flex-col justify-between space-y-6 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Display & Brightness</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Display & Brightness<InfoButton content={"Screen brightness slider + Night Light (blue light filter).\n\nExample: enable Night Light at night to reduce eye strain — the screen will take on a warmer tint."} className="ml-1.5 align-middle" /></h3>
             {!display ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
@@ -538,11 +539,11 @@ export function ControlsPage() {
       </div>
 
       {/* 4. Power Controls & Scheduler Widget */}
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6 relative">
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Power Management</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Power Management<InfoButton content={"Remote power actions + scheduler.\nSupports: Shutdown, Restart, Sleep, Hibernate, Sign Out, Lock.\nSchedule any action to run after a delay (1-60 min).\n\nExample: schedule a restart at 2 AM to apply updates while you're away."} className="ml-1.5 align-middle" /></h3>
             <p className="text-xs text-muted-foreground mt-0.5">Shutdown, restart, or lock your computer remotely</p>
           </div>
           <Button variant="outline" className="flex items-center gap-1.5 border-primary/20 hover:border-primary/50 text-primary" onClick={() => setIsScheduleOpen(true)}>
@@ -594,29 +595,31 @@ export function ControlsPage() {
               {/* Action selection */}
               <div className="space-y-1.5">
                 <span className="text-xs font-semibold text-muted-foreground block">Action type</span>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setScheduleAction("shutdown")}
-                    className={cn(
-                      "py-2.5 px-4 rounded-xl border text-sm font-medium transition-all text-center",
-                      scheduleAction === "shutdown"
-                        ? "bg-destructive/15 border-destructive/30 text-destructive font-semibold"
-                        : "bg-muted/40 hover:bg-muted/65 text-muted-foreground"
-                    )}
-                  >
-                    Shutdown
-                  </button>
-                  <button
-                    onClick={() => setScheduleAction("restart")}
-                    className={cn(
-                      "py-2.5 px-4 rounded-xl border text-sm font-medium transition-all text-center",
-                      scheduleAction === "restart"
-                        ? "bg-primary/15 border-primary/30 text-primary font-semibold"
-                        : "bg-muted/40 hover:bg-muted/65 text-muted-foreground"
-                    )}
-                  >
-                    Restart
-                  </button>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { action: "shutdown", label: "Shutdown", icon: Power, destructive: true },
+                    { action: "restart", label: "Restart", icon: RefreshCw, destructive: false },
+                    { action: "sleep", label: "Sleep", icon: Moon, destructive: false },
+                    { action: "hibernate", label: "Hibernate", icon: Bed, destructive: false },
+                    { action: "signout", label: "Sign Out", icon: LogOut, destructive: false },
+                    { action: "lock", label: "Lock", icon: Lock, destructive: false },
+                  ].map((act) => (
+                    <button
+                      key={act.action}
+                      onClick={() => setScheduleAction(act.action)}
+                      className={cn(
+                        "py-2.5 px-3 rounded-xl border text-sm font-medium transition-all text-center flex flex-col items-center gap-1",
+                        scheduleAction === act.action
+                          ? act.destructive
+                            ? "bg-destructive/15 border-destructive/30 text-destructive font-semibold"
+                            : "bg-primary/15 border-primary/30 text-primary font-semibold"
+                          : "bg-muted/40 hover:bg-muted/65 text-muted-foreground"
+                      )}
+                    >
+                      <act.icon className="h-4 w-4" />
+                      {act.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 

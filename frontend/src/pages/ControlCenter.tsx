@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useHardwareStore, useToastStore } from "@/lib/store"
 import { Skeleton } from "@/components/ui/skeleton"
+import { InfoButton } from "@/components/ui/info-button"
 
 interface PowerResponse {
   success: boolean
@@ -294,7 +295,7 @@ export function ControlCenterPage() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
       {/* Quick Toggles */}
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wider relative">Quick Toggles</h3>
         {!controlCenter ? (
@@ -358,10 +359,10 @@ export function ControlCenterPage() {
 
       {/* Audio + Display */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+        <div className="glass-card p-6 flex flex-col justify-between space-y-6 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Audio Control<InfoButton content={"Volume control + output device selector.\n\nExample: switch from speakers to headphones without unplugging — just select the device from the dropdown."} className="ml-1.5 align-middle" /></h3>
             {!audio ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
@@ -437,10 +438,10 @@ export function ControlCenterPage() {
           </div>
         </div>
 
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 flex flex-col justify-between space-y-6 overflow-hidden">
+        <div className="glass-card p-6 flex flex-col justify-between space-y-6 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Display & Brightness</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Display & Brightness<InfoButton content={"Screen brightness slider + Night Light (blue light filter).\n\nExample: enable Night Light at night to reduce eye strain — the screen will take on a warmer tint."} className="ml-1.5 align-middle" /></h3>
             {!display ? (
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full" />
@@ -505,9 +506,9 @@ export function ControlCenterPage() {
       </div>
 
       {/* Network */}
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Network</h3>
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 relative">Network<InfoButton content={"Network adapters, Wi-Fi scan, DNS flush, adapter enable/disable.\n\nExample: flush DNS after changing DNS servers to clear stale cached records — useful when a site won't load after you switch providers."} className="ml-1.5 align-middle" /></h3>
         {!network ? (
           <Skeleton className="h-32 w-full" />
         ) : (
@@ -558,6 +559,7 @@ export function ControlCenterPage() {
               <Button variant="outline" size="sm" onClick={() => setNetworkConfirm({ type: "flush-dns" })}>
                 <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Flush DNS
               </Button>
+              <InfoButton content={"Clears cached DNS records so the next lookup fetches fresh data.\n\nExample: run after changing domains or switching to a new DNS server (e.g. from ISP to Cloudflare 1.1.1.1)."} className="ml-1.5 align-middle" />
               <Button variant="outline" size="sm" onClick={() => fetchWifiNetworks()}>
                 <Wifi className="h-3.5 w-3.5 mr-1.5" /> Scan Wi-Fi
               </Button>
@@ -650,7 +652,7 @@ export function ControlCenterPage() {
       )}
 
       {/* Power */}
-      <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] p-6 overflow-hidden">
+      <div className="glass-card p-6 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-border/30 pb-4 mb-6 relative">
           <div>

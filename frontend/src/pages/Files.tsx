@@ -6,11 +6,11 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { useToastStore } from "@/lib/store"
 import { useFilesStore, type FileEntry } from "@/lib/files-store"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { InfoButton } from "@/components/ui/info-button"
 
 function toApiPath(p: string): string {
   return p.replace(/^\/([A-Za-z]:)/, "$1\\").replace(/\//g, "\\")
@@ -104,15 +104,19 @@ function RootSelector({ paths, onNavigate }: { paths: string[]; onNavigate: (p: 
         const parts = full.split("/").filter(Boolean)
         const short = parts[parts.length - 1] || full
         return (
-          <Card key={p} className="p-4 cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => onNavigate(full)}>
-            <div className="flex items-center gap-3">
-              <Folder className="h-8 w-8 text-primary shrink-0" />
+          // ponytail: role=button + onKeyDown for a11y on clickable card
+          <div key={p} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") onNavigate(full) }} className="glass-card p-4 cursor-pointer hover:bg-accent/50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden group" onClick={() => onNavigate(full)}>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+            <div className="flex items-center gap-3 relative">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                <Folder className="h-5 w-5 text-primary" />
+              </div>
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{short}</p>
                 <p className="text-xs text-muted-foreground truncate">{p}</p>
               </div>
             </div>
-          </Card>
+          </div>
         )
       })}
     </div>
@@ -313,6 +317,7 @@ export function FilesPage() {
                 <Upload className="h-4 w-4" />
                 Upload
               </button>
+              <InfoButton content={"Upload limit: 500 MB per file.\nPartial/corrupted uploads are automatically cleaned up.\n\nExample: drag a ZIP archive under 500 MB — if the connection drops mid-way, the incomplete file is removed server-side."} className="ml-1.5 align-middle" />
           </div>
         )}
       </div>
@@ -356,9 +361,28 @@ export function FilesPage() {
           <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading...
         </div>
       ) : viewMode === "table" ? (
-        <div className="relative rounded-xl border border-border/50 bg-card backdrop-blur-xl saturate-[1.4] overflow-hidden">
+        <div className="glass-card">
           <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
           <table className="w-full">
+            <thead>
+              <tr className="border-b border-border/20 text-xs text-muted-foreground">
+                <th className="p-4 w-[1%]" aria-label="Select all">
+                  <input
+                    ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
+                    type="checkbox"
+                    checked={entries.length > 0 && selected.size === entries.length}
+                    onChange={() => {
+                      if (selected.size === entries.length) clearSelection()
+                      else entries.forEach((e) => { if (!selected.has(e.path)) toggleSelected(e.path) })
+                    }}
+                    className="h-4 w-4 rounded border-border accent-primary"
+                  />
+                </th>
+                <th className="p-4 w-[1%]" aria-label="Type" />
+                <th className="p-4 w-full text-left">Name</th>
+                <th className="p-4 w-[1%]" aria-label="Actions" />
+              </tr>
+            </thead>
             <tbody className="divide-y divide-border/20">
               {sorted.map((entry) => (
                 <tr
@@ -367,10 +391,20 @@ export function FilesPage() {
                     "hover:bg-accent/50 transition-colors group cursor-pointer",
                     selected.has(entry.path) && "bg-accent",
                   )}
+                  onClick={() => toggleSelected(entry.path)}
                   onDoubleClick={() => handleDoubleClick(entry)}
                   onTouchStart={(e) => handleTouchStart(e, entry.path)}
                   onTouchEnd={handleTouchEnd}
                 >
+                  <td className="p-4 w-[1%] whitespace-nowrap align-top">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${entry.name}`}
+                      checked={selected.has(entry.path)}
+                      onChange={() => toggleSelected(entry.path)}
+                      className="h-4 w-4 rounded border-border accent-primary"
+                    />
+                  </td>
                   <td className="p-4 w-[1%] whitespace-nowrap align-top">
                     {entry.is_dir ? (
                       <Folder className="w-5 h-5 text-primary" />
@@ -412,40 +446,59 @@ export function FilesPage() {
             </tbody>
           </table>
           {entries.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
-              <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
+            <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                <FolderOpen className="w-7 h-7 text-muted-foreground/60" />
+              </div>
+              <h3 className="text-base font-semibold mb-1">This folder is empty</h3>
               <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
             </div>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {sorted.map((entry) => (
-            <Card
-              key={entry.path}
-              className={cn(
-                "flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-accent/50 transition-colors gap-2",
-                selected.has(entry.path) && "ring-2 ring-primary",
-              )}
-              onDoubleClick={() => handleDoubleClick(entry)}
-              onTouchStart={(e) => handleTouchStart(e, entry.path)}
-              onTouchEnd={handleTouchEnd}
-              onClick={() => toggleSelected(entry.path)}
-            >
-              {entry.is_dir ? (
-                <Folder className="h-10 w-10 text-primary" />
-              ) : (
-                <File className="h-10 w-10 text-muted-foreground" />
-              )}
-              <span className="text-xs text-center truncate max-w-full">{entry.name}</span>
-              {!entry.is_dir && <span className="text-[10px] text-muted-foreground">{formatSize(entry.size)}</span>}
-            </Card>
+              {sorted.map((entry) => (
+              <div
+                  key={entry.path}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleDoubleClick(entry) }}
+                  className={cn(
+                    "glass-card flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-accent/50 transition-all duration-200 gap-2 overflow-hidden group",
+                    selected.has(entry.path) && "ring-2 ring-primary",
+                  )}
+                  onDoubleClick={() => handleDoubleClick(entry)}
+                  onTouchStart={(e) => handleTouchStart(e, entry.path)}
+                  onTouchEnd={handleTouchEnd}
+                  onClick={() => toggleSelected(entry.path)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+                  <div className="absolute top-2 left-2 z-10">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${entry.name}`}
+                      checked={selected.has(entry.path)}
+                      onChange={() => toggleSelected(entry.path)}
+                      className="h-4 w-4 rounded border-border accent-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                    />
+                  </div>
+                  {entry.is_dir ? (
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors relative">
+                      <Folder className="h-6 w-6 text-primary" />
+                    </div>
+                  ) : (
+                    <File className="h-8 w-8 text-muted-foreground relative" />
+                  )}
+                  <span className="text-xs text-center truncate max-w-full relative">{entry.name}</span>
+                  {!entry.is_dir && <span className="text-[10px] text-muted-foreground relative">{formatSize(entry.size)}</span>}
+                </div>
           ))}
           {entries.length === 0 && (
-            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-              <FolderOpen className="h-12 w-12 text-muted-foreground/40 mb-4" />
-              <h3 className="text-lg font-semibold mb-1">This folder is empty</h3>
+            <div className="col-span-full flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
+                <FolderOpen className="w-7 h-7 text-muted-foreground/60" />
+              </div>
+              <h3 className="text-base font-semibold mb-1">This folder is empty</h3>
               <p className="text-sm text-muted-foreground max-w-xs">Upload files or navigate to another directory</p>
             </div>
           )}

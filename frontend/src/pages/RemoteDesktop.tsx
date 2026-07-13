@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react"
+import { Monitor } from "lucide-react"
 import { useConnectionStore, useToastStore } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,8 +13,7 @@ export function RemoteDesktopPage() {
   const [tab, setTab] = useState<Tab>("trackpad")
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Remote Desktop</h1>
+      <div className="flex justify-end">
         <LockButton />
       </div>
       <div className="flex gap-2 flex-wrap">
@@ -451,7 +451,15 @@ function DisksTab() {
             <p className="text-xs text-muted-foreground mt-1">{d.free_gb} GB free — {d.percent_used}% used</p>
           </div>
         ))}
-        {disks.length === 0 && <p className="text-sm text-muted-foreground">No disk info available</p>}
+        {disks.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No disk info available</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see storage drives</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -499,7 +507,15 @@ function ProcessesTab() {
             <button onClick={() => kill(p.pid)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">Kill</button>
           </div>
         ))}
-        {processes.length === 0 && <p className="text-sm text-muted-foreground">No process data</p>}
+        {processes.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No process data</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see running processes</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -552,7 +568,15 @@ function SessionsTab() {
             </div>
           </div>
         ))}
-        {sessions.length === 0 && <p className="text-sm text-muted-foreground">No sessions found</p>}
+        {sessions.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No sessions found</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">No active user sessions detected on the remote machine</p>
+          </div>
+        )}
       </div>
     </Card>
   )
@@ -600,7 +624,15 @@ function WindowsTab() {
             <button onClick={() => act("close", w.hwnd)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">X</button>
           </div>
         ))}
-        {windows.length === 0 && <p className="text-sm text-muted-foreground">No windows found</p>}
+        {windows.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <Monitor className="w-6 h-6 text-muted-foreground/60" />
+            </div>
+            <p className="text-sm font-medium text-muted-foreground">No windows found</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">No open windows detected on the remote machine</p>
+          </div>
+        )}
       </div>
     </Card>
   )

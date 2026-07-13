@@ -9,6 +9,7 @@ pub mod input;
 pub mod network;
 pub mod power;
 pub mod process;
+pub mod saved_scripts;
 pub mod script;
 pub mod sessions;
 pub mod settings;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 
 use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::response::{IntoResponse, Json};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put, delete};
 use axum::{middleware, Router};
 use rusqlite::Connection;
 use std::time::Duration;
@@ -722,6 +723,27 @@ pub fn build_router(state: AppState) -> Router {
         // User Sessions
         .route("/api/sessions", get(sessions::list_handler))
         .route("/api/sessions/action", post(sessions::action_handler))
+        // Saved Scripts
+        .route(
+            "/api/scripts/saved",
+            get(saved_scripts::list_handler),
+        )
+        .route(
+            "/api/scripts/saved",
+            post(saved_scripts::create_handler),
+        )
+        .route(
+            "/api/scripts/saved/:id",
+            put(saved_scripts::update_handler),
+        )
+        .route(
+            "/api/scripts/saved/:id",
+            delete(saved_scripts::delete_handler),
+        )
+        .route(
+            "/api/scripts/saved/:id/pin",
+            post(saved_scripts::pin_handler),
+        )
         // Wake-on-LAN
         .route("/api/wol/wake", post(wol::wake_handler))
         .route("/api/wol/macs", get(wol::list_macs_handler))

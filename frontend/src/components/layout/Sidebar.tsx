@@ -16,7 +16,7 @@ export function Sidebar() {
   if (!mounted) return null
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 flex-col border-r border-border/50 bg-sidebar-background backdrop-blur-xl z-50">
+    <aside className="hidden md:flex fixed left-0 top-0 h-full w-60 flex-col border-r border-border/40 bg-sidebar-background backdrop-blur-xl z-50">
       <div className="flex items-center gap-3 p-6 border-b border-border/30">
         <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
           <Monitor className="w-5 h-5 text-primary" />
@@ -31,14 +31,21 @@ export function Sidebar() {
               key={item.to}
               to={item.to}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
+                "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group",
                 isActive
-                  ? "bg-primary/10 text-primary shadow-sm backdrop-blur-sm"
-                  : "text-sidebar-foreground hover:text-foreground hover:bg-accent/50 hover:backdrop-blur-sm"
+                  ? "bg-primary/10 text-primary shadow-[inset_0_1px_0_hsl(0_0%_100%_/_0.08)] backdrop-blur-sm"
+                  : "text-sidebar-foreground hover:text-foreground hover:bg-accent/50 hover:shadow-[inset_0_1px_0_hsl(0_0%_100%_/_0.04)] hover:backdrop-blur-sm"
               )}
             >
               <item.icon className={cn("h-4 w-4 transition-colors", isActive && "text-primary")} />
               <span>{item.label}</span>
+              {item.desc && (
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="w-56 rounded-xl border border-border/50 bg-background/95 backdrop-blur-xl saturate-[1.4] p-2.5 text-[11px] text-foreground shadow-xl whitespace-normal break-words">
+                    {item.desc}
+                  </div>
+                </div>
+              )}
               {isActive && <div className="ml-auto w-1 h-4 rounded-full bg-primary" />}
             </NavLink>
           )

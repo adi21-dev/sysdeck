@@ -75,13 +75,15 @@ export function AppLayout() {
             </div>
           </div>
         </header>
-        <div className="p-4 md:p-6 lg:p-8 animate-fade-in">
+        <div className="p-4 md:p-6 lg:p-8" key={location.pathname}>
           <Suspense fallback={
             <div className="flex items-center justify-center py-24 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading...
             </div>
           }>
-            <Outlet />
+            <div className="animate-fade-in-up">
+              <Outlet />
+            </div>
           </Suspense>
         </div>
       </main>
