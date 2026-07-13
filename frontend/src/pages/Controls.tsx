@@ -19,7 +19,6 @@ import {
   Monitor,
   Loader2,
   Sliders,
-  Bluetooth,
   Play
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -100,10 +99,8 @@ export function ControlsPage() {
     triggerMedia,
     setBrightness,
     setNightLight,
-    setWifi,
-    setBluetooth,
     setDarkMode,
-    setDnd
+    toggleControlCenter,
   } = useHardwareStore()
 
   // Power scheduler states
@@ -257,13 +254,11 @@ export function ControlsPage() {
   }
 
   // Toggles wrapper
-  const handleToggle = async (type: "wifi" | "bluetooth" | "dark" | "dnd", val: boolean) => {
+  const handleToggle = async (type: "wifi" | "dark" | "dnd", val: boolean) => {
     haptic()
     try {
-      if (type === "wifi") await setWifi(val)
-      else if (type === "bluetooth") await setBluetooth(val)
+      if (type === "wifi" || type === "dnd") await toggleControlCenter(type, val)
       else if (type === "dark") await setDarkMode(val)
-      else if (type === "dnd") await setDnd(val)
       toastStore.addToast(`${type.replace("_", " ")} successfully updated.`, "success")
     } catch (err: any) {
       toastStore.addToast(err.message || `Failed to update ${type}.`, "error")
@@ -329,23 +324,6 @@ export function ControlsPage() {
               </div>
               <span className="font-medium text-xs">Wi-Fi</span>
               <span className="text-[10px] text-muted-foreground mt-0.5">{toggles.wifi ? "Enabled" : "Disabled"}</span>
-            </button>
-
-            {/* Bluetooth Toggle */}
-            <button
-              onClick={() => handleToggle("bluetooth", !toggles.bluetooth)}
-              className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
-                toggles.bluetooth
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
-                  : "neu-hover text-muted-foreground"
-              )}
-            >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
-                <Bluetooth className="h-5 w-5" />
-              </div>
-              <span className="font-medium text-xs">Bluetooth</span>
-              <span className="text-[10px] text-muted-foreground mt-0.5">{toggles.bluetooth ? "Enabled" : "Disabled"}</span>
             </button>
 
             {/* Dark Mode Toggle */}

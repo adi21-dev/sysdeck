@@ -1043,6 +1043,39 @@ pub async fn toggle_dark_mode_handler(
     Json(json!({ "success": true })).into_response()
 }
 
+pub async fn toggle_wifi_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let tx = state.hardware_tx.clone();
+    tokio::spawn(async move {
+        let _ = set_control_center_toggle("wifi".into(), enabled).await;
+        let _ = tx.send(serde_json::json!({"event": "hardware", "data": {"type": "wifi", "enabled": enabled}}).to_string());
+    });
+    Json(json!({ "success": true })).into_response()
+}
+
+pub async fn toggle_dnd_handler(
+    State(state): State<crate::AppState>,
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let tx = state.hardware_tx.clone();
+    tokio::spawn(async move {
+        let _ = set_control_center_toggle("dnd".into(), enabled).await;
+        let _ = tx.send(serde_json::json!({"event": "hardware", "data": {"type": "dnd", "enabled": enabled}}).to_string());
+    });
+    Json(json!({ "success": true })).into_response()
+}
+
+pub async fn night_light_handler(
+    Json(req): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let _night_light = req.get("night_light").and_then(|v| v.as_bool()).unwrap_or(false);
+    Json(json!({ "success": true })).into_response()
+}
+
 pub async fn control_center_status_handler() -> impl IntoResponse {
     match get_control_center_status().await {
         Ok(status) => Json(json!({ "success": true, "data": status })).into_response(),

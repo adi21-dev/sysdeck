@@ -7,9 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.
-
 ### Changed
 - **Mobile Tunnel Responsiveness**: Rearchitected hardware mutation handlers to be fire-and-forget (`tokio::spawn`) — return HTTP 200 immediately, broadcast result over a new `hardware_tx` WebSocket channel. Eliminates per-pixel slider lag over tunnel.
 - **WS-Driven State Sync**: Added `hardware_tx` broadcast channel to `AppState`. WebSocket handler subscribes and forwards JSON to clients. Frontend `applyHardwareUpdate()` dispatches on `type` field to keep Zustand store in sync without polling.
@@ -21,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dashboard Chart Performance**: Set `isAnimationActive={false}` on all recharts Area elements to prevent frame drops on mobile.
 - **Page Visibility**: WebSocket reconnects on tab visibility change (via `visibilitychange` listener) to resume real-time updates after phone sleep.
 - **Toggle Name Validation**: Added synchronous toggle name validation (`dark_mode`/`wifi`/`dnd`) to `control_center_toggle_handler` before spawning async task.
+
+### Fixed
+- **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.
+- **Controls Page Broken Toggles**: WiFi and DND toggles on the Controls page were calling nonexistent `/api/toggles/wifi` and `/api/toggles/dnd` endpoints, returning SPA HTML instead of JSON. Changed to use `toggleControlCenter` which POSTs to the existing `/api/control-center/toggle` route. Added backend routes for those old endpoints as fallback. Removed Bluetooth toggle (no backend support). Added `/api/display/night-light` handler (previously 404).
 
 ## [2.0.0] - 2026-07-13
 

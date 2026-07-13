@@ -664,11 +664,17 @@ pub fn build_router(state: AppState) -> Router {
             "/api/display/brightness",
             post(hardware::display_brightness_handler),
         )
+        .route(
+            "/api/display/night-light",
+            post(hardware::night_light_handler),
+        )
         .route("/api/toggles/status", get(hardware::toggles_status_handler))
         .route(
             "/api/toggles/dark-mode",
             post(hardware::toggle_dark_mode_handler),
         )
+        .route("/api/toggles/wifi", post(hardware::toggle_wifi_handler))
+        .route("/api/toggles/dnd", post(hardware::toggle_dnd_handler))
         // Control Center
         .route(
             "/api/control-center/status",
