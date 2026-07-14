@@ -8,15 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **README Phone Mockups**: SVG phone mockups showing Ambient Mode (OLED clock + vitals) and App Deck (toggles + running apps) at the top of the README.
-- **SmartScreen Warning**: Bold callout in README warning about Windows SmartScreen false positive with "More Info → Run Anyway" bypass instructions.
+- **Companion Deck Positioning**: Redesigned SysDeck as a Windows-first Companion Dashboard & Macro Deck for spare smartphones/tablets. New README with vision, quick start, phone mockups, and SmartScreen warning.
+- **Win32 Icon Extraction**: `GET /api/icon?path=...` — `SHGetFileInfoW` + GDI pipeline extracts app icons as RGBA PNGs. In-memory `HashMap` cache, `Cache-Control: public, max-age=86400`.
+- **Installed Apps Scanner**: `GET /api/apps` — recursive scan of Start Menu directories (`%ProgramData%`, `%APPDATA%`). Filters `.exe`/`.lnk`/`.appref-ms`. Returns `[{name, path}]` sorted. Max depth 3.
+- **App Launcher**: `POST /api/launch` — `.lnk`/`.appref-ms` via `open::that()`, `.exe` via `std::process::Command::new(path).spawn()`.
+- **Window List with `exe_path`**: `WindowInfo` extended with `exe_path` via `GetWindowThreadProcessId` + `OpenProcess` + `QueryFullProcessImageNameW`. Broadcast over WebSocket every 3s via new `windows_tx` channel.
+- **Instant Lock PC**: `POST /api/power/lock` — spawns blocking task calling `LockWorkStation()` directly. No 5s cancellation window.
+- **OLED Overview Page**: New scroll-snap layout with 3 sections — Ambient (large clock + vitals), Deck (toggles + apps), Admin (8-card grid). Desktop sidebar layout at `md:` breakpoint.
+- **QuickToggles Macro Deck**: 7 one-tap buttons in 4-column grid — Monitor Off, Lock PC, Media Play/Pause, Dark/Light Mode, Wi-Fi, Mute, DND. Haptic feedback on all.
+- **AppDeck Component**: Running apps horizontal scroller with icons + All Apps searchable drawer (bottom sheet).
+- **AdminCockpit**: 8-card grid (System Health, Files, Terminal, Scripts, Network, Controls, Audit, Settings) navigating to existing pages. Section 3 of Overview.
+- **Wake Lock Hook**: Auto-acquires `navigator.wakeLock` at app root via `useWakeLock` hook. Releases on unmount.
+- **Ambient Mode**: Clock + gauges auto-fade after idle timeout. OLED-safe black backgrounds throughout.
+- **Radial Gauge Components**: Circular SVG gauges for CPU/RAM/Disk/Temp with teal gradient accents.
+- **PWA polish**: `vite-plugin-pwa` with `display: standalone`, `background_color: #000000`, iOS meta tags. No separate `manifest.json`.
 - **PWA Install Onboarding**: Setup wizard now has a 5th step ("Install App") after relay configuration, guiding users through "Add to Home Screen" on mobile browsers.
+- **README Phone Mockups**: SVG phone mockups showing Ambient Mode and App Deck at top of README.
+- **SmartScreen Warning**: Bold callout in README warning about Windows SmartScreen false positive with "More Info → Run Anyway" bypass instructions.
 - **Forgot Password Flow**: Login page now shows a "Forgot password?" link that opens an instruction modal with the exact data directory path (fetched from new `GET /api/system/data-dir`), a "Copy Path" button, and step-by-step manual reset instructions.
 - **Single-Click Uninstall**: Settings page "Danger Zone" card with `POST /api/system/uninstall` endpoint. Two-phase cleanup: Rust deletes data dir, registry auto-start key, OS keychain JWT secret, and tunnel binary; then a detached batch script with retry loop deletes the locked `.exe` and itself.
 - **Uninstall Overlay**: Full-screen "Uninstalling SysDeck..." overlay masks the WebSocket disconnect when the backend process exits.
-- **Telemetry GPU Temperature Rounding**: `temperature_gpu` values are now rounded to one decimal place before storage, matching the existing CPU temperature and usage rounding.
+- **Telemetry GPU Temperature Rounding**: `temperature_gpu` values are now rounded to one decimal place before storage.
 
 ### Changed
+- **Companion Deck Positioning**: Repositioned SysDeck from generic admin tool to focused Windows Companion Deck. Updated README, architecture diagram, and quick start guide.
+- **OLED CSS Theme**: Dark mode surfaces use pure `hsl(0 0% 0%)` background, `hsl(0 0% 4%)` cards, `hsl(0 0% 6%)` popovers. Removed all transparent-white surfaces. Gradient overlays use `from-zinc-800/20`.
+- **WebSocket Reconnect**: `reconnectAttempts.current` now resets to 0 on `visibilitychange → visible` — no more 30s backoff when unlocking the phone.
 - **Mobile Tunnel Responsiveness**: Rearchitected hardware mutation handlers to be fire-and-forget (`tokio::spawn`) — return HTTP 200 immediately, broadcast result over a new `hardware_tx` WebSocket channel. Eliminates per-pixel slider lag over tunnel.
 - **WS-Driven State Sync**: Added `hardware_tx` broadcast channel to `AppState`. WebSocket handler subscribes and forwards JSON to clients. Frontend `applyHardwareUpdate()` dispatches on `type` field to keep Zustand store in sync without polling.
 - **Slider Optimization**: Volume/brightness sliders use local state + `onMouseUp`/`onTouchEnd` HTTP POST pattern (no per-pixel requests). Applied to both `Controls.tsx` and `ControlCenter.tsx`.
@@ -36,6 +53,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Code Consolidation**: Unified `run_cmd` helper into `hardware.rs` (removed duplicate from `network.rs`). Simplified `get_control_center_status()` to delegate to `get_toggle_status()`.
 - **Toggle State Detection**: `get_toggle_status()` now detects actual wifi and DND state on all platforms (Windows: WLAN API + Registry, macOS: `networksetup` + `defaults`, Linux: `nmcli` + `gsettings`). Set handlers (`audio_mute`, `toggle_wifi`, `toggle_dnd`) check current state before applying changes — skip redundant operations.
 - **Chart Data Rounding**: Dashboard chart data now rounds CPU usage, CPU temperature, and GPU temperature to one decimal place, so tooltips show clean values.
+
+### Removed
+- **ControlCenter.tsx**: Legacy page removed — superseded by QuickToggles macro deck (Overview Section 1) and AdminCockpit grid.
+- **frontend/public/manifest.json**: No longer needed — PWA manifest handled by `vite-plugin-pwa`.
 
 ### Fixed
 - **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.
