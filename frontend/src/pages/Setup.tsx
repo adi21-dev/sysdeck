@@ -1,37 +1,46 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Check, Copy, Download, Eye, EyeOff } from "lucide-react"
+import { Check, Copy, Download, Eye, EyeOff, ArrowLeft, ShieldCheck, Smartphone, Globe, Key } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { TotpInput } from "@/components/ui/totp-input"
+import { Switch } from "@/components/ui/switch"
 import { useAuthStore } from "@/lib/store"
 
 const BASE_STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay", "Install App"] as const
 
 function StepIndicator({ current, steps }: { current: number; steps: readonly string[] }) {
   return (
-    <div className="flex items-center justify-center gap-2">
+    <div className="relative flex items-center justify-between w-full max-w-md mx-auto py-2">
+      {/* Background connector line */}
+      <div className="absolute top-6 left-0 right-0 h-0.5 bg-border/40 -z-10" />
+      {/* Progress connector line */}
+      <div
+        className="absolute top-6 left-0 h-0.5 bg-primary transition-all duration-500 -z-10"
+        style={{ width: `${(current / (steps.length - 1)) * 100}%` }}
+      />
       {steps.map((label, i) => (
-        <div key={i} className="flex items-center gap-2">
+        <div key={i} className="flex flex-col items-center relative z-10">
           <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
+            className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-all duration-300 ${
               i < current
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground scale-100"
                 : i === current
-                  ? "border-2 border-primary text-primary"
-                  : "border border-muted-foreground/30 text-muted-foreground"
+                  ? "bg-background border-2 border-primary text-primary scale-110 shadow-md shadow-primary/10"
+                  : "bg-background border border-border text-muted-foreground scale-100"
             }`}
           >
-            {i < current ? <Check className="h-4 w-4" /> : i + 1}
+            {i < current ? <Check className="h-4.5 w-4.5" /> : i + 1}
           </div>
           <span
-            className={`hidden text-sm sm:inline ${i === current ? "font-medium text-foreground" : "text-muted-foreground"}`}
+            className={`hidden sm:block text-[11px] font-medium mt-1.5 transition-colors duration-300 ${
+              i === current ? "text-foreground font-semibold" : "text-muted-foreground"
+            }`}
           >
             {label}
           </span>
-          {i < steps.length - 1 && <div className="mx-1 h-px w-8 bg-border sm:mx-2 sm:w-12" />}
         </div>
       ))}
     </div>
@@ -39,20 +48,50 @@ function StepIndicator({ current, steps }: { current: number; steps: readonly st
 }
 
 function PasswordStrength({ password }: { password: string }) {
-  const score = Math.min(password.length / 12, 1)
+  let score = 0
+  if (password.length >= 8) score += 0.25
+  if (/[A-Z]/.test(password)) score += 0.25
+  if (/[0-9]/.test(password)) score += 0.25
+  if (/[^A-Za-z0-9]/.test(password)) score += 0.25
+
+  const scorePct = password ? score * 100 : 0
   const color =
-    score < 0.3 ? "bg-destructive" : score < 0.6 ? "bg-yellow-500" : score < 0.8 ? "bg-yellow-400" : "bg-green-500"
+    scorePct < 30
+      ? "bg-destructive"
+      : scorePct < 60
+        ? "bg-warning"
+        : "bg-success"
+
+  const label =
+    scorePct === 0
+      ? ""
+      : scorePct < 30
+        ? "Weak"
+        : scorePct < 60
+          ? "Medium"
+          : "Strong"
+
   return (
-    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
-      <div className={`h-full transition-all ${color}`} style={{ width: `${score * 100}%` }} />
+    <div className="mt-2 space-y-1">
+      <div className="flex justify-between text-[11px] font-medium text-muted-foreground">
+        <span>Password strength</span>
+        <span className={scorePct < 30 ? "text-destructive" : scorePct < 60 ? "text-warning" : "text-success"}>
+          {label}
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted shadow-inner">
+        <div className={`h-full transition-all duration-300 ${color}`} style={{ width: `${scorePct}%` }} />
+      </div>
     </div>
   )
 }
 
 function StepPassword({
   onComplete,
+  onBack,
 }: {
   onComplete: (token: string) => void
+  onBack: () => void
 }) {
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
@@ -92,7 +131,7 @@ function StepPassword({
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label htmlFor="create-password" className="text-sm font-medium">Create Password</label>
-        <div className="relative">
+        <div className="relative mt-1.5">
           <Input
             id="create-password"
             type={show ? "text" : "password"}
@@ -101,35 +140,44 @@ function StepPassword({
             placeholder="At least 8 characters"
             required
             minLength={8}
-            className="pr-10"
+            className="pr-12 h-12 md:h-10 text-base md:text-sm"
           />
           <button
             type="button"
             onClick={() => setShow(!show)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            className="absolute right-1 top-1/2 -translate-y-1/2 touch-target text-muted-foreground hover:text-foreground"
             tabIndex={-1}
           >
-            {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {show ? <EyeOff className="h-5 w-5 md:h-4 md:w-4" /> : <Eye className="h-5 w-5 md:h-4 md:w-4" />}
           </button>
         </div>
         <PasswordStrength password={password} />
       </div>
       <div>
         <label htmlFor="confirm-password" className="text-sm font-medium">Confirm Password</label>
-        <Input
-          id="confirm-password"
-          type={show ? "text" : "password"}
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          placeholder="Repeat your password"
-          required
-          minLength={8}
-        />
+        <div className="mt-1.5">
+          <Input
+            id="confirm-password"
+            type={show ? "text" : "password"}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Repeat your password"
+            required
+            minLength={8}
+            className="h-12 md:h-10 text-base md:text-sm"
+          />
+        </div>
       </div>
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" className="w-full" disabled={loading || password.length < 8}>
-        {loading ? "Setting up..." : "Continue"}
-      </Button>
+      {error && <p className="text-sm text-destructive bg-destructive/10 p-2.5 rounded-xl border border-destructive/10 animate-fade-in">{error}</p>}
+      
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" size="touch" className="flex-1" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        <Button type="submit" size="touch" className="flex-1" disabled={loading || password.length < 8}>
+          {loading ? "Setting up..." : "Continue"}
+        </Button>
+      </div>
     </form>
   )
 }
@@ -137,9 +185,11 @@ function StepPassword({
 function StepTotp({
   token,
   onComplete,
+  onBack,
 }: {
   token: string
   onComplete: (newToken: string) => void
+  onBack: () => void
 }) {
   const [qrSvg, setQrSvg] = useState("")
   const [secret, setSecret] = useState("")
@@ -165,8 +215,18 @@ function StepTotp({
     fetchQr()
   }, [token])
 
+  // Auto-submit TOTP code on 6 digits
+  useEffect(() => {
+    if (code.length === 6) {
+      const e = { preventDefault: () => {} } as React.FormEvent
+      handleSubmit(e)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (code.length !== 6) return
     setError("")
     setLoading(true)
     try {
@@ -195,35 +255,50 @@ function StepTotp({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Scan this QR code with your authenticator app (e.g. Google Authenticator, Authy), then enter the 6-digit code below.
+      <p className="text-sm text-muted-foreground leading-relaxed">
+        Scan this QR code with an authenticator app (e.g. Google Authenticator, Authy), then enter the 6-digit code below.
       </p>
-      {!fetched && !error && <p className="text-sm text-muted-foreground">Loading QR code...</p>}
-      {error && !fetched && <p className="text-sm text-destructive">{error}</p>}
+      {!fetched && !error && <p className="text-sm text-muted-foreground text-center py-6">Loading QR code...</p>}
+      {error && !fetched && <p className="text-sm text-destructive text-center py-4 bg-destructive/10 rounded-xl border border-destructive/10">{error}</p>}
+      
       {qrSvg && (
-        <div className="flex justify-center">
-          <img src={qrSvg} alt="TOTP QR Code" className="h-48 w-48" />
+        <div className="flex justify-center p-3 rounded-2xl bg-white dark:bg-neutral-900 border border-border/40 shadow-inner max-w-[200px] mx-auto">
+          <img src={qrSvg} alt="TOTP QR Code" className="h-44 w-44" />
         </div>
       )}
       {secret && (
         <div className="text-center">
-          <p className="text-xs text-muted-foreground mb-1">Or enter this key manually:</p>
-          <code className="select-all rounded bg-muted px-2 py-1 text-xs font-mono">{secret}</code>
+          <p className="text-xs text-muted-foreground mb-1.5">Or enter this key manually:</p>
+          <code className="select-all rounded-lg bg-muted border border-border/45 px-3 py-1.5 text-xs font-mono tracking-wider">{secret}</code>
         </div>
       )}
       <div>
         <label htmlFor="totp-code" className="text-sm font-medium">TOTP Code</label>
-        <TotpInput value={code} onChange={setCode} id="totp-code" />
+        <div className="mt-1.5">
+          <TotpInput value={code} onChange={setCode} id="totp-code" />
+        </div>
       </div>
-      {error && fetched && <p className="text-sm text-destructive">{error}</p>}
-      <Button type="submit" className="w-full" disabled={loading || code.length !== 6 || !fetched}>
-        {loading ? "Verifying..." : "Verify & Continue"}
-      </Button>
+      {error && fetched && <p className="text-sm text-destructive bg-destructive/10 p-2.5 rounded-xl border border-destructive/10 animate-fade-in">{error}</p>}
+      
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" size="touch" className="flex-1" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        <Button type="submit" size="touch" className="flex-1" disabled={loading || code.length !== 6 || !fetched}>
+          {loading ? "Verifying..." : "Verify & Continue"}
+        </Button>
+      </div>
     </form>
   )
 }
 
-function StepRecoveryCodes({ onComplete }: { onComplete: (token: string) => void }) {
+function StepRecoveryCodes({
+  onComplete,
+  onBack,
+}: {
+  onComplete: (token: string) => void
+  onBack: () => void
+}) {
   const [codes, setCodes] = useState<string[]>(() => {
     try {
       const stored = sessionStorage.getItem("recovery_codes")
@@ -281,83 +356,106 @@ function StepRecoveryCodes({ onComplete }: { onComplete: (token: string) => void
   }
 
   if (codes.length === 0) {
-    return <p className="text-sm text-muted-foreground">Loading recovery codes...</p>
+    return <p className="text-sm text-muted-foreground text-center py-8">Loading recovery codes...</p>
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+    <div className="space-y-5">
+      <p className="text-sm text-muted-foreground leading-relaxed">
         Save these recovery codes in a secure place. You can use them to access your account if you lose your authenticator device.
       </p>
-      <div className="space-y-1.5">
+      
+      <div className="grid grid-cols-2 gap-2">
         {codes.map((code, i) => (
-          <div key={i} className="flex items-center justify-between rounded border bg-muted/50 px-3 py-2">
-            <code className="font-mono text-sm tracking-wider">{code}</code>
-            <button
+          <div key={i} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/40 pl-3 pr-1 py-1 min-h-[44px]">
+            <code className="font-mono text-sm tracking-wider font-semibold">{code}</code>
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg shrink-0"
               onClick={() => handleCopy(code, i)}
-              className="text-muted-foreground hover:text-foreground"
               title="Copy code"
             >
-              {copiedIndex === i ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </button>
+              {copiedIndex === i ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+            </Button>
           </div>
         ))}
       </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={handleDownload}>
-          <Download className="mr-1 h-4 w-4" />
-          Download
+      
+      <div className="flex justify-start">
+        <Button variant="outline" size="sm" onClick={handleDownload} className="rounded-xl border-border/40">
+          <Download className="mr-1.5 h-4 w-4" />
+          Download Backup File
         </Button>
       </div>
-      <Separator />
-      <div className="flex items-start gap-2">
-        <input
-          type="checkbox"
+      
+      <Separator className="bg-border/50" />
+      
+      <div className="flex items-start gap-3 bg-muted/20 p-3.5 rounded-xl border border-border/40">
+        <Switch
           id="confirm-codes"
           checked={confirmed}
-          onChange={(e) => setConfirmed(e.target.checked)}
-          className="mt-1"
+          onChange={setConfirmed}
+          className="mt-0.5"
         />
-        <label htmlFor="confirm-codes" className="text-sm text-muted-foreground cursor-pointer">
-          I have saved my recovery codes in a secure location
+        <label htmlFor="confirm-codes" className="text-xs text-muted-foreground cursor-pointer leading-normal">
+          I have written down or saved my recovery codes in a secure location
         </label>
       </div>
-      <Button className="w-full" disabled={!confirmed} onClick={handleConfirm}>
-        Continue
-      </Button>
+      
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" size="touch" className="flex-1" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        <Button size="touch" className="flex-1" disabled={!confirmed} onClick={handleConfirm}>
+          Continue
+        </Button>
+      </div>
     </div>
   )
 }
 
-function StepRelay({ onComplete }: { onComplete: (enabled: boolean) => void }) {
+function StepRelay({
+  onComplete,
+  onBack,
+}: {
+  onComplete: (enabled: boolean) => void
+  onBack: () => void
+}) {
   const [enabled, setEnabled] = useState(false)
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground leading-relaxed">
         Optionally expose this agent to the internet via a Cloudflare Quick Tunnel.
         This allows remote access from outside your local network without port forwarding.
       </p>
-      <div className="flex items-start gap-2 rounded-md bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+      
+      <div className="flex items-start gap-3 rounded-2xl bg-warning/10 p-4 text-xs text-warning-foreground border border-warning/15">
         <span>
           <strong>*Note:</strong> Because this uses a free, zero-signup tunnel, your remote URL will change every time the app restarts. We are working on adding persistent domain support soon!
         </span>
       </div>
-      <div className="flex items-start gap-2">
-        <input
-          type="checkbox"
+      
+      <div className="flex items-center gap-3 bg-muted/30 p-4 rounded-xl border border-border/30">
+        <Switch
           id="relay-enable"
           checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          className="mt-1"
+          onChange={setEnabled}
         />
-        <label htmlFor="relay-enable" className="text-sm text-muted-foreground cursor-pointer">
+        <label htmlFor="relay-enable" className="text-sm font-medium text-foreground cursor-pointer">
           Enable Cloudflare Relay
         </label>
       </div>
-      <Button className="w-full" onClick={() => onComplete(enabled)}>
-        Complete Setup
-      </Button>
+      
+      <div className="flex gap-3 pt-2">
+        <Button type="button" variant="outline" size="touch" className="flex-1" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        <Button size="touch" className="flex-1" onClick={() => onComplete(enabled)}>
+          Complete Setup
+        </Button>
+      </div>
     </div>
   )
 }
@@ -367,44 +465,44 @@ function StepPwa({ onComplete }: { onComplete: () => void }) {
     <div className="space-y-6">
       <div className="space-y-4">
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-            <svg className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 glow-teal">
+            <Smartphone className="h-8 w-8 text-primary" />
           </div>
-          <h3 className="text-lg font-semibold">Add to Home Screen</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            For the best experience, install SysDeck as an app on your phone.
+          <h3 className="text-lg font-semibold">Install App on Phone</h3>
+          <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+            For the best experience, install SysDeck as an app on your mobile home screen.
           </p>
         </div>
 
-        <div className="rounded-lg border p-4 space-y-3">
+        <div className="rounded-2xl border border-border/40 bg-card p-4 space-y-4 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">1</div>
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold mt-0.5">1</div>
             <div>
-              <p className="font-medium text-sm">Open in Safari / Chrome</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Navigate to the IP or Cloudflare URL shown in the terminal.</p>
+              <p className="font-semibold text-sm">Open in Browser</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Open the Cloudflare URL or Local IP shown in the terminal on your mobile device.</p>
             </div>
           </div>
+          
           <div className="flex items-start gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">2</div>
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold mt-0.5">2</div>
             <div>
-              <p className="font-medium text-sm">Tap Share</p>
-              <p className="text-xs text-muted-foreground mt-0.5">On iPhone: Share button at the bottom of the browser.</p>
-              <p className="text-xs text-muted-foreground mt-0.5">On Android: Menu → Add to Home Screen.</p>
+              <p className="font-semibold text-sm">Tap Share / Options</p>
+              <p className="text-xs text-muted-foreground mt-0.5">On iOS: Tap the standard Share button at the bottom.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">On Android: Tap browser Menu icon (three dots).</p>
             </div>
           </div>
+          
           <div className="flex items-start gap-3">
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">3</div>
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-semibold mt-0.5">3</div>
             <div>
-              <p className="font-medium text-sm">Add to Home Screen</p>
-              <p className="text-xs text-muted-foreground mt-0.5">You'll get a standalone window, no URL bar, and wake lock support.</p>
+              <p className="font-semibold text-sm">Add to Home Screen</p>
+              <p className="text-xs text-muted-foreground mt-0.5">This removes the browser URL bar, provides full-screen standalone windows, and locks wake lock features.</p>
             </div>
           </div>
         </div>
       </div>
 
-      <Button onClick={onComplete} className="w-full">
+      <Button onClick={onComplete} size="touch" className="w-full font-semibold shadow-md">
         Done, Take Me to Login →
       </Button>
     </div>
@@ -415,48 +513,44 @@ function StepWelcome({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div className="flex items-start gap-3">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
-            1
+        <div className="flex items-start gap-3.5 bg-muted/20 p-4 rounded-xl border border-border/30">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold mt-0.5">
+            <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <h4 className="font-semibold text-foreground">Secure your account</h4>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              You will create an admin password and set up Two-Factor Authentication (2FA) to keep your system safe.
+            <h4 className="font-semibold text-foreground text-sm">Secure your account</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Create an admin password and configure Two-Factor Authentication (2FA) to encrypt remote requests.
             </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
-            2
+        <div className="flex items-start gap-3.5 bg-muted/20 p-4 rounded-xl border border-border/30">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold mt-0.5">
+            <Globe className="h-5 w-5" />
           </div>
           <div>
-            <h4 className="font-semibold text-foreground">Enable Remote Access (Optional)</h4>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              You can turn on the Cloudflare Relay to access this PC from anywhere in the world.
-              <br />
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1 block">
-                *Note: Because this uses a free, zero-signup tunnel, your remote URL will change every time the app restarts. We are working on adding persistent domain support soon!
-              </span>
+            <h4 className="font-semibold text-foreground text-sm">Enable Remote Access</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Expose this PC via Cloudflare Tunnel securely so you can control it on the go.
             </p>
           </div>
         </div>
 
-        <div className="flex items-start gap-3">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-medium mt-0.5">
-            3
+        <div className="flex items-start gap-3.5 bg-muted/20 p-4 rounded-xl border border-border/30">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-semibold mt-0.5">
+            <Key className="h-5 w-5" />
           </div>
           <div>
-            <h4 className="font-semibold text-foreground">Access your dashboard</h4>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Once setup is complete, you'll be able to manage your files, terminal, and system hardware directly from your browser.
+            <h4 className="font-semibold text-foreground text-sm">Manage Everything</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Once setup finishes, browse files, execute scripts, and view your remote desktop.
             </p>
           </div>
         </div>
       </div>
 
-      <Button onClick={onComplete} className="w-full mt-4">
+      <Button onClick={onComplete} size="touch" className="w-full mt-4 font-semibold shadow-md">
         Start Setup →
       </Button>
     </div>
@@ -506,16 +600,10 @@ export function SetupPage() {
     setStep(3)
   }, [])
 
-  const handleRecoveryComplete = useCallback(() => {
+  const handleRecoveryComplete = useCallback((newToken: string) => {
+    setToken(newToken)
     setStep(4)
   }, [])
-
-  const handlePwaComplete = useCallback(() => {
-    sessionStorage.removeItem("setup_token")
-    sessionStorage.removeItem("recovery_codes")
-    useAuthStore.getState().setSetupComplete(true)
-    navigate("/login", { replace: true })
-  }, [navigate])
 
   const handleRelayComplete = useCallback((enabled: boolean) => {
     const token = sessionStorage.getItem("setup_token")
@@ -534,40 +622,54 @@ export function SetupPage() {
     })
   }, [])
 
+  const handlePwaComplete = useCallback(() => {
+    sessionStorage.removeItem("setup_token")
+    sessionStorage.removeItem("recovery_codes")
+    useAuthStore.getState().setSetupComplete(true)
+    navigate("/login", { replace: true })
+  }, [navigate])
+
+  const handleBack = useCallback(() => {
+    if (step > 0) {
+      setStep(step - 1)
+    }
+  }, [step])
+
   if (checking) {
     return (
       <div className="flex min-h-screen items-center justify-center"
         style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(173 80% 30% / 0.08) 0%, transparent 60%), var(--background)" }}>
-        <p className="text-muted-foreground">Checking setup status...</p>
+        <p className="text-sm text-muted-foreground animate-pulse">Checking setup status...</p>
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4 relative overflow-hidden"
+    <div className="flex min-h-screen items-center justify-center p-4 relative overflow-hidden animate-fade-in"
       style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(173 80% 30% / 0.08) 0%, transparent 60%), radial-gradient(ellipse at 80% 50%, hsl(210 80% 50% / 0.05) 0%, transparent 50%), var(--background)" }}>
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary/5 blur-3xl animate-float" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-chart-2/5 blur-3xl animate-float" style={{ animationDelay: "-3s" }} />
+        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary/5 blur-3xl animate-breathe" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-chart-2/5 blur-3xl animate-breathe" style={{ animationDelay: "-3s" }} />
       </div>
-      <div className="w-full max-w-lg space-y-6 relative">
+      <div className="w-full max-w-lg space-y-6 relative animate-fade-in-up">
         <div className="text-center">
-          <h1 className="text-2xl font-bold">SysDeck Agent Setup</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Configure your agent</p>
+          <h1 className="text-2xl font-bold tracking-tight">SysDeck Agent Setup</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Configure your agent security & remote options</p>
         </div>
+        
         {step > 0 && <StepIndicator current={step - 1} steps={BASE_STEPS} />}
-        <Card className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+        
+        <Card variant="glass" className="shadow-lg relative overflow-hidden">
           <CardHeader>
             <CardTitle>
               {step === 0 ? "Welcome to SysDeck" : BASE_STEPS[step - 1]}
             </CardTitle>
             <CardDescription>
-              {step === 0 ? "Let's get your remote access set up in 3 quick steps." :
+              {step === 0 ? "Let's get your remote access set up in 4 quick steps." :
                step === 1 ? "Create a strong password to secure your agent" :
                step === 2 ? "Set up two-factor authentication" :
                step === 3 ? "Store your recovery codes safely" :
-               step === 4 ? "Configure remote access" :
+               step === 4 ? "Configure remote access options" :
                "Install SysDeck as an app on your phone"}
             </CardDescription>
           </CardHeader>
@@ -575,13 +677,13 @@ export function SetupPage() {
             {step === 0 ? (
               <StepWelcome onComplete={() => setStep(1)} />
             ) : step === 1 ? (
-              <StepPassword onComplete={handlePasswordComplete} />
+              <StepPassword onComplete={handlePasswordComplete} onBack={handleBack} />
             ) : step === 2 && token ? (
-              <StepTotp token={token} onComplete={handleTotpComplete} />
+              <StepTotp token={token} onComplete={handleTotpComplete} onBack={handleBack} />
             ) : step === 3 ? (
-              <StepRecoveryCodes onComplete={handleRecoveryComplete} />
+              <StepRecoveryCodes onComplete={handleRecoveryComplete} onBack={handleBack} />
             ) : step === 4 ? (
-              <StepRelay onComplete={handleRelayComplete} />
+              <StepRelay onComplete={handleRelayComplete} onBack={handleBack} />
             ) : step === 5 ? (
               <StepPwa onComplete={handlePwaComplete} />
             ) : null}

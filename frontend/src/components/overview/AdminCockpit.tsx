@@ -21,59 +21,59 @@ interface CockpitItem {
 const ITEMS: CockpitItem[] = [
   {
     icon: BarChart3,
-    label: "System Health",
-    description: "Historical charts & metrics",
+    label: "Telemetry",
+    description: "Real-time charts",
     path: "/dashboard",
-    color: "text-emerald-400",
+    color: "text-emerald-500 bg-emerald-500/10",
   },
   {
     icon: FolderOpen,
     label: "Files",
-    description: "Browse & manage files",
+    description: "Remote directory",
     path: "/files",
-    color: "text-sky-400",
+    color: "text-sky-500 bg-sky-500/10",
   },
   {
     icon: Terminal,
     label: "Terminal",
-    description: "Command line access",
+    description: "Command line",
     path: "/remote",
-    color: "text-violet-400",
+    color: "text-violet-500 bg-violet-500/10",
   },
   {
     icon: Play,
     label: "Scripts",
-    description: "Run & manage scripts",
+    description: "Custom scripts",
     path: "/scripts",
-    color: "text-amber-400",
+    color: "text-amber-500 bg-amber-500/10",
   },
   {
     icon: Wifi,
     label: "Network",
-    description: "Wi-Fi & connections",
+    description: "Connections",
     path: "/controls",
-    color: "text-cyan-400",
+    color: "text-cyan-500 bg-cyan-500/10",
   },
   {
     icon: Monitor,
     label: "Controls",
-    description: "Power & hardware",
+    description: "Power & sound",
     path: "/controls",
-    color: "text-rose-400",
+    color: "text-rose-500 bg-rose-500/10",
   },
   {
     icon: Shield,
-    label: "Audit",
-    description: "Security events",
+    label: "Audit Log",
+    description: "Security log",
     path: "/audit",
-    color: "text-orange-400",
+    color: "text-orange-500 bg-orange-500/10",
   },
   {
     icon: Settings,
     label: "Settings",
     description: "Configuration",
     path: "/settings",
-    color: "text-zinc-400",
+    color: "text-zinc-500 bg-zinc-500/10",
   },
 ]
 
@@ -81,25 +81,28 @@ export function AdminCockpit() {
   const navigate = useNavigate()
 
   return (
-    <div className="px-4 pb-8">
-      <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-4">
-        Admin Library
+    <div className="px-4 pb-8 space-y-3">
+      <h2 className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/80">
+        Control Center
       </h2>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {ITEMS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              aria-label={`Open ${item.label}`}
-              onClick={() => navigate(item.path)}
-            className="flex items-start gap-3 rounded-2xl border border-border/50 bg-zinc-950/50 p-4 text-left transition-all duration-200 hover:border-primary/20 hover:bg-zinc-900/50 active:scale-[0.98]"
+          <button
+            key={item.label}
+            type="button"
+            aria-label={`Open ${item.label}`}
+            onClick={() => {
+              if (navigator.vibrate) navigator.vibrate(10)
+              navigate(item.path)
+            }}
+            className="flex items-center gap-3.5 rounded-2xl border border-border/10 bg-card backdrop-blur-md p-4 text-left transition-all duration-200 hover:border-primary/20 hover:bg-accent/60 active:scale-[0.97] press-effect shadow-sm"
           >
-            <div className={`mt-0.5 ${item.color}`}>
-              <item.icon className="h-5 w-5" />
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${item.color}`}>
+              <item.icon className="h-[18px] w-[18px]" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium">{item.label}</div>
-              <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+              <div className="text-xs font-semibold tracking-tight text-foreground">{item.label}</div>
+              <div className="text-[10px] text-muted-foreground/75 truncate mt-0.5">
                 {item.description}
               </div>
             </div>

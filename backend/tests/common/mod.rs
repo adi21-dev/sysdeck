@@ -73,6 +73,7 @@ fn test_app_inner(
     let (system_tx, _) = broadcast::channel::<String>(16);
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
     let (hardware_tx, _) = broadcast::channel::<String>(16);
+    let (windows_tx, _) = broadcast::channel::<String>(16);
     let power_state = Arc::new(PowerState::with_commands(commands));
     let script_state = Arc::new(ScriptState::new());
 
@@ -82,6 +83,7 @@ fn test_app_inner(
         system_tx,
         clipboard_tx,
         hardware_tx,
+        windows_tx,
         db,
         jwt_key,
         lockout,

@@ -1,19 +1,22 @@
+/* oxlint-disable jsx-a11y/control-has-associated-label */
 import { useEffect, useCallback, useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
-import { ScrollText, LogIn, LogOut, FolderUp, FolderX, Pencil, Settings, AlertTriangle, X } from "lucide-react"
+import { ScrollText, LogIn, LogOut, FolderUp, FolderX, Pencil, Settings, AlertTriangle, X, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Card } from "@/components/ui/card"
 import { useAuditStore, type AuditEntry } from "@/lib/audit-store"
+import { cn } from "@/lib/utils"
 
-const EVENT_ICONS: Record<string, { icon: typeof LogIn; label: string }> = {
-  login_success: { icon: LogIn, label: "Login Successful" },
-  login_failed: { icon: LogOut, label: "Login Failed" },
-  login_locked: { icon: LogOut, label: "Account Locked" },
-  file_uploaded: { icon: FolderUp, label: "File Uploaded" },
-  upload_failed: { icon: FolderX, label: "Upload Failed" },
-  file_deleted: { icon: FolderX, label: "File Deleted" },
-  file_renamed: { icon: Pencil, label: "File Renamed" },
-  setup_complete: { icon: Settings, label: "Setup Complete" },
+const EVENT_ICONS: Record<string, { icon: typeof LogIn; label: string; color: string }> = {
+  login_success: { icon: LogIn, label: "Login Successful", color: "bg-emerald-500/10 text-emerald-500" },
+  login_failed: { icon: LogOut, label: "Login Failed", color: "bg-destructive/10 text-destructive" },
+  login_locked: { icon: LogOut, label: "Account Locked", color: "bg-destructive/15 text-destructive" },
+  file_uploaded: { icon: FolderUp, label: "File Uploaded", color: "bg-sky-500/10 text-sky-500" },
+  upload_failed: { icon: FolderX, label: "Upload Failed", color: "bg-destructive/10 text-destructive" },
+  file_deleted: { icon: FolderX, label: "File Deleted", color: "bg-destructive/10 text-destructive" },
+  file_renamed: { icon: Pencil, label: "File Renamed", color: "bg-amber-500/10 text-amber-500" },
+  setup_complete: { icon: Settings, label: "Setup Complete", color: "bg-purple-500/10 text-purple-500" },
 }
 
 const EVENT_TYPES = [
@@ -42,24 +45,31 @@ function absoluteTime(ts: number): string {
 
 function FilterSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all appearance-none"
-    >
-      {children}
-    </select>
+    <div className="relative flex-1">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3.5 h-10 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-all appearance-none pr-8 font-semibold"
+      >
+        {children}
+      </select>
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground text-xs font-bold font-mono">▼</span>
+    </div>
   )
 }
 
-function FilterDate({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function FilterDate({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   return (
-    <input
-      type="date"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
-    />
+    <div className="relative flex-1">
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3.5 h-10 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-all pl-10"
+        aria-label={label}
+      />
+      <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
+    </div>
   )
 }
 
@@ -119,8 +129,8 @@ export function AuditPage() {
 
   return (
     <div className="space-y-4">
-      <div className="glass-card p-4 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      {/* Filter panel */}
+      <Card variant="glass" className="p-4 shadow-sm border border-border/40">
         <div className="flex flex-col sm:flex-row gap-3">
           <FilterSelect value={filters.event} onChange={(v) => handleFilterChange("event", v)}>
             <option value="">All Events</option>
@@ -128,97 +138,124 @@ export function AuditPage() {
               <option key={ev} value={ev}>{EVENT_ICONS[ev]?.label || ev}</option>
             ))}
           </FilterSelect>
-          <FilterDate value={filters.from} onChange={(v) => handleFilterChange("from", v)} />
-          <FilterDate value={filters.to} onChange={(v) => handleFilterChange("to", v)} />
-          <Button variant="outline" onClick={loadLogs} disabled={loading}>
-            {loading ? "Loading..." : "Apply Filters"}
+          <FilterDate value={filters.from} onChange={(v) => handleFilterChange("from", v)} label="From Date" />
+          <FilterDate value={filters.to} onChange={(v) => handleFilterChange("to", v)} label="To Date" />
+          <Button variant="outline" className="h-10 rounded-xl font-semibold border-border/50 shrink-0" onClick={loadLogs} disabled={loading}>
+            {loading ? "Syncing..." : "Apply Filters"}
           </Button>
         </div>
-      </div>
+      </Card>
 
       {error && (
-        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
+        <div className="flex items-center justify-between rounded-xl bg-destructive/10 backdrop-blur-sm p-3.5 text-xs text-destructive border border-destructive/10 animate-fade-in">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            <span>{error}</span>
+            <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+            <span className="font-semibold">{error}</span>
           </div>
-          <button onClick={() => setError(null)}><X className="h-4 w-4" /></button>
+          <button type="button" className="p-1 rounded hover:bg-destructive/10" onClick={() => setError(null)}>
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
-      <div className="glass-card overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      {/* Main logs display */}
+      <div className="space-y-3">
         {loading && entries.length === 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/30">
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Timestamp</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Event</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Details</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">IP Address</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/20">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="p-4"><Skeleton className="h-4 w-24" /></td>
-                    <td className="p-4"><Skeleton className="h-4 w-32" /></td>
-                    <td className="p-4"><Skeleton className="h-4 w-48" /></td>
-                    <td className="p-4"><Skeleton className="h-4 w-28" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full rounded-2xl" />
+            ))}
           </div>
         ) : entries.length === 0 && !loading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-              <ScrollText className="w-7 h-7 text-muted-foreground/60" />
+          <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border/40 rounded-3xl p-6 bg-muted/10">
+            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
+              <ScrollText className="w-6 h-6 text-muted-foreground/60" />
             </div>
-            <h3 className="text-base font-semibold text-foreground mb-1">No audit entries found</h3>
-            <p className="text-sm text-muted-foreground max-w-xs">No entries match your current filters. Try adjusting the event type or date range.</p>
+            <h3 className="text-sm font-semibold text-foreground mb-1">No security entries</h3>
+            <p className="text-xs text-muted-foreground max-w-xs leading-normal">No logs match the selected filter configuration.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/30">
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Timestamp</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Event</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">Details</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground text-xs uppercase tracking-wider">IP Address</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/20">
-                {entries.map((entry) => {
-                  const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event }
-                  const Icon = eventInfo.icon
-                  return (
-                    <tr key={entry.id} className="hover:bg-accent/30 transition-colors">
-                      <td className="p-4 text-foreground/70 whitespace-nowrap text-xs" title={absoluteTime(entry.created_at)}>
-                        {relativeTime(entry.created_at)}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Icon className="h-4 w-4 text-foreground/70 shrink-0" />
-                          <span className="font-medium">{eventInfo.label}</span>
+          <>
+            {/* Mobile Cards Layout (<md) */}
+            <div className="md:hidden space-y-2.5">
+              {entries.map((entry) => {
+                const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event, color: "bg-muted text-muted-foreground" }
+                const Icon = eventInfo.icon
+                return (
+                  <Card key={entry.id} variant="glass-shine" className="p-4 border-border/40 flex flex-col justify-between gap-2.5 shadow-sm">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", eventInfo.color)}>
+                          <Icon className="h-[17px] w-[17px]" />
                         </div>
-                      </td>
-                      <td className="p-4 text-foreground/70 max-w-xs truncate text-sm">{entry.details || "—"}</td>
-                      <td className="p-4 text-foreground/70 font-mono text-xs">{entry.ip_address || "—"}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <div>
+                          <p className="text-xs font-semibold text-foreground">{eventInfo.label}</p>
+                          <p className="text-[10px] text-muted-foreground/75 mt-0.5" title={absoluteTime(entry.created_at)}>
+                            {relativeTime(entry.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {entry.ip_address && (
+                        <span className="text-[9px] font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border/40">
+                          {entry.ip_address}
+                        </span>
+                      )}
+                    </div>
+                    {entry.details && (
+                      <p className="text-[11px] text-muted-foreground leading-normal bg-muted/10 p-2.5 rounded-xl border border-border/10 font-medium">
+                        {entry.details}
+                      </p>
+                    )}
+                  </Card>
+                )
+              })}
+            </div>
+
+            {/* Desktop Table View (>=md) */}
+            <Card variant="glass" className="hidden md:block overflow-hidden shadow-sm border border-border/40">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/20 text-xs font-semibold text-muted-foreground bg-muted/20">
+                    <th className="text-left p-4 uppercase tracking-wider">Timestamp</th>
+                    <th className="text-left p-4 uppercase tracking-wider">Event</th>
+                    <th className="text-left p-4 uppercase tracking-wider">Details</th>
+                    <th className="text-left p-4 uppercase tracking-wider">IP Address</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/20">
+                  {entries.map((entry) => {
+                    const eventInfo = EVENT_ICONS[entry.event] || { icon: ScrollText, label: entry.event, color: "bg-muted text-muted-foreground" }
+                    const Icon = eventInfo.icon
+                    return (
+                      <tr key={entry.id} className="hover:bg-accent/30 transition-colors">
+                        <td className="p-4 text-foreground/75 whitespace-nowrap text-xs" title={absoluteTime(entry.created_at)}>
+                          {relativeTime(entry.created_at)}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shrink-0", eventInfo.color)}>
+                              <Icon className="h-4 w-4" />
+                            </div>
+                            <span className="font-semibold text-xs text-foreground/90">{eventInfo.label}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-foreground/80 max-w-xs truncate text-xs font-medium">{entry.details || "—"}</td>
+                        <td className="p-4 text-foreground/75 font-mono text-xs">{entry.ip_address || "—"}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          </>
         )}
+
         {hasMore && entries.length > 0 && (
-          <div className="p-4 border-t border-border/30 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Showing {entries.length} entries</p>
-            <Button variant="outline" onClick={handleLoadMore} disabled={loading}>
-              {loading ? "Loading..." : "Load More"}
+          <div className="p-4 flex items-center justify-between border border-border/10 rounded-2xl bg-card">
+            <p className="text-xs font-semibold text-muted-foreground">Showing {entries.length} entries</p>
+            <Button variant="outline" size="sm" className="rounded-xl h-9" onClick={handleLoadMore} disabled={loading}>
+              {loading ? "Syncing..." : "Load More"}
             </Button>
           </div>
         )}

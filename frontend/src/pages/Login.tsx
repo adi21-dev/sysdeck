@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Monitor, AlertTriangle, Eye, EyeOff, Copy, Check } from "lucide-react"
+import { Monitor, AlertTriangle, Eye, EyeOff, Copy, Check, Loader2, X } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { TotpInput } from "@/components/ui/totp-input"
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 
 export function LoginPage() {
   const [password, setPassword] = useState("")
@@ -39,12 +41,22 @@ export function LoginPage() {
       .catch(() => {})
   }, [])
 
-  if (checking) return null
+  // Auto-submit TOTP when 6 digits are entered
+  useEffect(() => {
+    if (totp.length === 6 && password) {
+      const e = { preventDefault: () => {} } as React.FormEvent
+      handleSubmit(e)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totp])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!password) return
     setError("")
     setIsSubmitting(true)
+    // Mobile haptic feedback on sign in click
+    if (navigator.vibrate) navigator.vibrate(10)
     try {
       const res = await fetch("/login", {
         method: "POST",
@@ -76,6 +88,20 @@ export function LoginPage() {
     } catch {}
   }
 
+  if (checking) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4"
+        style={{ background: "radial-gradient(ellipse at 50% 0%, hsl(173 80% 30% / 0.08) 0%, transparent 60%), var(--background)" }}>
+        <div className="text-center animate-pulse">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+            <Loader2 className="w-6 h-6 text-primary animate-spin" />
+          </div>
+          <p className="text-sm text-muted-foreground">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{
@@ -83,65 +109,83 @@ export function LoginPage() {
       }}
     >
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary/5 blur-3xl animate-float" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-chart-2/5 blur-3xl animate-float" style={{ animationDelay: "-3s" }} />
+        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-primary/5 blur-3xl animate-breathe" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-chart-2/5 blur-3xl animate-breathe" style={{ animationDelay: "-3s" }} />
       </div>
-      <div className="w-full max-w-md relative">
-        <div className="relative rounded-2xl border border-border/50 bg-card backdrop-blur-2xl saturate-[1.6] p-8 shadow-lg overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent pointer-events-none dark:from-white/5" />
-          <div className="text-center mb-8">
+      
+      <div className="w-full max-w-md relative animate-fade-in-up">
+        <Card variant="glass-shine" className="p-8 shadow-xl overflow-hidden">
+          <div className="text-center mb-8 relative z-10">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-5 glow-teal">
               <Monitor className="w-7 h-7 text-primary" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Welcome to SysDeck</h1>
             <p className="text-sm text-muted-foreground mt-2">Sign in to manage your remote system</p>
           </div>
-          <form onSubmit={handleSubmit} className="space-y-5">
+          
+          <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
             <div>
               <label htmlFor="login-password" className="block text-sm font-medium mb-2">Password</label>
               <div className="relative">
-                <input
+                <Input
                   id="login-password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all pr-10"
+                  className="pr-12 text-base md:text-sm h-12 md:h-10"
                   placeholder="Enter your password"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 touch-target text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? <EyeOff className="h-5 w-5 md:h-4 md:w-4" /> : <Eye className="h-5 w-5 md:h-4 md:w-4" />}
                 </button>
               </div>
             </div>
+            
             <div>
               <label htmlFor="login-totp-0" className="block text-sm font-medium mb-2">Authentication Code</label>
               <TotpInput value={totp} onChange={setTotp} id="login-totp-0" />
             </div>
+            
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 backdrop-blur-sm text-destructive text-sm border border-destructive/10">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
+              <div className="flex items-start gap-2 p-3.5 rounded-xl bg-destructive/10 backdrop-blur-sm text-destructive text-sm border border-destructive/10 animate-fade-in">
+                <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5" />
+                <span className="flex-1">{error}</span>
+                <button 
+                  type="button" 
+                  onClick={() => setError("")} 
+                  className="text-destructive/60 hover:text-destructive p-0.5 rounded"
+                  aria-label="Dismiss error"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             )}
-            <button type="submit" disabled={isSubmitting} className="w-full py-2.5 px-4 rounded-xl bg-primary text-primary-foreground font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+            
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              size="touch"
+              className="w-full shadow-md hover:shadow-lg font-semibold"
+            >
               {isSubmitting ? "Signing in..." : "Sign In"}
-            </button>
+            </Button>
           </form>
-          <div className="mt-4 text-center">
+          
+          <div className="mt-6 text-center relative z-10">
             <button
               type="button"
               onClick={() => setShowReset(true)}
-              className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-2"
+              className="text-xs md:text-sm text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-4 touch-target inline-flex items-center justify-center py-2"
             >
               Forgot password?
             </button>
           </div>
-        </div>
+        </Card>
       </div>
 
       <AlertDialog open={showReset} onOpenChange={setShowReset}>

@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect, useId } from "react"
 import { Play, Copy, Check, AlertTriangle, Pin, PinOff, Trash2, ChevronDown, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
 import {
   AlertDialog,
   AlertDialogContent,
@@ -64,6 +65,8 @@ export function ScriptsPage() {
   const [activeSavedId, setActiveSavedId] = useState<string | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const dropdownButtonId = useId()
+  const dropdownListBoxId = useId()
 
   const [saveDialogOpen, setSaveDialogOpen] = useState(false)
   const [saveTitle, setSaveTitle] = useState("")
@@ -94,6 +97,11 @@ export function ScriptsPage() {
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
+
+  // Keyboard accessibility inside custom dropdown
+  const handleDropdownKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setDropdownOpen(false)
+  }
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -131,6 +139,7 @@ export function ScriptsPage() {
       return
     }
 
+    if (navigator.vibrate) navigator.vibrate(10)
     setRunning(true)
     setStatus("running")
 
@@ -292,61 +301,85 @@ export function ScriptsPage() {
 
   const statusBadge = () => {
     switch (status) {
-      case "running": return <Badge variant="default" className="bg-chart-2">Running</Badge>
-      case "completed": return <Badge variant="secondary">Completed</Badge>
-      case "failed": return <Badge variant="destructive">Failed</Badge>
-      case "timed_out": return <Badge variant="destructive">Timed Out</Badge>
+      case "running": return <Badge variant="default" className="bg-primary/20 text-primary border-primary/20">Running</Badge>
+      case "completed": return <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/10">Completed</Badge>
+      case "failed": return <Badge variant="destructive" className="bg-destructive/15 text-destructive border-destructive/10">Failed</Badge>
+      case "timed_out": return <Badge variant="destructive" className="bg-destructive/15 text-destructive border-destructive/10">Timed Out</Badge>
       default: return null
     }
   }
 
   return (
     <div className="space-y-4">
+      {/* Pinned horizontal tiles */}
       {pinnedTiles.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x select-none">
           {pinnedTiles.map((s) => (
-            <button
+            <div
               key={s.id}
-              onClick={() => loadSavedScript(s)}
               className={cn(
-                "flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl border text-sm transition-all",
+                "flex items-center gap-1 shrink-0 rounded-2xl border text-xs font-semibold pl-3 pr-1 py-1.5 snap-start shadow-sm transition-all duration-200",
                 activeSavedId === s.id
-                  ? "border-primary/50 bg-primary/10"
-                  : "border-border/30 bg-muted/30 hover:bg-muted/50",
+                  ? "border-primary/20 bg-primary/10 text-primary"
+                  : "border-border/40 bg-card hover:bg-accent/60"
               )}
             >
-              <span className="max-w-28 truncate">{s.title}</span>
-              <X
-                className="h-3 w-3 text-muted-foreground hover:text-foreground"
+              <button
+                type="button"
+                onClick={() => loadSavedScript(s)}
+                className="max-w-28 truncate font-medium text-left mr-1"
+              >
+                {s.title}
+              </button>
+              <button
+                type="button"
                 onClick={(e) => { e.stopPropagation(); handlePinToggle(s) }}
-              />
-            </button>
+                className="touch-target h-7 w-7 rounded-lg hover:bg-muted-foreground/10 text-muted-foreground hover:text-foreground flex items-center justify-center shrink-0"
+                aria-label={`Unpin ${s.title}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 items-start">
         <div className="space-y-4">
-          <div className="glass-card p-4 space-y-4">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-
+          <Card variant="glass" className="p-5 space-y-4 shadow-sm border border-border/40">
             <div className="flex flex-col sm:flex-row gap-3">
-              {/* ponytail: inline dropdown, extract to shared component if another page needs one */}
-              <div className="relative flex-1" ref={dropdownRef}>
+              {/* Accessible Custom Dropdown */}
+              {/* oxlint-disable-next-line jsx-a11y/no-static-element-interactions */}
+              <div className="relative flex-grow" ref={dropdownRef} onKeyDown={handleDropdownKeyDown}>
                 <button
+                  id={dropdownButtonId}
+                  aria-haspopup="listbox"
+                  aria-expanded={dropdownOpen}
+                  aria-controls={dropdownListBoxId}
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
+                  className="w-full flex items-center justify-between h-10 px-3.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-all"
                 >
-                  <span>{selectedLabel}</span>
+                  <span className="font-semibold">{selectedLabel}</span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </button>
+                
                 {dropdownOpen && (
-                  <div className="absolute z-50 mt-1 w-full rounded-xl border border-border/50 bg-popover backdrop-blur-xl saturate-[1.4] shadow-xl overflow-hidden">
-                    <div className="py-1 max-h-72 overflow-y-auto">
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Predefined</div>
+                  <div 
+                    id={dropdownListBoxId}
+                    // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                    role="listbox"
+                    aria-labelledby={dropdownButtonId}
+                    className="absolute z-50 mt-1.5 w-full rounded-2xl border border-border/40 bg-popover backdrop-blur-xl saturate-[1.5] shadow-xl overflow-hidden animate-fade-in"
+                  >
+                    <div className="py-1.5 max-h-72 overflow-y-auto">
+                      <div className="px-3.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none my-1.5">Predefined</div>
                       {PREDEFINED.map((p) => (
                         <button
                           key={p.label}
+                          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                          role="option"
+                          aria-selected={predefined === p.label && !activeSavedId}
                           onClick={() => {
                             setPredefined(p.label)
                             setActiveSavedId(null)
@@ -354,16 +387,20 @@ export function ScriptsPage() {
                             else { setScriptType("cmd"); setContent("") }
                             setDropdownOpen(false)
                           }}
-                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
+                          className="w-full text-left px-3.5 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors font-medium"
                         >
                           {p.label}
                         </button>
                       ))}
-                      <div className="border-t border-border/30 my-1" />
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">WinGet</div>
+                      
+                      <div className="border-t border-border/30 my-1.5" />
+                      <div className="px-3.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none my-1.5">WinGet</div>
                       {WINGET.map((w) => (
                         <button
                           key={w.label}
+                          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                          role="option"
+                          aria-selected={false}
                           onClick={() => {
                             setPredefined("Custom")
                             setActiveSavedId(null)
@@ -371,36 +408,46 @@ export function ScriptsPage() {
                             setContent(w.content)
                             setDropdownOpen(false)
                           }}
-                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors"
+                          className="w-full text-left px-3.5 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors font-medium"
                         >
                           {w.label}
                         </button>
                       ))}
+                      
                       {savedScripts.length > 0 && (
                         <>
-                          <div className="border-t border-border/30 my-1" />
-                          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">Saved</div>
+                          <div className="border-t border-border/30 my-1.5" />
+                          <div className="px-3.5 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none my-1.5">Saved</div>
                           {savedScripts.map((s) => (
                             <div
                               key={s.id}
-                              className="flex items-center gap-1 px-1 hover:bg-muted/50 transition-colors group"
+                              className="flex items-center gap-1 px-1 hover:bg-accent hover:text-accent-foreground transition-colors group"
                             >
                               <button
+                                // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
+                                role="option"
+                                aria-selected={activeSavedId === s.id}
                                 onClick={() => loadSavedScript(s)}
-                                className="flex-1 text-left px-2 py-1.5 text-sm truncate"
+                                className="flex-grow text-left px-2.5 py-2 text-sm truncate font-medium"
                               >
                                 {s.title}
                               </button>
+                              
+                              {/* Pins (Touch target optimization) */}
                               <button
+                                type="button"
                                 onClick={() => handlePinToggle(s)}
-                                className="shrink-0 p-1 rounded hover:bg-muted-foreground/10"
+                                className="touch-target h-9 w-9 rounded-xl hover:bg-muted-foreground/15 flex items-center justify-center shrink-0"
                                 title={s.pinned ? "Unpin" : "Pin"}
                               >
                                 {s.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5 text-muted-foreground" />}
                               </button>
+                              
+                              {/* Delete script button always visible on mobile */}
                               <button
+                                type="button"
                                 onClick={() => { setDeleteTarget(s); setDeleteDialogOpen(true) }}
-                                className="shrink-0 p-1 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="touch-target h-9 w-9 rounded-xl hover:bg-destructive/10 flex items-center justify-center shrink-0 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                                 title="Delete"
                               >
                                 <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -414,65 +461,79 @@ export function ScriptsPage() {
                 )}
               </div>
 
-              <select
-                value={scriptType}
-                onChange={(e) => setScriptType(e.target.value as "powershell" | "cmd")}
-                className="px-3 py-1.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
-              >
-                <option value="powershell">PowerShell</option>
-                <option value="cmd">CMD</option>
-              </select>
-              <InfoButton content={"Run PowerShell or CMD scripts remotely.\nSave frequently-used scripts as templates and load them from the Saved dropdown.\nTimeout is configurable below (default 5 min, set 0 for no limit).\n\nExample: save a \"System Info\" script once, then load and run it on any machine without retyping."} className="ml-1.5 align-middle" />
+              {/* Script Type selector */}
+              <div className="relative">
+                <select
+                  value={scriptType}
+                  onChange={(e) => setScriptType(e.target.value as "powershell" | "cmd")}
+                  className="h-10 px-3.5 py-1.5 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-all select-none appearance-none pr-8 font-semibold"
+                >
+                  <option value="powershell">PowerShell</option>
+                  <option value="cmd">CMD</option>
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+              
+              <div className="inline-flex items-center shrink-0">
+                <InfoButton content={"Run PowerShell or CMD scripts remotely.\nSave frequently-used scripts as templates and load them from the Saved dropdown.\nTimeout is configurable below (default 5 min, set 0 for no limit)."} />
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="text-primary accent-primary" />
-                Live Output<InfoButton content={"Streams output live as the script runs.\nUse for long tasks like installing software where you want to see progress."} className="ml-1 align-middle" />
+            {/* Run mode options */}
+            <div className="flex items-center gap-4 bg-muted/40 p-3.5 rounded-xl border border-border/30">
+              <label className="flex items-center gap-2 text-xs font-semibold text-foreground/80 cursor-pointer select-none">
+                <input type="radio" name="mode" checked={mode === "live"} onChange={() => setMode("live")} className="h-4.5 w-4.5 text-primary accent-primary" />
+                <span>Live Output</span>
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="radio" name="mode" checked={mode === "wait"} onChange={() => setMode("wait")} className="text-primary accent-primary" />
-                Wait & Show<InfoButton content={"Runs silently, returns all output at once.\nUse for quick commands where you only need the final result (e.g. `ipconfig /all`)."} className="ml-1 align-middle" />
+              <label className="flex items-center gap-2 text-xs font-semibold text-foreground/80 cursor-pointer select-none">
+                <input type="radio" name="mode" checked={mode === "wait"} onChange={() => setMode("wait")} className="h-4.5 w-4.5 text-primary accent-primary" />
+                <span>Wait & Show</span>
               </label>
             </div>
 
             {/* Timeout */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Timeout:</span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+              <span className="font-semibold text-muted-foreground/80 mr-1 uppercase tracking-wider text-[10px]">Timeout limit:</span>
               {[0, 1, 5, 15, 30].map((m) => (
                 <button
+                  type="button"
                   key={m}
                   onClick={() => setTimeoutMinutes(m)}
                   className={cn(
-                    "px-2 py-0.5 rounded-md border text-xs font-medium transition-colors",
+                    "px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all duration-200 active:scale-95",
                     timeoutMinutes === m
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border/30 hover:bg-muted/40"
+                      ? "border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_0_hsl(0_0%_100%_/_0.05)]"
+                      : "border-border/40 hover:bg-accent"
                   )}
                 >
-                  {m === 0 ? "∞" : `${m}m`}
+                  {m === 0 ? "No limit" : `${m}m`}
                 </button>
               ))}
-              <InfoButton content="Timeout in minutes. Set to ∞ (0) for no limit.\n\nExample: set 15m for a long database migration script that might take longer than the default 5m." />
             </div>
 
+            {/* Textarea */}
             {(predefined === "Custom" || !PREDEFINED.find((p) => p.label === predefined)?.type) && (
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Enter your script here..."
-                rows={8}
-                className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none transition-all"
-              />
+              <div className="relative rounded-xl overflow-hidden border border-border/50 bg-background/50">
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Enter your command script here..."
+                  rows={8}
+                  className="w-full p-4 font-mono text-[13px] leading-relaxed focus:outline-none focus:ring-0 resize-none transition-all"
+                />
+              </div>
             )}
 
-            <div className="flex gap-2">
-              <Button onClick={handleRun} disabled={running} className="flex-1">
+            {/* Execute buttons */}
+            <div className="flex gap-3">
+              <Button onClick={handleRun} disabled={running} size="touch" className="flex-1 font-bold shadow-md">
                 <Play className="h-4 w-4 mr-2" />
-                {running ? "Running..." : "Run Script"}
+                {running ? "Executing..." : "Run Script"}
               </Button>
               <Button
                 variant="outline"
+                size="touch"
+                className="px-6 font-semibold"
                 onClick={() => {
                   const currentContent = predefined === "Custom" ? content : PREDEFINED.find((p) => p.label === predefined)?.content || content
                   if (!currentContent.trim()) { addToast("Nothing to save", "error"); return }
@@ -483,69 +544,75 @@ export function ScriptsPage() {
                 {activeSavedId ? "Update" : "Save"}
               </Button>
             </div>
-          </div>
+          </Card>
         </div>
 
-        <div className="glass-card p-4">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-          <div className="flex items-center justify-between mb-3">
+        {/* Output Panel */}
+        <Card variant="glass" className="p-5 flex flex-col h-full shadow-sm border border-border/40">
+          <div className="flex items-center justify-between mb-3.5 relative z-10">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold relative">Output</h3>
+              <h3 className="text-sm font-semibold">Console Output</h3>
               {statusBadge()}
             </div>
+            
             <button
+              type="button"
               onClick={handleCopyAll}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 touch-target p-1 rounded-lg"
             >
-              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-              {copied ? "Copied" : "Copy All"}
+              {copied ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+              <span className="font-semibold">{copied ? "Copied" : "Copy All"}</span>
             </button>
           </div>
+          
           <div
             ref={outputRef}
-            className="bg-muted/30 backdrop-blur-sm rounded-xl p-4 font-mono text-xs h-80 overflow-y-auto space-y-1 border border-border/20"
+            className="bg-muted/40 font-mono text-[11px] leading-relaxed h-[340px] overflow-y-auto space-y-1.5 p-4 rounded-xl border border-border/20 shadow-inner relative z-10"
           >
             {output.length === 0 && (
-              <p className="text-muted-foreground italic">Waiting for output...</p>
+              <p className="text-muted-foreground/60 italic">Console idle. Execute a script to inspect stdout...</p>
             )}
             {output.map((line, i) => (
               <div key={i} className={cn(
                 "whitespace-pre-wrap break-all",
-                line.stream === "stderr" && "text-destructive",
-                line.stream === "system" && "text-muted-foreground",
+                line.stream === "stderr" && "text-destructive font-medium",
+                line.stream === "system" && "text-muted-foreground font-semibold",
               )}>
                 {line.stream === "system" ? (
                   <><span className="text-muted-foreground">▸</span> {line.data}</>
                 ) : line.stream === "stderr" ? (
-                  <><span className="text-xs text-destructive">[stderr]</span> {line.data}</>
+                  <><span className="text-destructive font-semibold">[stderr]</span> {line.data}</>
                 ) : (
                   line.data
                 )}
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
 
       {localError && (
-        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm saturate-[1.4] p-3 text-sm text-destructive border border-destructive/10">
-          <AlertTriangle className="h-4 w-4" />
-          <span>{localError}</span>
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 backdrop-blur-sm p-3.5 text-xs text-destructive border border-destructive/10 animate-fade-in max-w-md">
+          <AlertTriangle className="h-4.5 w-4.5 shrink-0" />
+          <span className="font-semibold">{localError}</span>
         </div>
       )}
 
       <AlertDialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{activeSavedId ? "Update Script" : "Save Script"}</AlertDialogTitle>
-            <AlertDialogDescription>Give your script a name to save it.</AlertDialogDescription>
+            <AlertDialogTitle>{activeSavedId ? "Update Script Template" : "Save Custom Script"}</AlertDialogTitle>
+            <AlertDialogDescription>Specify a unique name for this script template.</AlertDialogDescription>
           </AlertDialogHeader>
-          <Input
-            value={saveTitle}
-            onChange={(e) => setSaveTitle(e.target.value)}
-            placeholder="Script name"
-            onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
-          />
+          <div className="py-2">
+            <Input
+              value={saveTitle}
+              onChange={(e) => setSaveTitle(e.target.value)}
+              placeholder="Script title"
+              onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
+              className="h-11"
+            />
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <Button onClick={handleSave} disabled={!saveTitle.trim()}>
@@ -560,7 +627,7 @@ export function ScriptsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Script</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteTarget?.title}"? This cannot be undone.
+              Are you sure you want to permanently delete "{deleteTarget?.title}"? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

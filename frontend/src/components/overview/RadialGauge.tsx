@@ -15,8 +15,8 @@ export function RadialGauge({
   max = 100,
   label,
   unit = "%",
-  color = "hsl(173 80% 40%)",
-  size = 88,
+  color = "hsl(173 75% 38%)",
+  size = 96,
   strokeWidth = 6,
 }: RadialGaugeProps) {
   const radius = (size - strokeWidth) / 2
@@ -25,33 +25,43 @@ export function RadialGauge({
   const offset = circumference - (clamped / max) * circumference
 
   return (
-    <div className="flex flex-col items-center gap-1.5">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="hsl(0 0% 100% / 0.06)"
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          className="transition-all duration-500 ease-out"
-        />
-      </svg>
-      <span className={cn("text-lg font-bold tabular-nums", value > max && "text-destructive")}>
-        {value.toFixed(0)}<span className="text-xs text-muted-foreground">{unit}</span>
+    <div className="flex flex-col items-center gap-1.5 p-3 rounded-2xl glass-shine shadow-sm">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          {/* Inner Neumorphic shadow / Track circle */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="hsl(0 0% 100% / 0.08)"
+            className="dark:stroke-white/5 stroke-black/5"
+            strokeWidth={strokeWidth}
+          />
+          {/* Dynamic Fill Circle */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            className="transition-all duration-700 ease-out"
+          />
+        </svg>
+        {/* Value overlay inside gauge */}
+        <div className="absolute inset-0 flex items-center justify-center flex-col">
+          <span className={cn("text-base font-extrabold tracking-tight tabular-nums", value > max && "text-destructive")}>
+            {value.toFixed(0)}<span className="text-[10px] text-muted-foreground font-normal ml-0.5">{unit}</span>
+          </span>
+        </div>
+      </div>
+      <span className="text-[10px] font-semibold text-muted-foreground/80 uppercase tracking-widest leading-none mt-1">
+        {label}
       </span>
-      <span className="text-[11px] text-muted-foreground uppercase tracking-wider">{label}</span>
     </div>
   )
 }

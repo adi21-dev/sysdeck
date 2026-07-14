@@ -1,7 +1,19 @@
 import { useState } from "react"
-import { Wifi, WifiOff, Volume2, VolumeX, Bell, BellOff, MonitorOff, Lock, Play, Pause, Sun, Moon } from "lucide-react"
+import { Wifi, WifiOff, Volume2, VolumeX, Bell, BellOff, MonitorOff, Lock, Play, Pause, Sun, Moon, Loader2 } from "lucide-react"
 import { useHardwareStore, useThemeStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
+
+interface ToggleButtonProps {
+  icon: React.ElementType
+  activeIcon: React.ElementType
+  label: string
+  active: boolean
+  loading?: boolean
+  onClick: () => void
+  activeColorClass?: string
+  glowColorClass?: string
+  className?: string
+}
 
 function ToggleButton({
   icon: Icon,
@@ -10,16 +22,10 @@ function ToggleButton({
   active,
   loading,
   onClick,
-  activeColor = "text-primary",
-}: {
-  icon: React.ElementType
-  activeIcon: React.ElementType
-  label: string
-  active: boolean
-  loading?: boolean
-  onClick: () => void
-  activeColor?: string
-}) {
+  activeColorClass = "text-primary bg-primary/8 border-primary/20",
+  glowColorClass = "glow-primary",
+  className,
+}: ToggleButtonProps) {
   const IconComp = active ? ActiveIcon : Icon
   return (
     <button
@@ -27,42 +33,58 @@ function ToggleButton({
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "flex flex-col items-center gap-1.5 rounded-2xl border p-3 transition-all duration-200 active:scale-95",
+        "flex flex-col items-center justify-center gap-1.5 rounded-2xl h-[76px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring select-none relative overflow-hidden",
         active
-          ? `border-primary/30 bg-primary/10 ${activeColor}`
-          : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+          ? cn("neu-inset", activeColorClass, glowColorClass)
+          : "neu-control border border-border/10 text-muted-foreground hover:text-foreground",
+        loading && "opacity-60 cursor-not-allowed",
+        className
       )}
     >
-      <IconComp className="h-5 w-5" />
-      <span className="text-[10px] uppercase tracking-wider">{label}</span>
-      <span className="text-[9px] opacity-60">{active ? "On" : "Off"}</span>
+      {loading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : (
+        <IconComp className="h-5 w-5" />
+      )}
+      <span className="text-[9px] font-bold uppercase tracking-widest leading-none mt-1">{label}</span>
+      <span className="text-[8px] font-medium opacity-65 leading-none mt-0.5">{active ? "Active" : "Ready"}</span>
     </button>
   )
+}
+
+interface ActionButtonProps {
+  icon: React.ElementType
+  label: string
+  onClick: () => void
+  colorClass?: string
+  loading?: boolean
 }
 
 function ActionButton({
   icon: Icon,
   label,
   onClick,
-  color = "text-primary",
-}: {
-  icon: React.ElementType
-  label: string
-  onClick: () => void
-  color?: string
-}) {
+  colorClass = "text-primary",
+  loading,
+}: ActionButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={loading}
       className={cn(
-        "flex flex-col items-center gap-1.5 rounded-2xl border border-border/50 p-3 transition-all duration-200 active:scale-95",
-        "text-muted-foreground hover:border-border hover:text-foreground",
+        "flex flex-col items-center justify-center gap-1.5 rounded-2xl h-[76px] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring select-none",
+        "neu-control border border-border/10 text-muted-foreground hover:text-foreground",
+        loading && "opacity-60 cursor-not-allowed"
       )}
     >
-      <Icon className={cn("h-5 w-5", color)} />
-      <span className="text-[10px] uppercase tracking-wider">{label}</span>
-      <span className="text-[9px] opacity-60">Tap</span>
+      {loading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      ) : (
+        <Icon className={cn("h-5 w-5", colorClass)} />
+      )}
+      <span className="text-[9px] font-bold uppercase tracking-widest leading-none mt-1">{label}</span>
+      <span className="text-[8px] font-medium opacity-50 leading-none mt-0.5">Trigger</span>
     </button>
   )
 }
@@ -81,7 +103,7 @@ export function QuickToggles() {
 
   const handleToggle = async (key: string, enabled: boolean) => {
     setPending(key)
-    navigator.vibrate?.(10)
+    if (navigator.vibrate) navigator.vibrate(10)
     try {
       if (key === "mute") {
         await setMuted(enabled)
@@ -95,7 +117,7 @@ export function QuickToggles() {
 
   const handleAction = async (key: string) => {
     setPending(key)
-    navigator.vibrate?.(10)
+    if (navigator.vibrate) navigator.vibrate(10)
     try {
       if (key === "monitor") await monitorOff()
       else if (key === "media") await triggerMedia("play_pause")
@@ -107,60 +129,76 @@ export function QuickToggles() {
   }
 
   return (
-    <div className="grid grid-cols-4 gap-3 px-4">
-      <ActionButton
-        icon={MonitorOff}
-        label="Monitor"
-        onClick={() => handleAction("monitor")}
-        color="text-sky-400"
-      />
-      <ActionButton
-        icon={Lock}
-        label="Lock"
-        onClick={() => handleAction("lock")}
-        color="text-rose-400"
-      />
-      <ActionButton
-        icon={audio?.muted === false ? Pause : Play}
-        label="Media"
-        onClick={() => handleAction("media")}
-        color="text-violet-400"
-      />
-      <ToggleButton
-        icon={Sun}
-        activeIcon={Moon}
-        label="Theme"
-        active={isDark}
-        loading={pending === "dark"}
-        onClick={() => handleAction("dark")}
-        activeColor="text-amber-400"
-      />
-      <ToggleButton
-        icon={WifiOff}
-        activeIcon={Wifi}
-        label="Wi-Fi"
-        active={toggles?.wifi ?? false}
-        loading={pending === "wifi"}
-        onClick={() => handleToggle("wifi", !toggles?.wifi)}
-      />
-      <ToggleButton
-        icon={VolumeX}
-        activeIcon={Volume2}
-        label="Mute"
-        active={audio?.muted === false}
-        loading={pending === "mute"}
-        onClick={() => handleToggle("mute", !audio?.muted)}
-        activeColor="text-sky-400"
-      />
-      <ToggleButton
-        icon={BellOff}
-        activeIcon={Bell}
-        label="DND"
-        active={toggles?.dnd ?? false}
-        loading={pending === "dnd"}
-        onClick={() => handleToggle("dnd", !toggles?.dnd)}
-        activeColor="text-amber-400"
-      />
+    <div className="space-y-3">
+      <div className="px-4">
+        <h2 className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/80">Quick Panel</h2>
+      </div>
+      
+      {/* 2-column or 4-column responsive toggles using custom CSS class toggle-grid */}
+      <div className="toggle-grid px-4">
+        <ActionButton
+          icon={MonitorOff}
+          label="Monitor"
+          onClick={() => handleAction("monitor")}
+          colorClass="text-sky-400 dark:text-sky-400"
+          loading={pending === "monitor"}
+        />
+        <ActionButton
+          icon={Lock}
+          label="Lock PC"
+          onClick={() => handleAction("lock")}
+          colorClass="text-rose-400 dark:text-rose-400"
+          loading={pending === "lock"}
+        />
+        <ActionButton
+          icon={audio?.muted === false ? Pause : Play}
+          label="Media"
+          onClick={() => handleAction("media")}
+          colorClass="text-violet-400 dark:text-violet-400"
+          loading={pending === "media"}
+        />
+        <ToggleButton
+          icon={Sun}
+          activeIcon={Moon}
+          label="Theme"
+          active={isDark}
+          loading={pending === "dark"}
+          onClick={() => handleAction("dark")}
+          activeColorClass="text-amber-500 bg-amber-500/5 dark:bg-amber-500/5 border-amber-500/10"
+          glowColorClass="glow-warm"
+        />
+        <ToggleButton
+          icon={WifiOff}
+          activeIcon={Wifi}
+          label="Wi-Fi"
+          active={toggles?.wifi ?? false}
+          loading={pending === "wifi"}
+          onClick={() => handleToggle("wifi", !toggles?.wifi)}
+          activeColorClass="text-emerald-500 bg-emerald-500/5 dark:bg-emerald-500/5 border-emerald-500/10"
+          glowColorClass="glow-primary"
+        />
+        <ToggleButton
+          icon={VolumeX}
+          activeIcon={Volume2}
+          label="Sound"
+          active={audio?.muted === false}
+          loading={pending === "mute"}
+          onClick={() => handleToggle("mute", !audio?.muted)}
+          activeColorClass="text-sky-500 bg-sky-500/5 dark:bg-sky-500/5 border-sky-500/10"
+          glowColorClass="glow-blue"
+        />
+        <ToggleButton
+          icon={BellOff}
+          activeIcon={Bell}
+          label="Do Not Disturb"
+          active={toggles?.dnd ?? false}
+          loading={pending === "dnd"}
+          onClick={() => handleToggle("dnd", !toggles?.dnd)}
+          activeColorClass="text-purple-500 bg-purple-500/5 dark:bg-purple-500/5 border-purple-500/10"
+          glowColorClass="glow-primary"
+          className="col-span-1"
+        />
+      </div>
     </div>
   )
 }

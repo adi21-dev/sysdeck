@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Switch Component**: New shadcn/ui `Switch` component with glass styling and teal accent. Used in Settings for tunnel toggle.
+- **MoreSheet Component**: Bottom sheet for secondary navigation items — wraps overflow nav items on mobile beyond the 4-tab bottom bar limit.
+- **Primary/Secondary Navigation Split**: `navItems`, `primaryNavItems`, `secondaryNavItems` in `navigation.ts`. Bottom nav shows 4 primary tabs (Overview, Files, Controls, Remote) + "More" button opening MoreSheet for Scripts/Audit.
 - **Companion Deck Positioning**: Redesigned SysDeck as a Windows-first Companion Dashboard & Macro Deck for spare smartphones/tablets. New README with vision, quick start, phone mockups, and SmartScreen warning.
 - **Win32 Icon Extraction**: `GET /api/icon?path=...` — `SHGetFileInfoW` + GDI pipeline extracts app icons as RGBA PNGs. In-memory `HashMap` cache, `Cache-Control: public, max-age=86400`.
 - **Installed Apps Scanner**: `GET /api/apps` — recursive scan of Start Menu directories (`%ProgramData%`, `%APPDATA%`). Filters `.exe`/`.lnk`/`.appref-ms`. Returns `[{name, path}]` sorted. Max depth 3.
@@ -31,6 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Telemetry GPU Temperature Rounding**: `temperature_gpu` values are now rounded to one decimal place before storage.
 
 ### Changed
+- **Design Token Overhaul**: Complete CSS variable refresh — warm off-white light mode (`hsl(200 20% 97%)`), refined teal primary (`hsl(173 75% 28%)`), new `--warning`/`--success` semantic colors, border radius system (`0.875rem`), frosted glass backgrounds with `backdrop-filter: blur(20px)` and `saturate(180%)`.
+- **Frosted Glass Surfaces**: All cards, popovers, sidebars, and bottom nav now use `backdrop-filter: blur(20px)` with `saturate(180%)` for premium glassmorphism effect. Gradient shine overlays on cards.
+- **Component Styling Refresh**: `Button` (hover lift, active scale, glass variant), `Card` (glass, hover, interactive variants), `Input` (frosted glass focus ring, teal accent). All with smooth `transition-all` animations.
+- **Page Glassmorphism Polish**: Audit, Controls, Dashboard, Files, Login, RemoteDesktop, Scripts, Settings, Setup — all updated with consistent glass cards, frosted borders, hover effects, and teal accent styling.
+- **Layout Overhaul**: Sidebar redesigned with glass backgrounds, hover accent fills, compact sizing. Bottom nav frosted glass with teal active indicator, safe-area padding, haptic feedback. AppLayout with glass sidebar + content area.
+- **Navigation Refactor**: Split into `primaryNavItems` (4 main tabs) and `secondaryNavItems` (overflow in MoreSheet). Desktop sidebar shows all items. Mobile bottom nav shows 4 + More.
+- **Setup Wizard Refinements**: Full glassmorphism restyle with gradient backgrounds, teal brand colors, animated floating blobs, polished step indicator. PWA install step integrated as final onboarding.
+- **Settings Redesign**: Glass cards per section (File Access, Server Config, Backup & Export). Warning/success toasts. New Switch component for tunnel toggle. Danger Zone with uninstall flow.
+- **Controls Page Restyle**: Glass card grid for hardware sliders, network controls, power actions. Haptic on all toggles. Touch-optimized slider interaction.
+- **Login Page Refinements**: Glass card, gradient background, forgot password flow integration.
+- **RemoteDesktop Refinements**: Glass toolbar, connection panel styling.
 - **Companion Deck Positioning**: Repositioned SysDeck from generic admin tool to focused Windows Companion Deck. Updated README, architecture diagram, and quick start guide.
 - **OLED CSS Theme**: Dark mode surfaces use pure `hsl(0 0% 0%)` background, `hsl(0 0% 4%)` cards, `hsl(0 0% 6%)` popovers. Removed all transparent-white surfaces. Gradient overlays use `from-zinc-800/20`.
 - **WebSocket Reconnect**: `reconnectAttempts.current` now resets to 0 on `visibilitychange → visible` — no more 30s backoff when unlocking the phone.
@@ -57,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - **ControlCenter.tsx**: Legacy page removed — superseded by QuickToggles macro deck (Overview Section 1) and AdminCockpit grid.
 - **frontend/public/manifest.json**: No longer needed — PWA manifest handled by `vite-plugin-pwa`.
+
+### CI
+- **Test Common Module**: Updated `backend/tests/common/mod.rs` for compatibility with refactored code.
 
 ### Fixed
 - **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.

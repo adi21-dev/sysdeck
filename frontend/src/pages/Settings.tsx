@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react"
 import {
-  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key, Server, HardDrive, Trash2,
+  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key, Server, HardDrive, Trash2, KeyRound, Wifi
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { useTunnelStore } from "@/lib/store"
 import {
@@ -18,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { InfoButton } from "@/components/ui/info-button"
+import { cn } from "@/lib/utils"
 
 export function WolSection() {
   const [macs, setMacs] = useState<{label: string; mac: string}[]>([])
@@ -68,39 +70,37 @@ export function WolSection() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
-      <div className="flex gap-2">
-        <Input placeholder="Label" value={label} onChange={e => setLabel(e.target.value)} className="flex-1" />
-        <Input placeholder="XX:XX:XX:XX:XX:XX" value={mac} onChange={e => setMac(e.target.value)} className="w-44 font-mono text-xs" />
-        <Button size="sm" onClick={addMac} disabled={!label.trim() || !mac.trim()}>Save</Button>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <Input placeholder="Device Label" value={label} onChange={e => setLabel(e.target.value)} className="flex-grow h-11 md:h-10 text-base md:text-sm" />
+        <Input placeholder="MAC Address (e.g. 00:11:22:33:44:55)" value={mac} onChange={e => setMac(e.target.value)} className="w-full sm:w-56 font-mono text-base md:text-sm h-11 md:h-10" />
+        <Button size="touch" className="h-11 md:h-10 px-5 font-semibold" onClick={addMac} disabled={!label.trim() || !mac.trim()}>Save Mac</Button>
       </div>
+      
       <div className="space-y-2">
         {macs.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-              <Monitor className="w-5 h-5 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">No saved MAC addresses</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Add a MAC address above to enable Wake-on-LAN</p>
+          <div className="flex flex-col items-center justify-center py-6 text-center border border-dashed border-border/40 rounded-2xl bg-muted/10">
+            <p className="text-xs text-muted-foreground/60 leading-normal">Configure Wake-on-LAN parameters above to start booting devices remotely.</p>
           </div>
         )}
+        
         {macs.map((m, i) => (
-          <div key={i} className="flex items-center justify-between p-3 rounded-lg border">
+          <div key={i} className="flex items-center justify-between p-3.5 rounded-2xl border border-border/40 bg-muted/10">
             <div>
-              <p className="text-sm font-medium">{m.label}</p>
-              <p className="text-xs text-muted-foreground font-mono">{m.mac}</p>
+              <p className="text-sm font-semibold text-foreground/80">{m.label}</p>
+              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{m.mac}</p>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => wake(m)} disabled={waking === m.mac}>
-                {waking === m.mac ? "Sent" : "Wake"}
+              <Button size="sm" variant="outline" className="h-9 text-xs rounded-xl" onClick={() => wake(m)} disabled={waking === m.mac}>
+                {waking === m.mac ? "Signal Sent" : "Wake Device"}
               </Button>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteMac(m.mac)}>×</Button>
+              <Button size="sm" variant="ghost" className="h-9 w-9 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => deleteMac(m.mac)}>×</Button>
             </div>
           </div>
         ))}
@@ -112,6 +112,7 @@ export function WolSection() {
 export function SettingsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [success, setSuccess] = useState<string | null>(null)
+  const [activeAnchor, setActiveAnchor] = useState("security")
 
   const setSectionError = (section: string, msg: string) =>
     setErrors((e) => ({ ...e, [section]: msg }))
@@ -183,7 +184,6 @@ export function SettingsPage() {
     }).catch(() => setSessionErr("Failed to load sessions"))
   }
 
-  // Fetch all settings on mount — stable dependency
   useEffect(() => {
     fetch("/api/settings/port").then((r) => r.json()).then((d) => {
       if (d.success) setPort(String(d.port))
@@ -201,7 +201,26 @@ export function SettingsPage() {
       if (d.success) setRelayEnabled(d.enabled)
     }).catch(() => setRelayErr("Failed to load relay settings"))
     fetchSessions()
-  }, []) // stable mount-only
+
+    // Setup intersection observer to highlight sticky pills on scroll
+    const sections = ["security", "network", "paths", "maintenance"]
+    const observers = sections.map((sec) => {
+      const el = document.getElementById(sec)
+      if (!el) return null
+      const obs = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) setActiveAnchor(sec)
+        },
+        { rootMargin: "-110px 0px -60% 0px" }
+      )
+      obs.observe(el)
+      return { obs, el }
+    })
+
+    return () => {
+      observers.forEach((o) => o?.obs.disconnect())
+    }
+  }, [])
 
   const [isSubmittingPw, setIsSubmittingPw] = useState(false)
 
@@ -433,429 +452,480 @@ export function SettingsPage() {
     setter(list.filter((_, i) => i !== idx))
   }
 
+  const scrollToAnchor = (id: string) => {
+    if (navigator.vibrate) navigator.vibrate(10)
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: "smooth" })
+  }
+
+  const settingsNavItems = [
+    { id: "security", label: "Security", icon: Shield },
+    { id: "network", label: "Network", icon: Server },
+    { id: "paths", label: "Paths", icon: FolderOpen },
+    { id: "maintenance", label: "Maintenance", icon: Trash2 },
+  ]
+
   return (
     <div className="space-y-6">
       {success && (
-        <div className="flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-sm p-3 text-sm text-green-400 border border-green-500/10">
-          <Check className="h-4 w-4" />
+        <div className="fixed top-[60px] right-4 md:right-8 z-50 flex items-center gap-2 rounded-xl bg-green-500/10 backdrop-blur-md px-4 py-3 text-xs font-bold text-success border border-green-500/20 shadow-md animate-fade-in">
+          <Check className="h-4.5 w-4.5 shrink-0" />
           <span>{success}</span>
         </div>
       )}
 
-      {/* Password */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Key className="h-4 w-4" />
-            Change Password
-            <InfoButton content={"Password must be 8+ characters.\n\nExample: after rotating credentials, set a new passphrase here (e.g. \"blue-elephant-jumps-42\")."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4 max-w-md">
-          {errors.password && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{errors.password}</span>
-            </div>
-          )}
-          <div>
-            <label htmlFor="settings-current-pw" className="block text-sm font-medium mb-2">Current Password</label>
-            <input
-              id="settings-current-pw"
-              type={showPw ? "text" : "password"}
-              value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
-            />
-          </div>
-          <div>
-            <label htmlFor="settings-new-pw" className="block text-sm font-medium mb-2">New Password</label>
-            <div className="relative">
-              <input
-                id="settings-new-pw"
-                type={showPw ? "text" : "password"}
-                value={newPw}
-                onChange={(e) => setNewPw(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all pr-10"
-              />
-              <button
-                onClick={() => setShowPw(!showPw)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="settings-confirm-pw" className="block text-sm font-medium mb-2">Confirm New Password</label>
-            <input
-              id="settings-confirm-pw"
-              type="password"
-              value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-input bg-background/50 backdrop-blur-sm text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 transition-all"
-            />
-          </div>
-          <Button onClick={handleChangePassword} size="sm" disabled={isSubmittingPw}>
-            <Key className="h-4 w-4 mr-1.5" /> {isSubmittingPw ? "Updating..." : "Update Password"}
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Sticky Index Pill Navigation */}
+      <div className="sticky top-[52px] md:top-0 z-20 backdrop-blur-md py-2 border-b border-border/20 bg-background/80 flex gap-2 overflow-x-auto scrollbar-none select-none">
+        {settingsNavItems.map((item) => {
+          const Icon = item.icon
+          const isActive = activeAnchor === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => scrollToAnchor(item.id)}
+              className={cn(
+                "flex items-center gap-2 shrink-0 px-4 py-2 rounded-2xl text-xs font-semibold uppercase tracking-wider transition-all duration-200 snap-start active:scale-95 touch-target",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted/50 border border-border/30 text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{item.label}</span>
+            </button>
+          )
+        })}
+      </div>
 
-      {/* Two-Factor Auth */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Shield className="h-4 w-4" />
-            Two-Factor Authentication
-            <InfoButton content={"TOTP second factor — requires password + 6-digit code from an authenticator app to sign in.\n\nExample: scan the QR with Authy on your phone, enter the code it shows to verify setup."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {errors.totp && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive mb-4">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{errors.totp}</span>
-            </div>
-          )}
-          {totpStep === "idle" && (
-            <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
-              <div>
-                <p className="font-medium">TOTP Authentication</p>
-                <p className="text-sm text-muted-foreground">Currently enabled</p>
+      {/* Main content grid */}
+      <div className="grid grid-cols-1 gap-6 max-w-5xl">
+        
+        {/* ── SECURITY SECTION ── */}
+        <section id="security" className="scroll-mt-[108px] space-y-5">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">Security Configuration</h2>
+          
+          {/* Password change card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Key className="h-4.5 w-4.5 text-primary" /> Change Admin Password</span>
+              <InfoButton content="Allows changing your SysDeck console password. Minimum 8 characters." />
+            </h3>
+            
+            <div className="space-y-4 max-w-md">
+              {errors.password && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{errors.password}</span>
+                </div>
+              )}
+              
+              <div className="space-y-1.5">
+                <label htmlFor="settings-current-pw" className="text-xs font-semibold text-muted-foreground">Current Password</label>
+                <Input
+                  id="settings-current-pw"
+                  type={showPw ? "text" : "password"}
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                  className="h-11 md:h-10 text-base md:text-sm"
+                />
               </div>
-              <Button onClick={handleResetTotp} size="sm" variant="outline">Reset TOTP</Button>
-            </div>
-          )}
-          {totpStep === "verify" && totpQr && (
-            <div className="space-y-3">
-              <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
-              <p className="text-xs text-muted-foreground">Scan this QR with your authenticator app, then enter the 6-digit code:</p>
-              <div className="flex gap-2">
-                <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} className="w-32" maxLength={6} />
-                <Button onClick={handleVerifyTotp} size="sm" disabled={totpCode.length !== 6}>Verify</Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recovery Codes */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <RefreshCw className="h-4 w-4" />
-            Recovery Codes
-            <InfoButton content={"Backup codes for when you can't access your authenticator.\nEach code works exactly once — save them somewhere safe.\n\nExample: store in Bitwarden or print a copy for your wallet before locking yourself out."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {errors.codes && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive mb-4">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{errors.codes}</span>
-            </div>
-          )}
-          {recoveryCodes.length > 0 && showCodes && (
-            <div className="p-4 rounded-lg border bg-muted/50 mb-4">
-              <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                {recoveryCodes.map((code, i) => (
-                  <code key={i}>{code}</code>
-                ))}
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => {
-                navigator.clipboard.writeText(recoveryCodes.join("\n"))
-                setCodesCopied(true)
-                setTimeout(() => setCodesCopied(false), 2000)
-              }} className="mt-2">
-                {codesCopied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy all</>}
-              </Button>
-            </div>
-          )}
-          <Button onClick={handleRegenCodes} size="sm" variant="outline">
-            <RefreshCw className="h-4 w-4 mr-1.5" /> Generate New Codes
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Active Sessions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Monitor className="h-4 w-4" />
-            Active Sessions
-            <InfoButton content={"All active login sessions across devices.\nRevoke any session to force-logout that device.\n\nExample: if you signed in from a shared computer, revoke that session remotely."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {sessionErr && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{sessionErr}</span>
-            </div>
-          )}
-          {sessions.length === 0 && !sessionErr && (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-                <Monitor className="w-5 h-5 text-muted-foreground/60" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">No active sessions</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">All sessions have been signed out or none exist yet</p>
-            </div>
-          )}
-          {sessions.map((s: any) => (
-            <div key={s.jti} className="flex items-center justify-between p-3 rounded-lg border">
-              <div className="flex items-center gap-3">
-                <Monitor className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">
-                    {s.jti.slice(0, 8)}...
-                    {s.jti === currentJti && (
-                      <span className="text-xs text-green-600 dark:text-green-400 font-medium ml-2">Current</span>
-                    )}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(s.created_at * 1000).toLocaleString()}
-                  </p>
+              
+              <div className="space-y-1.5">
+                <label htmlFor="settings-new-pw" className="text-xs font-semibold text-muted-foreground">New Password</label>
+                <div className="relative">
+                  <Input
+                    id="settings-new-pw"
+                    type={showPw ? "text" : "password"}
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    className="h-11 md:h-10 text-base md:text-sm pr-12"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(!showPw)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 touch-target text-muted-foreground hover:text-foreground"
+                  >
+                    {showPw ? <EyeOff className="h-5 w-5 md:h-4 md:w-4" /> : <Eye className="h-5 w-5 md:h-4 md:w-4" />}
+                  </button>
                 </div>
               </div>
+              
+              <div className="space-y-1.5">
+                <label htmlFor="settings-confirm-pw" className="text-xs font-semibold text-muted-foreground">Confirm New Password</label>
+                <Input
+                  id="settings-confirm-pw"
+                  type="password"
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                  className="h-11 md:h-10 text-base md:text-sm"
+                />
+              </div>
+              
+              <Button onClick={handleChangePassword} size="sm" disabled={isSubmittingPw} className="h-10 rounded-xl px-5 font-semibold">
+                <Key className="h-4 w-4 mr-1.5" /> {isSubmittingPw ? "Updating..." : "Update Password"}
+              </Button>
+            </div>
+          </Card>
+
+          {/* Two-Factor Auth card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Shield className="h-4.5 w-4.5 text-primary" /> Two-Factor Authentication</span>
+              <InfoButton content="Enable or reset your authenticator app configurations." />
+            </h3>
+            
+            <div className="space-y-4">
+              {errors.totp && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{errors.totp}</span>
+                </div>
+              )}
+              
+              {totpStep === "idle" && (
+                <div className="flex items-center justify-between p-4 rounded-2xl border border-border/40 bg-muted/10">
+                  <div>
+                    <p className="text-sm font-semibold">TOTP Authenticator</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Currently active on this agent</p>
+                  </div>
+                  <Button onClick={handleResetTotp} size="sm" variant="outline" className="h-9 rounded-xl text-xs">Reset TOTP</Button>
+                </div>
+              )}
+              
+              {totpStep === "verify" && totpQr && (
+                <div className="space-y-4 max-w-sm">
+                  <div className="flex justify-center p-3 rounded-2xl bg-white border border-border/40 shadow-inner w-44 mx-auto">
+                    <img src={totpQr} alt="TOTP QR Code" className="w-40 h-40" />
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-normal text-center">Scan this QR with your authenticator, then enter the 6-digit verification code below:</p>
+                  <div className="flex gap-2">
+                    <Input placeholder="000000" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} className="h-10 text-center font-semibold text-base" maxLength={6} />
+                    <Button onClick={handleVerifyTotp} size="sm" className="h-10 rounded-xl font-semibold px-4" disabled={totpCode.length !== 6}>Verify</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Recovery codes card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><KeyRound className="h-4.5 w-4.5 text-primary" /> Backup Recovery Codes</span>
+              <InfoButton content="Generate new backup codes to bypass TOTP if you lose your device." />
+            </h3>
+            
+            <div className="space-y-4">
+              {errors.codes && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{errors.codes}</span>
+                </div>
+              )}
+              
+              {recoveryCodes.length > 0 && showCodes && (
+                <div className="p-4 rounded-2xl border border-border/40 bg-muted/10 space-y-3">
+                  <div className="grid grid-cols-2 gap-2.5 font-mono text-xs font-semibold">
+                    {recoveryCodes.map((code, i) => (
+                      <code key={i} className="bg-background/80 p-2 rounded-lg border border-border/20 text-center tracking-wider">{code}</code>
+                    ))}
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    navigator.clipboard.writeText(recoveryCodes.join("\n"))
+                    setCodesCopied(true)
+                    setTimeout(() => setCodesCopied(false), 2000)
+                  }} className="h-9 rounded-xl text-xs">
+                    {codesCopied ? <><Check className="h-4 w-4 mr-1.5 text-success" /> Copied</> : <><Copy className="h-4 w-4 mr-1.5" /> Copy all</>}
+                  </Button>
+                </div>
+              )}
+              
+              <Button onClick={handleRegenCodes} size="sm" variant="outline" className="h-9 rounded-xl text-xs font-semibold">
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Generate New Backup Codes
+              </Button>
+            </div>
+          </Card>
+
+          {/* Active Sessions card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Monitor className="h-4.5 w-4.5 text-primary" /> Active Login Sessions</span>
+              <InfoButton content="Lists active sessions authenticated to this server." />
+            </h3>
+            
+            <div className="space-y-3">
+              {sessionErr && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{sessionErr}</span>
+                </div>
+              )}
+              
+              {sessions.length === 0 && !sessionErr && (
+                <p className="text-center py-6 text-xs text-muted-foreground/60">No active login sessions detected</p>
+              )}
+              
+              {sessions.map((s: any) => (
+                <div key={s.jti} className="flex items-center justify-between p-3.5 rounded-2xl border border-border/40 bg-muted/10">
+                  <div className="flex items-center gap-3">
+                    <Monitor className="w-5 h-5 text-muted-foreground/70" />
+                    <div>
+                      <p className="text-xs font-semibold text-foreground/80">
+                        {s.jti.slice(0, 8)}...
+                        {s.jti === currentJti && (
+                          <span className="text-[10px] text-green-600 dark:text-green-400 font-bold ml-2 uppercase tracking-wide">Current Device</span>
+                        )}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {new Date(s.created_at * 1000).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 text-xs rounded-xl"
+                    onClick={() => { setRevokeTarget({ jti: s.jti, type: "one" }); setShowRevokeDialog(true) }}
+                  >
+                    Revoke
+                  </Button>
+                </div>
+              ))}
+              
               <Button
-                size="sm"
-                variant="outline"
-                onClick={() => { setRevokeTarget({ jti: s.jti, type: "one" }); setShowRevokeDialog(true) }}
+                onClick={() => { setRevokeTarget({ jti: "", type: "all" }); setShowRevokeDialog(true) }}
+                size="sm" variant="destructive"
+                className="h-9 rounded-xl text-xs font-semibold mt-1"
               >
-                Revoke
+                <Shield className="h-4 w-4 mr-1.5" /> Revoke All Other Sessions
               </Button>
             </div>
-          ))}
-          <Button
-            onClick={() => { setRevokeTarget({ jti: "", type: "all" }); setShowRevokeDialog(true) }}
-            size="sm" variant="destructive"
-          >
-            <Shield className="h-4 w-4 mr-1.5" /> Revoke All Sessions
-          </Button>
-        </CardContent>
-      </Card>
+          </Card>
+        </section>
 
-      {/* Remote Access - Cloudflare Tunnel */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Server className="h-4 w-4" />
-            Remote Access
-            <InfoButton content={"Cloudflare Tunnel creates a secure outbound tunnel to the internet — no port forwarding needed.\nAuto-start launches the tunnel when the app boots.\n\nExample: start the tunnel, copy the URL, and access your server from any browser anywhere."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {tunnelErr && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{tunnelErr}</span>
+        {/* ── NETWORK SECTION ── */}
+        <section id="network" className="scroll-mt-[108px] space-y-5">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">Network Settings</h2>
+          
+          {/* Cloudflare Tunnel card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Wifi className="h-4.5 w-4.5 text-primary" /> Remote Cloudflare Relay</span>
+              <InfoButton content="Expose this machine securely to the web using Cloudflare Quick Tunnels." />
+            </h3>
+            
+            <div className="space-y-4">
+              {tunnelErr && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{tunnelErr}</span>
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between p-4 rounded-2xl border border-border/40 bg-muted/10">
+                <div>
+                  <p className="text-sm font-semibold">Cloudflare Tunnel Status</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 capitalize">Status: {tunnel.status}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${tunnel.status === "running" ? "bg-green-500 shadow-[0_0_8px_hsl(142_65%_40%_/_0.5)]" : tunnel.status === "failed" ? "bg-red-500" : tunnel.status === "idle" ? "bg-muted-foreground/45" : "bg-amber-400 status-dot"}`} />
+                  <span className={`text-xs font-bold uppercase tracking-wider ${tunnel.status === "running" ? "text-success" : tunnel.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                    {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Offline" : tunnel.status === "idle" ? "Stopped" : "Pending"}
+                  </span>
+                </div>
+              </div>
+              
+              {tunnel.url && (
+                <div className="flex items-center gap-2 p-3 rounded-xl border border-border/40 bg-background/50">
+                  <code className="flex-1 text-xs truncate font-mono select-all font-semibold pl-2">{tunnel.url}</code>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg shrink-0" onClick={() => {
+                    navigator.clipboard.writeText(tunnel.url!)
+                    showSuccess("URL copied")
+                  }}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                {tunnel.status === "running" ? (
+                  <Button onClick={handleTunnelStop} size="sm" variant="destructive" className="h-9 rounded-xl text-xs font-semibold" disabled={tunnelLoading}>Stop Tunnel</Button>
+                ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
+                  <Button onClick={handleTunnelStart} size="sm" className="h-9 rounded-xl text-xs font-semibold" disabled={tunnelLoading}>Start Tunnel</Button>
+                ) : (
+                  <Button size="sm" className="h-9 rounded-xl text-xs" disabled>
+                    {tunnel.status === "downloading" ? "Downloading dependencies..." : "Initializing..."}
+                  </Button>
+                )}
+              </div>
+
+              <Separator className="bg-border/30" />
+
+              {relayErr && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{relayErr}</span>
+                </div>
+              )}
+              
+              <div className="flex items-center justify-between rounded-2xl border border-border/40 p-4 bg-muted/5">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold">Auto-start Tunnel Relay</p>
+                  <p className="text-xs text-muted-foreground leading-normal max-w-xs">Expose local server to the web automatically when SysDeck starts up.</p>
+                </div>
+                <Switch
+                  checked={relayEnabled}
+                  onChange={handleToggleRelay}
+                  disabled={relayLoading}
+                />
+              </div>
             </div>
-          )}
-          <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/50">
-            <div>
-              <p className="font-medium">Cloudflare Tunnel</p>
-              <p className="text-sm text-muted-foreground">Status: {tunnel.status}</p>
+          </Card>
+
+          {/* Wake-on-LAN card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Monitor className="h-4.5 w-4.5 text-primary" /> Wake-on-LAN (WoL)</span>
+              <InfoButton content="Send magic broadcast packets to boot sleeping PCs on your local network." />
+            </h3>
+            <WolSection />
+          </Card>
+
+          {/* Local listen Port card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><HardDrive className="h-4.5 w-4.5 text-primary" /> Listen Port Configuration</span>
+              <InfoButton content="Specify backend local listen port. Default is 3939." />
+            </h3>
+            
+            <div className="space-y-4 max-w-xs">
+              {portErr && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{portErr}</span>
+                </div>
+              )}
+              
+              <div className="flex items-center gap-3">
+                <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-28 h-10 text-center font-mono font-bold text-sm" min={1024} max={65535} />
+                <Button onClick={handleSavePort} size="sm" className="h-10 rounded-xl font-semibold px-4" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save Port"}</Button>
+              </div>
+              <p className="text-[10px] text-muted-foreground font-semibold leading-none">Requires backend process restart to take effect.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${tunnel.status === "running" ? "bg-green-500" : tunnel.status === "failed" ? "bg-red-500" : tunnel.status === "idle" ? "bg-gray-400" : "bg-yellow-500 status-dot"}`} />
-              <span className={`text-sm font-medium ${tunnel.status === "running" ? "text-green-600 dark:text-green-400" : tunnel.status === "failed" ? "text-destructive" : tunnel.status === "idle" ? "text-muted-foreground" : "text-muted-foreground"}`}>
-                {tunnel.status === "running" ? "Connected" : tunnel.status === "failed" ? "Disconnected" : tunnel.status === "idle" ? "Stopped" : "Connecting"}
-              </span>
-            </div>
-          </div>
-          {tunnel.url && (
-            <div className="flex items-center gap-2 p-3 rounded-lg border bg-background">
-              <code className="flex-1 text-sm truncate">{tunnel.url}</code>
-              <button className="p-2 rounded hover:bg-accent" onClick={() => {
-                navigator.clipboard.writeText(tunnel.url!)
-                showSuccess("URL copied")
-              }}>
-                <Copy className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-          <div className="flex gap-2">
-            {tunnel.status === "running" ? (
-              <Button onClick={handleTunnelStop} size="sm" variant="destructive" disabled={tunnelLoading}>Stop Tunnel</Button>
-            ) : tunnel.status === "idle" || tunnel.status === "failed" ? (
-              <Button onClick={handleTunnelStart} size="sm" disabled={tunnelLoading}>Start Tunnel</Button>
-            ) : (
-              <Button size="sm" disabled>
-                {tunnel.status === "downloading" ? "Downloading..." : tunnel.status === "starting" ? "Starting..." : "—"}
+          </Card>
+        </section>
+
+        {/* ── PATHS SECTION ── */}
+        <section id="paths" className="scroll-mt-[108px] space-y-5">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">Access Control & Paths</h2>
+          
+          {/* File access paths card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><FolderOpen className="h-4.5 w-4.5 text-primary" /> Allowed Directory Whitelist</span>
+              <InfoButton content="Allowed Paths registers folders you can browse. Blocked Paths overrides allowed directories completely." />
+            </h3>
+            
+            <div className="space-y-5">
+              {pathsErr && (
+                <div className="flex items-center gap-2 rounded-xl bg-destructive/10 p-3 text-xs text-destructive border border-destructive/10">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>{pathsErr}</span>
+                </div>
+              )}
+              
+              <div className="grid gap-5 md:grid-cols-2">
+                {/* Allowed paths list */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-0.5">Whitelist Allowed Folders</p>
+                  <div className="flex gap-2">
+                    <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} className="h-10 text-xs" />
+                    <Button size="icon" variant="outline" className="h-10 w-10 shrink-0 rounded-xl" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
+                      <FolderOpen className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-10 px-4 rounded-xl text-xs font-semibold" onClick={() => { addPath(allowedPaths, setAllowedPaths, newAllowed); setNewAllowed("") }}>Add</Button>
+                  </div>
+                  <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                    {allowedPaths.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-xl bg-muted/20 pl-3 pr-1 py-1.5 text-xs border border-border/20">
+                        <span className="truncate pr-2 font-medium">{p}</span>
+                        <button type="button" onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="h-7 w-7 flex items-center justify-center text-destructive hover:bg-destructive/10 shrink-0 rounded-lg">×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Blocked paths list */}
+                <div className="space-y-2">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-0.5">Blacklist Blocked Folders</p>
+                  <div className="flex gap-2">
+                    <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} className="h-10 text-xs" />
+                    <Button size="icon" variant="outline" className="h-10 w-10 shrink-0 rounded-xl" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
+                      <FolderOpen className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-10 px-4 rounded-xl text-xs font-semibold" onClick={() => { addPath(blockedPaths, setBlockedPaths, newBlocked); setNewBlocked("") }}>Add</Button>
+                  </div>
+                  <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                    {blockedPaths.map((p, i) => (
+                      <div key={i} className="flex items-center justify-between rounded-xl bg-muted/20 pl-3 pr-1 py-1.5 text-xs border border-border/20">
+                        <span className="truncate pr-2 font-medium">{p}</span>
+                        <button type="button" onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="h-7 w-7 flex items-center justify-center text-destructive hover:bg-destructive/10 shrink-0 rounded-lg">×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              <Button onClick={handleSavePaths} size="sm" className="h-10 px-5 rounded-xl font-semibold shadow-sm" disabled={isSavingPaths}>
+                {isSavingPaths ? "Saving Whitelist..." : "Save Path Permissions"}
               </Button>
+            </div>
+          </Card>
+        </section>
+
+        {/* ── MAINTENANCE SECTION ── */}
+        <section id="maintenance" className="scroll-mt-[108px] space-y-5">
+          <h2 className="text-xs font-bold text-muted-foreground uppercase tracking-widest pl-1">Server Maintenance</h2>
+          
+          {/* Backup card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-border/40">
+            <h3 className="text-sm font-semibold text-foreground/80 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-2"><Download className="h-4.5 w-4.5 text-primary" /> Backup & Export Database</span>
+              <InfoButton content="Backup database structure or dump raw logs for troubleshooting." />
+            </h3>
+            
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleExportDb} variant="outline" size="sm" className="h-9 rounded-xl text-xs font-semibold">
+                <Download className="h-4 w-4 mr-1.5" /> Export DB JSON
+              </Button>
+              <Button onClick={handleDownloadLogs} variant="outline" size="sm" className="h-9 rounded-xl text-xs font-semibold">
+                <Download className="h-4 w-4 mr-1.5" /> Download Server Logs
+              </Button>
+            </div>
+          </Card>
+
+          {/* Uninstall card */}
+          <Card variant="glass" className="p-5 shadow-sm border border-destructive/20 bg-destructive/5">
+            <h3 className="text-sm font-semibold text-destructive mb-3 flex items-center gap-2">
+              <Trash2 className="h-4.5 w-4.5" /> Uninstall SysDeck Agent
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed mb-4 max-w-lg">
+              Permanently deletes all data folders, settings, session histories, and cancels services registry. This action cannot be reverted.
+            </p>
+            
+            {uninstallErr && (
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-xs mb-4 border border-destructive/10">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{uninstallErr}</span>
+              </div>
             )}
-          </div>
-
-          <Separator />
-
-          {relayErr && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{relayErr}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div>
-              <p className="text-sm font-medium">Auto-start Tunnel</p>
-              <p className="text-xs text-muted-foreground">Start tunnel automatically when the app launches</p>
-            </div>
-            <Button
-              size="sm"
-              variant={relayEnabled ? "default" : "outline"}
-              disabled={relayLoading}
-              onClick={handleToggleRelay}
-            >
-              {relayEnabled ? "On" : "Off"}
+            
+            <Button variant="destructive" size="sm" className="h-9 px-4 rounded-xl text-xs font-bold shadow-sm" onClick={() => setShowUninstallDialog(true)} disabled={uninstalling}>
+              {uninstalling ? "Uninstalling..." : "Uninstall Agent"}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </Card>
+        </section>
 
-      {/* Wake-on-LAN */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Monitor className="h-4 w-4" />
-            Wake-on-LAN
-            <InfoButton content={"Send a magic packet to wake a sleeping computer on the LAN.\nTarget needs WoL enabled in BIOS and must be on the same subnet.\n\nExample: save the MAC address of your media server, then wake it remotely instead of walking over to press the power button."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <WolSection />
-        </CardContent>
-      </Card>
-
-      {/* File Access Paths */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <FolderOpen className="h-4 w-4" />
-            File Access Paths
-            <InfoButton content={"Whitelist directories the file manager can browse.\nPaths not listed here are blocked for security.\nBlocked paths override allowed paths.\n\nExample: allow C:\\Users\\Public\\Share but block C:\\Windows\\System32."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {pathsErr && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{pathsErr}</span>
-            </div>
-          )}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1.5 font-medium">Allowed Paths</p>
-              <div className="flex gap-2 mb-2">
-                <Input placeholder="C:\Users\..." value={newAllowed} onChange={(e) => setNewAllowed(e.target.value)} />
-                <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("allowed"); handleBrowseFolder() }}>
-                  <FolderOpen className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => { addPath(allowedPaths, setAllowedPaths, newAllowed); setNewAllowed("") }}>Add</Button>
-              </div>
-              <div className="space-y-1">
-                {allowedPaths.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
-                    <span className="truncate">{p}</span>
-                    <button onClick={() => removePath(allowedPaths, setAllowedPaths, i)} className="size-6 flex items-center justify-center text-destructive shrink-0 rounded hover:bg-destructive/10">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground mb-1.5 font-medium">Blocked Paths</p>
-              <div className="flex gap-2 mb-2">
-                <Input placeholder="C:\Windows\..." value={newBlocked} onChange={(e) => setNewBlocked(e.target.value)} />
-                <Button size="sm" variant="outline" onClick={() => { setBrowseTarget("blocked"); handleBrowseFolder() }}>
-                  <FolderOpen className="h-4 w-4" />
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => { addPath(blockedPaths, setBlockedPaths, newBlocked); setNewBlocked("") }}>Add</Button>
-              </div>
-              <div className="space-y-1">
-                {blockedPaths.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between rounded bg-muted/30 px-2 py-1 text-xs">
-                    <span className="truncate">{p}</span>
-                    <button onClick={() => removePath(blockedPaths, setBlockedPaths, i)} className="size-6 flex items-center justify-center text-destructive shrink-0 rounded hover:bg-destructive/10">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <Button onClick={handleSavePaths} size="sm" disabled={isSavingPaths}>
-            {isSavingPaths ? "Saving..." : "Save Paths"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Server Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <HardDrive className="h-4 w-4" />
-            Server Configuration
-            <InfoButton content={"Backend listen port (default 3939). Requires app restart to take effect.\nUse ports above 1024 to avoid admin rights.\n\nExample: change to 9090 if 3939 conflicts with another service."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {portErr && (
-            <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              <span>{portErr}</span>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <label htmlFor="local-server-port" className="text-sm font-medium whitespace-nowrap">Port</label>
-            <Input id="local-server-port" type="number" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" min={1024} max={65535} />
-            <Button onClick={handleSavePort} size="sm" disabled={isSavingPort}>{isSavingPort ? "Saving..." : "Save"}</Button>
-          </div>
-          <p className="text-xs text-muted-foreground">Requires app restart to take effect</p>
-        </CardContent>
-      </Card>
-
-      {/* Backup & Export */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5">
-            <Download className="h-4 w-4" />
-            Backup &amp; Export
-            <InfoButton content={"Export the full database as a JSON file for backup or inspection.\nDownload logs for troubleshooting — they contain recent server activity without sensitive credentials."} />
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={handleExportDb} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-1.5" /> Export Database
-            </Button>
-            <Button onClick={handleDownloadLogs} variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-1.5" /> Download Logs
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Uninstall */}
-      <Card className="border-destructive/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-1.5 text-destructive">
-            <Trash2 className="h-4 w-4" />
-            Uninstall SysDeck
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Permanently delete all data, logs, and the application itself. This cannot be undone.
-          </p>
-          {uninstallErr && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-sm mb-4 border border-destructive/10">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>{uninstallErr}</span>
-            </div>
-          )}
-          <Button variant="destructive" size="sm" onClick={() => setShowUninstallDialog(true)} disabled={uninstalling}>
-            {uninstalling ? "Uninstalling..." : "Uninstall"}
-          </Button>
-        </CardContent>
-      </Card>
+      </div>
 
       <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 
@@ -898,14 +968,15 @@ export function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Full screen uninstall overlay */}
       {uninstalling && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-background/90 backdrop-blur-xl">
-          <div className="flex flex-col items-center gap-4 animate-fade-in">
-            <div className="w-16 h-16 rounded-3xl bg-destructive/10 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4 animate-fade-in text-center p-4">
+            <div className="w-16 h-16 rounded-3xl bg-destructive/10 flex items-center justify-center shadow-lg">
               <Trash2 className="w-8 h-8 text-destructive animate-pulse" />
             </div>
             <h2 className="text-xl font-bold">Uninstalling SysDeck...</h2>
-            <p className="text-sm text-muted-foreground">You can close this window.</p>
+            <p className="text-sm text-muted-foreground">Cleaning local folders. You can safely close this browser window.</p>
           </div>
         </div>
       )}

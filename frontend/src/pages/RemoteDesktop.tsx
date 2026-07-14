@@ -1,57 +1,126 @@
 import { useState, useRef, useEffect, useCallback, lazy, Suspense } from "react"
-import { Monitor } from "lucide-react"
+import { Monitor, Cpu, Keyboard, MousePointer, Clipboard, Eye, Globe, HardDrive, KeyRound, Loader2, Lock, Trash } from "lucide-react"
 import { useConnectionStore, useToastStore } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 const TerminalTab = lazy(() => import("./TerminalTab"))
 
-type Tab = "trackpad" | "keyboard" | "clipboard" | "vision" | "browser" | "windows" | "terminal" | "disks" | "processes" | "sessions"
+type Category = "input" | "monitor" | "system" | "terminal"
 
 export function RemoteDesktopPage() {
-  const [tab, setTab] = useState<Tab>("trackpad")
+  const [activeCategory, setActiveCategory] = useState<Category>("input")
+
+  const categories = [
+    { id: "input" as Category, label: "Input Tools", icon: MousePointer },
+    { id: "monitor" as Category, label: "Monitor & View", icon: Eye },
+    { id: "system" as Category, label: "System Tasks", icon: Cpu },
+    { id: "terminal" as Category, label: "Terminal", icon: Monitor },
+  ]
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <LockButton />
+    <div className="space-y-5 animate-fade-in-up">
+      {/* Category Pills (Horizontal Scrollable on mobile, flex row on desktop) */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none snap-x select-none border-b border-border/20">
+        {categories.map((c) => {
+          const isActive = activeCategory === c.id
+          return (
+            <button
+              key={c.id}
+              onClick={() => {
+                if (navigator.vibrate) navigator.vibrate(10)
+                setActiveCategory(c.id)
+              }}
+              className={cn(
+                "flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-2xl text-xs font-semibold uppercase tracking-wider transition-all duration-200 snap-start active:scale-95 touch-target",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted/50 border border-border/30 text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <c.icon className="h-4 w-4" />
+              <span>{c.label}</span>
+            </button>
+          )
+        })}
       </div>
-      <div className="flex gap-2 flex-wrap">
-        {(["trackpad", "keyboard", "clipboard", "vision", "browser", "windows", "terminal", "disks", "processes", "sessions"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-xl text-sm font-medium capitalize transition-all duration-200 ${
-              tab === t ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 backdrop-blur-sm hover:bg-muted/80 border border-border/30"
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      {tab === "trackpad" && <TrackpadTab />}
-      {tab === "keyboard" && <KeyboardTab />}
-      {tab === "clipboard" && <ClipboardTab />}
-      {tab === "vision" && <VisionTab />}
-      {tab === "browser" && <BrowserTab />}
-      {tab === "windows" && <WindowsTab />}
-      <div className={tab === "terminal" ? "" : "hidden"}>
-        <Suspense fallback={<Card className="h-[calc(100vh-12rem)] flex items-center justify-center text-muted-foreground">Loading terminal...</Card>}>
-          <TerminalTab />
-        </Suspense>
-      </div>
-      {tab === "disks" && <DisksTab />}
-      {tab === "processes" && <ProcessesTab />}
-      {tab === "sessions" && <SessionsTab />}
+
+      {/* Render selected categories */}
+      {activeCategory === "input" && (
+        <div className="space-y-6 stagger-children">
+          <TrackpadTab />
+          <KeyboardTab />
+          <ClipboardTab />
+        </div>
+      )}
+
+      {activeCategory === "monitor" && (
+        <div className="space-y-6 stagger-children">
+          <VisionTab />
+          <BrowserTab />
+        </div>
+      )}
+
+      {activeCategory === "system" && (
+        <div className="space-y-6 stagger-children">
+          <div className="flex justify-between items-center px-1">
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Active Workspace</h3>
+            <LockButton />
+          </div>
+          <DisksTab />
+          <WindowsTab />
+          <ProcessesTab />
+          <SessionsTab />
+        </div>
+      )}
+
+      {activeCategory === "terminal" && (
+        <div className="animate-fade-in">
+          <Suspense fallback={
+            <Card variant="glass" className="h-[calc(100vh-14rem)] flex flex-col items-center justify-center text-muted-foreground gap-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <span className="text-sm">Connecting terminal console...</span>
+            </Card>
+          }>
+            <TerminalTab />
+          </Suspense>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Trackpad ──
+function cn(...classes: any[]) {
+  return classes.filter(Boolean).join(" ")
+}
 
+// ── Lock Screen ──
+function LockButton() {
+  const connected = useConnectionStore((s) => s.status === "connected")
+  const lock = useCallback(async () => {
+    if (navigator.vibrate) navigator.vibrate(15)
+    await fetch("/api/power/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "lock", confirmed: true }),
+    })
+  }, [])
+  
+  return (
+    <Button onClick={lock} disabled={!connected} size="sm" variant="destructive" className="rounded-xl shadow-sm">
+      <Lock className="h-3.5 w-3.5 mr-1.5" />
+      Lock Desktop
+    </Button>
+  )
+}
+
+// ── Trackpad ──
 function TrackpadTab() {
   const padRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
+  const prevTouch = useRef<{ x: number; y: number } | null>(null)
   const connected = useConnectionStore((s) => s.status === "connected")
 
   const api = useCallback((path: string, body: any) =>
@@ -64,6 +133,14 @@ function TrackpadTab() {
   const handleDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!connected) return
     dragging.current = true
+    
+    // Track touch start point
+    if ("touches" in e && e.touches.length > 0) {
+      const touch = e.touches[0]
+      prevTouch.current = { x: touch.clientX, y: touch.clientY }
+    }
+    
+    // Trigger tap click
     let btn = "left"
     if ("button" in e && e.button === 2) btn = "right"
     api("/api/input/mouse/click", { button: btn, double: e.detail === 2 })
@@ -72,16 +149,20 @@ function TrackpadTab() {
   const handleMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!dragging.current) return
     let dx = 0, dy = 0
+    
     if ("movementX" in e) {
       dx = e.movementX * 2
       dy = e.movementY * 2
-    } else if ("touches" in e && e.touches.length > 0 && padRef.current) {
-      // ponytail: basic touch delta. Multi-touch gestures not implemented.
+    } else if ("touches" in e && e.touches.length > 0) {
       const touch = e.touches[0]
-      const rect = padRef.current.getBoundingClientRect()
-      dx = (touch.clientX - rect.left - rect.width / 2) * 2
-      dy = (touch.clientY - rect.top - rect.height / 2) * 2
+      if (prevTouch.current) {
+        // Natural delta touch tracking (eliminates cursor jumps)
+        dx = (touch.clientX - prevTouch.current.x) * 2.5
+        dy = (touch.clientY - prevTouch.current.y) * 2.5
+      }
+      prevTouch.current = { x: touch.clientX, y: touch.clientY }
     }
+    
     if (dx !== 0 || dy !== 0) {
       api("/api/input/mouse/move", { x: dx, y: dy, relative: true }).catch(() => {})
     }
@@ -89,6 +170,7 @@ function TrackpadTab() {
 
   const handleUp = useCallback(() => {
     dragging.current = false
+    prevTouch.current = null
   }, [])
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -98,20 +180,23 @@ function TrackpadTab() {
 
   const clickButton = useCallback((btn: string, double = false) => {
     if (!connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     api("/api/input/mouse/click", { button: btn, double })
   }, [api, connected])
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+    <div className="space-y-3">
+      <Card variant="glass" className="p-4 overflow-hidden">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3 flex items-center gap-1.5">
+          <MousePointer className="h-4 w-4 text-primary" /> Trackpad
+        </h3>
         <div
           ref={padRef}
           // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role
           role="button"
           tabIndex={0}
-          aria-label="Trackpad"
-          className="w-full h-64 bg-muted rounded-lg cursor-crosshair select-none border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground"
+          aria-label="Trackpad interaction pad"
+          className="w-full h-56 md:h-64 rounded-xl cursor-crosshair select-none border border-dashed border-border/50 bg-muted/20 flex flex-col items-center justify-center text-muted-foreground text-xs leading-relaxed p-4 text-center font-medium"
           onMouseDown={handleDown}
           onMouseMove={handleMove}
           onMouseUp={handleUp}
@@ -122,27 +207,34 @@ function TrackpadTab() {
           onWheel={handleWheel}
           onContextMenu={(e) => e.preventDefault()}
         >
-          {!connected ? "Disconnected" : "Drag to move · Click to click · Scroll to scroll"}
+          {!connected ? (
+            <span className="text-destructive font-semibold">Disconnected</span>
+          ) : (
+            <div className="space-y-1">
+              <p className="font-semibold text-foreground/80">Drag to control cursor</p>
+              <p className="text-[10px] text-muted-foreground/60">Tap to click • Two-finger drag to scroll</p>
+            </div>
+          )}
         </div>
       </Card>
-      <div className="flex gap-2 flex-wrap">
-        <Button size="sm" onClick={() => clickButton("left")}>Left Click</Button>
-        <Button size="sm" onClick={() => clickButton("right")}>Right Click</Button>
-        <Button size="sm" onClick={() => clickButton("middle")}>Middle Click</Button>
-        <Button size="sm" onClick={() => clickButton("left", true)}>Double Click</Button>
+      <div className="flex gap-2 flex-wrap px-1 select-none">
+        <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => clickButton("left")}>Left click</Button>
+        <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => clickButton("right")}>Right click</Button>
+        <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => clickButton("middle")}>Middle click</Button>
+        <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => clickButton("left", true)}>Double click</Button>
       </div>
     </div>
   )
 }
 
 // ── Keyboard ──
-
 function KeyboardTab() {
   const [text, setText] = useState("")
   const connected = useConnectionStore((s) => s.status === "connected")
 
   const sendType = useCallback(async () => {
     if (!text || !connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     await fetch("/api/input/keyboard/type", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -153,6 +245,7 @@ function KeyboardTab() {
 
   const sendHotkey = useCallback(async (keys: string[]) => {
     if (!connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     await fetch("/api/input/keyboard/press", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -162,6 +255,7 @@ function KeyboardTab() {
 
   const sendMedia = useCallback(async (key: string) => {
     if (!connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     await fetch("/api/input/keyboard/media", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -184,37 +278,38 @@ function KeyboardTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-medium">Type Text</h3>
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+          <Keyboard className="h-4 w-4 text-primary" /> Remote Keyboard
+        </h3>
         <div className="flex gap-2">
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") sendType() }}
-            placeholder="Type something..."
-            className="flex-1"
+            placeholder="Type text to send remotely..."
+            className="flex-1 h-11 text-base md:text-sm md:h-10 rounded-xl"
           />
-          <Button onClick={sendType} disabled={!connected}>Send</Button>
+          <Button onClick={sendType} size="touch" className="h-11 md:h-10 rounded-xl font-semibold" disabled={!connected}>Send</Button>
         </div>
       </Card>
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-medium">Hotkeys</h3>
+      
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Macro Hotkeys</h3>
         <div className="flex gap-2 flex-wrap">
           {hotkeys.map((h) => (
-            <Button key={h.label} size="sm" variant="outline" onClick={() => sendHotkey(h.keys)} disabled={!connected}>
+            <Button key={h.label} size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => sendHotkey(h.keys)} disabled={!connected}>
               {h.label}
             </Button>
           ))}
         </div>
       </Card>
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-medium">Media Keys</h3>
+      
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Media Macro Keys</h3>
         <div className="flex gap-2 flex-wrap">
           {["play_pause", "next", "prev", "volume_up", "volume_down", "mute"].map((k) => (
-            <Button key={k} size="sm" variant="outline" onClick={() => sendMedia(k)} disabled={!connected}>
+            <Button key={k} size="sm" variant="outline" className="h-9 rounded-lg" onClick={() => sendMedia(k)} disabled={!connected}>
               {k.replace("_", " ")}
             </Button>
           ))}
@@ -225,7 +320,6 @@ function KeyboardTab() {
 }
 
 // ── Clipboard ──
-
 function ClipboardTab() {
   const [clipText, setClipText] = useState("")
   const [remoteText, setRemoteText] = useState("")
@@ -243,6 +337,7 @@ function ClipboardTab() {
 
   const setClipboard = useCallback(async () => {
     if (!clipText || !connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     await fetch("/api/clipboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -250,34 +345,36 @@ function ClipboardTab() {
     })
     setClipText("")
     addToast("Clipboard synced", "success")
-  }, [clipText, connected, addToast])
+    fetchClipboard()
+  }, [clipText, connected, addToast, fetchClipboard])
 
   useEffect(() => { fetchClipboard() }, [fetchClipboard])
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-medium">Remote Clipboard</h3>
-        <pre className="bg-muted p-3 rounded text-sm max-h-40 overflow-auto whitespace-pre-wrap break-words">
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center justify-between">
+          <span className="flex items-center gap-1.5"><Clipboard className="h-4 w-4 text-primary" /> Remote Clipboard</span>
+          <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={fetchClipboard} disabled={!connected}>
+            Sync
+          </Button>
+        </h3>
+        <pre className="bg-muted/40 p-4 rounded-xl text-xs font-mono max-h-36 overflow-auto border border-border/20 whitespace-pre-wrap break-all shadow-inner">
           {remoteText || "(empty)"}
         </pre>
-        <Button size="sm" variant="outline" onClick={fetchClipboard} disabled={!connected}>
-          Refresh
-        </Button>
       </Card>
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <h3 className="text-sm font-medium">Push to Remote Clipboard</h3>
+      
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Push Text to PC</h3>
         <div className="flex gap-2">
           <Input
             value={clipText}
             onChange={(e) => setClipText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") setClipboard() }}
-            placeholder="Text to copy to remote..."
-            className="flex-1"
+            placeholder="Text to copy to remote clipboard..."
+            className="flex-grow h-11 text-base md:text-sm md:h-10 rounded-xl"
           />
-          <Button onClick={setClipboard} disabled={!connected}>Send</Button>
+          <Button onClick={setClipboard} size="touch" className="h-11 md:h-10 rounded-xl font-semibold" disabled={!connected}>Push</Button>
         </div>
       </Card>
     </div>
@@ -285,7 +382,6 @@ function ClipboardTab() {
 }
 
 // ── Vision ──
-
 function VisionTab() {
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [interval, setInterval] = useState(0)
@@ -320,32 +416,35 @@ function VisionTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4 space-y-3 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-        <div className="flex gap-2 items-center flex-wrap">
-          <Button onClick={takeScreenshot} disabled={!connected || loading}>
-            {loading ? "Capturing..." : "Take Screenshot"}
-          </Button>
+      <Card variant="glass" className="p-4 space-y-3">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center justify-between">
+          <span className="flex items-center gap-1.5"><Eye className="h-4 w-4 text-primary" /> Vision Stream</span>
           <div className="flex items-center gap-2">
-            <label htmlFor="screenshot-interval-select" className="text-sm text-muted-foreground">Auto every</label>
+            <span className="text-xs text-muted-foreground">Interval:</span>
             <select
-              id="screenshot-interval-select"
-              className="bg-muted border rounded px-2 py-1 text-sm"
+              className="bg-background border border-border/50 rounded-xl px-3 py-1.5 text-xs font-semibold cursor-pointer outline-none"
               value={interval}
               onChange={(e) => setInterval(Number(e.target.value))}
             >
-              <option value={0}>Off</option>
+              <option value={0}>Manual Only</option>
               <option value={2}>2s</option>
               <option value={5}>5s</option>
               <option value={10}>10s</option>
               <option value={30}>30s</option>
             </select>
           </div>
+        </h3>
+        
+        <div className="flex gap-2">
+          <Button onClick={takeScreenshot} size="touch" className="w-full font-semibold shadow-sm" disabled={!connected || loading}>
+            {loading ? "Capturing..." : "Trigger Screen Grab"}
+          </Button>
         </div>
       </Card>
+      
       {screenshot && (
-        <Card className="p-2">
-          <img src={screenshot} alt="Screenshot" className="w-full rounded" />
+        <Card variant="glass" className="p-2 overflow-hidden shadow-md">
+          <img src={screenshot} alt="Remote Desktop Viewport" className="w-full rounded-xl object-contain border border-border/30" />
         </Card>
       )}
     </div>
@@ -353,7 +452,6 @@ function VisionTab() {
 }
 
 // ── Browser ──
-
 function BrowserTab() {
   const [url, setUrl] = useState("")
   const addToast = useToastStore((s) => s.addToast)
@@ -361,6 +459,7 @@ function BrowserTab() {
 
   const openUrl = useCallback(async () => {
     if (!url || !connected) return
+    if (navigator.vibrate) navigator.vibrate(10)
     const fullUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `https://${url}`
     const res = await fetch("/api/browser/open", {
       method: "POST",
@@ -370,54 +469,30 @@ function BrowserTab() {
     const json = await res.json()
     if (json.success) {
       addToast(`Opened ${fullUrl}`, "success")
+      setUrl("")
     }
   }, [url, connected, addToast])
 
   return (
-    <Card className="p-4 space-y-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <h3 className="text-sm font-medium">Open URL in Remote Browser</h3>
+    <Card variant="glass" className="p-4 space-y-3">
+      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+        <Globe className="h-4 w-4 text-primary" /> Remote Browser launcher
+      </h3>
       <div className="flex gap-2">
         <Input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") openUrl() }}
-          placeholder="https://example.com"
-          className="flex-1"
+          placeholder="Enter website link, e.g., google.com"
+          className="flex-grow h-11 text-base md:text-sm md:h-10 rounded-xl"
         />
-        <Button onClick={openUrl} disabled={!connected}>Open</Button>
+        <Button onClick={openUrl} size="touch" className="h-11 md:h-10 rounded-xl font-semibold" disabled={!connected}>Open</Button>
       </div>
     </Card>
   )
 }
 
-// ── Windows ──
-
-interface WindowInfo {
-  hwnd: number;
-  title: string;
-}
-
-// ── Lock Screen ──
-
-function LockButton() {
-  const connected = useConnectionStore((s) => s.status === "connected")
-  const lock = useCallback(async () => {
-    await fetch("/api/power/execute", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({action: "lock", confirmed: true}),
-    })
-  }, [])
-  return (
-    <Button onClick={lock} disabled={!connected} size="sm" variant="outline" className="ml-auto">
-      Lock Screen
-    </Button>
-  )
-}
-
 // ── Disks ──
-
 function DisksTab() {
   const [disks, setDisks] = useState<{mount: string; total_gb: number; used_gb: number; free_gb: number; percent_used: number}[]>([])
   const connected = useConnectionStore((s) => s.status === "connected")
@@ -432,32 +507,31 @@ function DisksTab() {
   useEffect(() => { fetchDisks() }, [fetchDisks])
 
   return (
-    <Card className="p-4 space-y-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Storage Drives</h3>
-        <Button size="sm" variant="outline" onClick={fetchDisks} disabled={!connected}>Refresh</Button>
+    <Card variant="glass" className="p-4 space-y-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+          <HardDrive className="h-4 w-4 text-primary" /> Storage Volumes
+        </h3>
+        <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={fetchDisks} disabled={!connected}>
+          Refresh
+        </Button>
       </div>
-      <div className="space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {disks.map((d, i) => (
-          <div key={i} className="p-3 rounded-lg border">
-            <div className="flex justify-between mb-1">
-              <span className="text-sm font-medium">{d.mount}</span>
-              <span className="text-xs text-muted-foreground">{d.used_gb} GB / {d.total_gb} GB</span>
+          <div key={i} className="p-4 rounded-2xl border border-border/40 bg-muted/10 space-y-2">
+            <div className="flex justify-between items-baseline mb-1">
+              <span className="text-sm font-bold text-foreground/80">{d.mount} Drive</span>
+              <span className="text-xs text-muted-foreground font-mono">{d.used_gb} GB / {d.total_gb} GB</span>
             </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div className="h-2 bg-muted rounded-full overflow-hidden shadow-inner">
               <div className="h-full bg-primary rounded-full" style={{width: `${Math.min(d.percent_used, 100)}%`}} />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{d.free_gb} GB free — {d.percent_used}% used</p>
+            <p className="text-[10px] text-muted-foreground/80 mt-1">{d.free_gb} GB free — {d.percent_used}% occupied</p>
           </div>
         ))}
         {disks.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-              <Monitor className="w-6 h-6 text-muted-foreground/60" />
-            </div>
+          <div className="col-span-full flex flex-col items-center justify-center py-10 text-center">
             <p className="text-sm font-medium text-muted-foreground">No disk info available</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see storage drives</p>
           </div>
         )}
       </div>
@@ -466,9 +540,9 @@ function DisksTab() {
 }
 
 // ── Processes ──
-
 function ProcessesTab() {
   const [processes, setProcesses] = useState<{pid: number; name: string; cpu: number; memory_mb: number}[]>([])
+  const [confirmPid, setConfirmPid] = useState<{pid: number; name: string} | null>(null)
   const connected = useConnectionStore((s) => s.status === "connected")
 
   const fetchProcs = useCallback(async () => {
@@ -481,6 +555,7 @@ function ProcessesTab() {
   useEffect(() => { fetchProcs() }, [fetchProcs])
 
   const kill = async (pid: number) => {
+    if (navigator.vibrate) navigator.vibrate(15)
     const res = await fetch("/api/processes/kill", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -491,38 +566,60 @@ function ProcessesTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Top Processes (by CPU)</h3>
-        <Button size="sm" variant="outline" onClick={fetchProcs} disabled={!connected}>Refresh</Button>
+    <Card variant="glass" className="p-4 space-y-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+          <Cpu className="h-4 w-4 text-primary" /> Active Tasks (CPU)
+        </h3>
+        <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={fetchProcs} disabled={!connected}>
+          Refresh
+        </Button>
       </div>
-      <div className="max-h-80 overflow-y-auto space-y-1">
+      <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1.5 scrollbar-thin">
         {processes.map((p, i) => (
-          <div key={p.pid} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
-            <span className="text-xs text-muted-foreground w-6">{i + 1}</span>
-            <span className="flex-1 truncate">{p.name}</span>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">{p.cpu.toFixed(1)}% CPU</span>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">{p.memory_mb} MB</span>
-            <button onClick={() => kill(p.pid)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">Kill</button>
+          <div key={p.pid} className="flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-border/10 bg-muted/10 text-xs">
+            <div className="flex items-center gap-2 min-w-0 flex-grow">
+              <span className="text-[10px] text-muted-foreground font-mono w-5 shrink-0 text-center">{i + 1}</span>
+              <span className="font-semibold text-foreground truncate">{p.name}</span>
+            </div>
+            
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-mono font-medium text-[10px] text-muted-foreground">{p.cpu.toFixed(1)}%</span>
+              <span className="font-mono font-medium text-[10px] text-muted-foreground">{p.memory_mb} MB</span>
+              
+              <Button
+                type="button"
+                variant="destructive"
+                className="h-8 px-3.5 text-xs rounded-xl"
+                onClick={() => setConfirmPid({ pid: p.pid, name: p.name })}
+              >
+                <Trash className="h-3.5 w-3.5 mr-1" /> Kill
+              </Button>
+            </div>
           </div>
         ))}
         {processes.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-              <Monitor className="w-6 h-6 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">No process data</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Connect to a remote machine to see running processes</p>
-          </div>
+          <p className="text-center py-8 text-xs text-muted-foreground/60">No process info available</p>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmPid != null}
+        onOpenChange={() => setConfirmPid(null)}
+        title="Terminate Process"
+        description={`Are you sure you want to terminate "${confirmPid?.name}" (PID: ${confirmPid?.pid})? Unsaved work will be lost.`}
+        confirmText="KILL"
+        actionLabel="Kill Task"
+        onConfirm={() => {
+          if (confirmPid) kill(confirmPid.pid)
+          setConfirmPid(null)
+        }}
+      />
     </Card>
   )
 }
 
 // ── Sessions ──
-
 function SessionsTab() {
   const [sessions, setSessions] = useState<{session_id: number; username: string; state: string}[]>([])
   const connected = useConnectionStore((s) => s.status === "connected")
@@ -537,6 +634,7 @@ function SessionsTab() {
   useEffect(() => { fetchSessions() }, [fetchSessions])
 
   const act = async (session_id: number, action: string) => {
+    if (navigator.vibrate) navigator.vibrate(15)
     const res = await fetch("/api/sessions/action", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -547,41 +645,44 @@ function SessionsTab() {
   }
 
   return (
-    <Card className="p-4 space-y-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">User Sessions</h3>
-        <Button size="sm" variant="outline" onClick={fetchSessions} disabled={!connected}>Refresh</Button>
+    <Card variant="glass" className="p-4 space-y-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+          <KeyRound className="h-4 w-4 text-primary" /> active RDP/OS Sessions
+        </h3>
+        <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={fetchSessions} disabled={!connected}>
+          Refresh
+        </Button>
       </div>
       <div className="space-y-2">
         {sessions.map((s) => (
-          <div key={s.session_id} className="flex items-center justify-between p-3 rounded-lg border">
+          <div key={s.session_id} className="flex items-center justify-between p-3.5 rounded-2xl border border-border/40 bg-muted/10">
             <div>
-              <p className="text-sm font-medium">{s.username || "(no user)"}</p>
-              <p className="text-xs text-muted-foreground">Session {s.session_id} — {s.state}</p>
+              <p className="text-sm font-semibold text-foreground/80">{s.username || "(no user)"}</p>
+              <p className="text-[10px] text-muted-foreground/80 mt-0.5">Session ID: {s.session_id} — {s.state}</p>
             </div>
             <div className="flex gap-2">
               {s.state !== "Disconnected" && (
-                <Button size="sm" variant="outline" onClick={() => act(s.session_id, "disconnect")}>Disconnect</Button>
+                <Button size="sm" variant="outline" className="h-8 text-xs rounded-xl" onClick={() => act(s.session_id, "disconnect")}>Disconnect</Button>
               )}
-              <Button size="sm" variant="destructive" onClick={() => act(s.session_id, "logoff")}>Logoff</Button>
+              <Button size="sm" variant="destructive" className="h-8 text-xs rounded-xl" onClick={() => act(s.session_id, "logoff")}>Logoff</Button>
             </div>
           </div>
         ))}
         {sessions.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-              <Monitor className="w-6 h-6 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">No sessions found</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">No active user sessions detected on the remote machine</p>
-          </div>
+          <p className="text-center py-8 text-xs text-muted-foreground/60">No sessions info available</p>
         )}
       </div>
     </Card>
   )
 }
 
+interface WindowInfo {
+  hwnd: number;
+  title: string;
+}
+
+// ── Windows ──
 function WindowsTab() {
   const [windows, setWindows] = useState<WindowInfo[]>([])
   const connected = useConnectionStore((s) => s.status === "connected")
@@ -600,6 +701,7 @@ function WindowsTab() {
   }, [refresh])
 
   const act = useCallback(async (action: string, hwnd: number) => {
+    if (navigator.vibrate) navigator.vibrate(10)
     await fetch(`/api/windows/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -609,32 +711,30 @@ function WindowsTab() {
   }, [refresh])
 
   return (
-    <Card className="p-4 space-y-3 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-medium">Open Windows ({windows.length})</h3>
-        <Button size="sm" variant="outline" onClick={refresh} disabled={!connected}>Refresh</Button>
+    <Card variant="glass" className="p-4 space-y-3">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+          <Monitor className="h-4 w-4 text-primary" /> Window Manager
+        </h3>
+        <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={refresh} disabled={!connected}>
+          Refresh
+        </Button>
       </div>
-      <div className="max-h-80 overflow-y-auto space-y-1">
+      <div className="max-h-80 overflow-y-auto space-y-2 pr-1.5 scrollbar-thin">
         {windows.map((w) => (
-          <div key={w.hwnd} className="flex items-center gap-2 p-2 bg-muted rounded text-sm">
-            <span className="flex-1 truncate">{w.title}</span>
-            <button onClick={() => act("focus", w.hwnd)} className="px-2 py-0.5 bg-primary text-primary-foreground rounded text-xs">Focus</button>
-            <button onClick={() => act("minimize", w.hwnd)} className="px-2 py-0.5 bg-muted-foreground/20 rounded text-xs">Min</button>
-            <button onClick={() => act("close", w.hwnd)} className="px-2 py-0.5 bg-destructive text-destructive-foreground rounded text-xs">X</button>
+          <div key={w.hwnd} className="flex items-center justify-between gap-3 p-3.5 rounded-2xl border border-border/10 bg-muted/10 text-xs">
+            <span className="font-semibold text-foreground truncate flex-grow mr-2">{w.title}</span>
+            <div className="flex items-center gap-1.5 shrink-0 select-none">
+              <Button size="sm" variant="outline" className="h-8 text-xs rounded-xl" onClick={() => act("focus", w.hwnd)}>Focus</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs rounded-xl" onClick={() => act("minimize", w.hwnd)}>Min</Button>
+              <Button size="sm" variant="destructive" className="h-8 text-xs rounded-xl" onClick={() => act("close", w.hwnd)}>Close</Button>
+            </div>
           </div>
         ))}
         {windows.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center mb-3">
-              <Monitor className="w-6 h-6 text-muted-foreground/60" />
-            </div>
-            <p className="text-sm font-medium text-muted-foreground">No windows found</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">No open windows detected on the remote machine</p>
-          </div>
+          <p className="text-center py-8 text-xs text-muted-foreground/60">No open windows detected</p>
         )}
       </div>
     </Card>
   )
 }
-
