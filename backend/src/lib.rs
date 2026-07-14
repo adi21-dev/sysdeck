@@ -571,6 +571,64 @@ pub async fn init_history_handler(State(state): State<AppState>) -> impl IntoRes
     Json(history)
 }
 
+pub async fn data_dir_handler() -> impl IntoResponse {
+    Json(serde_json::json!({"path": get_data_dir().to_string_lossy().to_string()}))
+}
+
+pub async fn uninstall_handler(
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    let _ = state.tunnel_state.stop().await;
+
+    let data_dir = get_data_dir();
+    let _ = std::fs::remove_dir_all(&data_dir);
+
+    set_startup(false);
+
+    auth::delete_jwt_key();
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                let bat = format!(
+                    "@echo off\r\n\
+                     timeout /t 2 /nobreak >nul\r\n\
+                     :DELETE_EXE\r\n\
+                     del /f /q \"{exe}\" >nul 2>&1\r\n\
+                     if exist \"{exe}\" (\r\n\
+                         timeout /t 1 /nobreak >nul\r\n\
+                         goto DELETE_EXE\r\n\
+                     )\r\n\
+                     rmdir /q \"{exe_dir}\" >nul 2>&1\r\n\
+                     del \"%~f0\"",
+                    exe = exe.display(),
+                    exe_dir = exe_dir.display()
+                );
+                let bat_path = std::env::temp_dir().join("sysdeck-uninstall.bat");
+                let _ = std::fs::write(&bat_path, bat);
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new(&bat_path)
+                    .creation_flags(0x08000008)
+                    .spawn();
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::fs::remove_file(&exe);
+        }
+    }
+
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        std::process::exit(0);
+    });
+
+    Json(serde_json::json!({"success": true}))
+}
+
 pub fn build_router(state: AppState) -> Router {
     // Admin-only routes (settings/configuration) - require localhost access
     let admin_routes = Router::new()
@@ -634,6 +692,7 @@ pub fn build_router(state: AppState) -> Router {
 
     Router::new()
         .merge(admin_routes)
+        .route("/api/system/data-dir", get(data_dir_handler))
         .route("/ws", get(ws::ws_handler))
         .route("/api/telemetry/history", get(history_handler))
         .route("/api/setup/init-history", get(init_history_handler))
@@ -785,6 +844,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/wol/macs", get(wol::list_macs_handler))
         .route("/api/wol/macs", post(wol::save_mac_handler))
         .route("/api/wol/macs/delete", post(wol::delete_mac_handler))
+        // System
+        .route("/api/system/uninstall", post(uninstall_handler))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(
             state.clone(),

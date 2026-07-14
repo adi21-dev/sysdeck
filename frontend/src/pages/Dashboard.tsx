@@ -107,13 +107,13 @@ export function DashboardPage() {
     const source = merged.length > count ? merged.slice(-count) : merged
     return source.map((t: any) => ({
       time: new Date(t.timestamp).toLocaleTimeString(),
-      cpu: t.cpu_usage,
+      cpu: t.cpu_usage != null ? +t.cpu_usage.toFixed(1) : null,
       ram: +((t.ram_used / t.ram_total) * 100).toFixed(1),
       rx: +(t.net_rx_bps / 1024 / 1024).toFixed(2),
       tx: +(t.net_tx_bps / 1024 / 1024).toFixed(2),
       battery: t.battery_percent ?? null,
-      temperature_cpu: t.temperature_cpu ?? null,
-      temperature_gpu: t.temperature_gpu ?? null,
+      temperature_cpu: t.temperature_cpu != null ? +t.temperature_cpu.toFixed(1) : null,
+      temperature_gpu: t.temperature_gpu != null ? +t.temperature_gpu.toFixed(1) : null,
     }))
   }, [historical, liveHistory, range])
 

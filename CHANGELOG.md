@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Forgot Password Flow**: Login page now shows a "Forgot password?" link that opens an instruction modal with the exact data directory path (fetched from new `GET /api/system/data-dir`), a "Copy Path" button, and step-by-step manual reset instructions.
+- **Single-Click Uninstall**: Settings page "Danger Zone" card with `POST /api/system/uninstall` endpoint. Two-phase cleanup: Rust deletes data dir, registry auto-start key, OS keychain JWT secret, and tunnel binary; then a detached batch script with retry loop deletes the locked `.exe` and itself.
+- **Uninstall Overlay**: Full-screen "Uninstalling SysDeck..." overlay masks the WebSocket disconnect when the backend process exits.
+- **Telemetry GPU Temperature Rounding**: `temperature_gpu` values are now rounded to one decimal place before storage, matching the existing CPU temperature and usage rounding.
+
 ### Changed
 - **Mobile Tunnel Responsiveness**: Rearchitected hardware mutation handlers to be fire-and-forget (`tokio::spawn`) — return HTTP 200 immediately, broadcast result over a new `hardware_tx` WebSocket channel. Eliminates per-pixel slider lag over tunnel.
 - **WS-Driven State Sync**: Added `hardware_tx` broadcast channel to `AppState`. WebSocket handler subscribes and forwards JSON to clients. Frontend `applyHardwareUpdate()` dispatches on `type` field to keep Zustand store in sync without polling.
@@ -26,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - WiFi scan → `WlanOpenHandle`/`WlanScan`/`WlanGetAvailableNetworkList`
 - **Code Consolidation**: Unified `run_cmd` helper into `hardware.rs` (removed duplicate from `network.rs`). Simplified `get_control_center_status()` to delegate to `get_toggle_status()`.
 - **Toggle State Detection**: `get_toggle_status()` now detects actual wifi and DND state on all platforms (Windows: WLAN API + Registry, macOS: `networksetup` + `defaults`, Linux: `nmcli` + `gsettings`). Set handlers (`audio_mute`, `toggle_wifi`, `toggle_dnd`) check current state before applying changes — skip redundant operations.
+- **Chart Data Rounding**: Dashboard chart data now rounds CPU usage, CPU temperature, and GPU temperature to one decimal place, so tooltips show clean values.
 
 ### Fixed
 - **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.

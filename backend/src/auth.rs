@@ -158,6 +158,16 @@ pub fn load_or_create_jwt_key() -> Result<Vec<u8>, String> {
     Ok(jwt_key.to_vec())
 }
 
+pub fn delete_jwt_key() {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        let _ = entry.delete_password();
+    }
+    let fallback = secrets_file_path();
+    if fallback.exists() {
+        let _ = std::fs::remove_file(&fallback);
+    }
+}
+
 // --- Password Hashing ---
 
 pub fn hash_password(password: &str) -> Result<String, String> {
@@ -915,6 +925,7 @@ pub async fn auth_middleware(
             || path.starts_with("/api/setup")
             || path == "/api/auth/check"
             || path == "/api/admin/check"
+            || path == "/api/system/data-dir"
         {
             tracing::debug!(
                 path,
@@ -941,6 +952,7 @@ pub async fn auth_middleware(
         || path == "/api/auth/refresh"
         || path == "/api/admin/check"
         || path == "/api/scripts/execute"
+        || path == "/api/system/data-dir"
     {
         tracing::debug!(path, method, "Auth middleware skip");
         return next.run(req).await;

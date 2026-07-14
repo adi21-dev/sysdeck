@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import {
-  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key, Server, HardDrive,
+  Shield, Eye, EyeOff, Download, AlertTriangle, Check, Copy, RefreshCw, FolderOpen, Monitor, Key, Server, HardDrive, Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -168,6 +168,11 @@ export function SettingsPage() {
   const [pathsErr, setPathsErr] = useState<string | null>(null)
   const [portErr, setPortErr] = useState<string | null>(null)
 
+  // Uninstall
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false)
+  const [uninstalling, setUninstalling] = useState(false)
+  const [uninstallErr, setUninstallErr] = useState<string | null>(null)
+
   const fetchSessions = () => {
     setSessionErr(null)
     fetch("/api/settings/sessions").then((r) => r.json()).then((d) => {
@@ -322,6 +327,23 @@ export function SettingsPage() {
 
   const handleExportDb = () => { window.open("/api/settings/export-db", "_blank") }
   const handleDownloadLogs = () => { window.open("/api/settings/download-logs", "_blank") }
+
+  const handleUninstall = async () => {
+    setUninstalling(true)
+    setUninstallErr(null)
+    setShowUninstallDialog(false)
+    try {
+      const res = await fetch("/api/system/uninstall", { method: "POST" })
+      const data = await res.json()
+      if (!data.success) {
+        setUninstallErr(data.message || "Uninstall failed")
+        setUninstalling(false)
+      }
+    } catch {
+      setUninstallErr("Failed to start uninstall")
+      setUninstalling(false)
+    }
+  }
 
   const [isSavingPaths, setIsSavingPaths] = useState(false)
 
@@ -811,6 +833,30 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Uninstall */}
+      <Card className="border-destructive/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-1.5 text-destructive">
+            <Trash2 className="h-4 w-4" />
+            Uninstall SysDeck
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Permanently delete all data, logs, and the application itself. This cannot be undone.
+          </p>
+          {uninstallErr && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-sm mb-4 border border-destructive/10">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{uninstallErr}</span>
+            </div>
+          )}
+          <Button variant="destructive" size="sm" onClick={() => setShowUninstallDialog(true)} disabled={uninstalling}>
+            {uninstalling ? "Uninstalling..." : "Uninstall"}
+          </Button>
+        </CardContent>
+      </Card>
+
       <input ref={folderInputRef} type="file" className="hidden" onChange={handleFolderSelected} />
 
       <AlertDialog open={showRevokeDialog} onOpenChange={(o) => { setShowRevokeDialog(o); if (!o) setRevokeTarget(null) }}>
@@ -831,6 +877,38 @@ export function SettingsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Uninstall SysDeck</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all data, logs, and the application. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleUninstall}
+            >
+              Uninstall
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {uninstalling && (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-background/90 backdrop-blur-xl">
+          <div className="flex flex-col items-center gap-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-3xl bg-destructive/10 flex items-center justify-center">
+              <Trash2 className="w-8 h-8 text-destructive animate-pulse" />
+            </div>
+            <h2 className="text-xl font-bold">Uninstalling SysDeck...</h2>
+            <p className="text-sm text-muted-foreground">You can close this window.</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

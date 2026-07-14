@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { Monitor, AlertTriangle, Eye, EyeOff } from "lucide-react"
+import { Monitor, AlertTriangle, Eye, EyeOff, Copy, Check } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { TotpInput } from "@/components/ui/totp-input"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 
 export function LoginPage() {
   const [password, setPassword] = useState("")
@@ -13,6 +15,9 @@ export function LoginPage() {
   const navigate = useNavigate()
   const setAuthenticated = useAuthStore((s) => s.setAuthenticated)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showReset, setShowReset] = useState(false)
+  const [dataDir, setDataDir] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     fetch("/api/auth/check")
@@ -26,6 +31,13 @@ export function LoginPage() {
       })
       .catch(() => setChecking(false))
   }, [navigate, setAuthenticated])
+
+  useEffect(() => {
+    fetch("/api/system/data-dir")
+      .then((r) => r.json())
+      .then((d) => { if (d.path) setDataDir(d.path) })
+      .catch(() => {})
+  }, [])
 
   if (checking) return null
 
@@ -53,6 +65,15 @@ export function LoginPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  async function handleCopyPath() {
+    if (!dataDir) return
+    try {
+      await navigator.clipboard.writeText(dataDir)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {}
   }
 
   return (
@@ -111,8 +132,52 @@ export function LoginPage() {
               {isSubmitting ? "Signing in..." : "Sign In"}
             </button>
           </form>
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => setShowReset(true)}
+              className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-2"
+            >
+              Forgot password?
+            </button>
+          </div>
         </div>
       </div>
+
+      <AlertDialog open={showReset} onOpenChange={setShowReset}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>How to reset your password</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>Follow these steps to delete all data and start fresh:</p>
+              <ol className="list-decimal list-inside space-y-2 text-sm text-left">
+                <li>Close SysDeck from the system tray (bottom right icon).</li>
+                <li>
+                  Delete the following folder:
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <code className="flex-1 rounded bg-muted px-2 py-1 text-xs break-all font-mono">
+                      {dataDir ?? "Loading..."}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0 h-8 w-8"
+                      onClick={handleCopyPath}
+                      title="Copy path"
+                    >
+                      {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                </li>
+                <li>Restart SysDeck. You will be prompted to set up a new password.</li>
+              </ol>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="outline" onClick={() => setShowReset(false)}>Got it</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

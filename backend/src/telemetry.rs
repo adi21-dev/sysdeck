@@ -203,6 +203,7 @@ pub fn start_engine(
                 .as_millis() as i64;
 
             let temperature_cpu = temperature_cpu.map(|t| (t * 10.0).round() / 10.0);
+            let temperature_gpu = temperature_gpu.map(|t| (t * 10.0).round() / 10.0);
 
             let snapshot = TelemetrySnapshot {
                 timestamp,
