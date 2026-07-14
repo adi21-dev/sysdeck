@@ -353,6 +353,7 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
 
     toggleControlCenter: async (toggle, enabled) => {
       const prev = get().controlCenter
+      const prevToggles = get().toggles
       if (prev) {
         const updated = { ...prev }
         if (toggle === "dark_mode") updated.dark_mode = enabled
@@ -360,11 +361,17 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
         else if (toggle === "dnd") updated.dnd_on = enabled
         set({ controlCenter: updated })
       }
+      if (prevToggles) {
+        const updated = { ...prevToggles }
+        if (toggle === "wifi") updated.wifi = enabled
+        else if (toggle === "dnd") updated.dnd = enabled
+        set({ toggles: updated })
+      }
       try {
         await handleApiCall("/api/control-center/toggle", "POST", { toggle, enabled })
         get().fetchControlCenter()
       } catch (err: any) {
-        set({ controlCenter: prev })
+        set({ controlCenter: prev, toggles: prevToggles })
         throw err
       }
     },

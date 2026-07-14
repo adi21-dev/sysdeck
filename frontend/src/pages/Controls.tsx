@@ -98,8 +98,6 @@ export function ControlsPage() {
     setDevice,
     triggerMedia,
     setBrightness,
-    setNightLight,
-    setDarkMode,
     toggleControlCenter,
   } = useHardwareStore()
 
@@ -254,12 +252,11 @@ export function ControlsPage() {
   }
 
   // Toggles wrapper
-  const handleToggle = async (type: "wifi" | "dark" | "dnd", val: boolean) => {
+  const handleToggle = async (type: "wifi" | "dnd", val: boolean) => {
     haptic()
     try {
-      if (type === "wifi" || type === "dnd") await toggleControlCenter(type, val)
-      else if (type === "dark") await setDarkMode(val)
-      toastStore.addToast(`${type.replace("_", " ")} successfully updated.`, "success")
+      await toggleControlCenter(type, val)
+      toastStore.addToast(`${type === "wifi" ? "WiFi" : "Do Not Disturb"} successfully updated.`, "success")
     } catch (err: any) {
       toastStore.addToast(err.message || `Failed to update ${type}.`, "error")
     }
@@ -324,23 +321,6 @@ export function ControlsPage() {
               </div>
               <span className="font-medium text-xs">Wi-Fi</span>
               <span className="text-[10px] text-muted-foreground mt-0.5">{toggles.wifi ? "Enabled" : "Disabled"}</span>
-            </button>
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={() => handleToggle("dark", !toggles.dark_mode)}
-              className={cn(
-                "flex flex-col items-center justify-center p-4 rounded-2xl border transition-all duration-200 text-center",
-                toggles.dark_mode
-                  ? "bg-primary/10 border-primary/30 text-primary shadow-sm shadow-primary/10 backdrop-blur-sm"
-                  : "neu-hover text-muted-foreground"
-              )}
-            >
-              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-background/80 border mb-2">
-                {toggles.dark_mode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-              </div>
-              <span className="font-medium text-xs">Dark Mode</span>
-              <span className="text-[10px] text-muted-foreground mt-0.5">{toggles.dark_mode ? "Dark" : "Light"}</span>
             </button>
 
             {/* Mute Toggle */}
@@ -517,33 +497,6 @@ export function ControlsPage() {
                 </div>
 
                 {/* Night Light Toggle */}
-                <div className="flex items-center justify-between p-4 rounded-xl border border-border/80 bg-muted/10">
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold">Night Light</p>
-                    <p className="text-xs text-muted-foreground">Reduce blue light to help sleep</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={display.night_light}
-                    aria-label="Toggle Night Light"
-                    onClick={() => {
-                      setNightLight(!display.night_light).catch((err) => {
-                        toastStore.addToast(err.message || "Failed to toggle Night Light.", "error")
-                      })
-                    }}
-                    className={cn(
-                      "w-12 h-6 flex items-center rounded-full p-1 transition-all outline-none focus-visible:ring-2 focus-visible:ring-ring/20",
-                      display.night_light ? "bg-primary shadow-[0_0_10px_hsl(173_80%_30%_/_0.3)]" : "bg-muted border shadow-inner"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "w-4 h-4 bg-background rounded-full shadow-md transform transition-all duration-200",
-                        display.night_light ? "translate-x-6" : "translate-x-0"
-                      )}
-                    />
-                  </button>
-                </div>
               </div>
             )}
           </div>
