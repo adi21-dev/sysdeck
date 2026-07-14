@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing;
 
+use crate::hardware::run_cmd;
+
+#[cfg(target_os = "windows")]
+#[link(name = "dnsapi")]
+extern "system" {
+    fn DnsFlushResolverCache() -> i32;
+}
+
 #[derive(Serialize, Debug)]
 pub struct InterfaceInfo {
     pub name: String,
@@ -47,44 +55,6 @@ pub struct WifiConnectRequest {
 
 fn default_wifi_security() -> String {
     "WPA2-Personal".to_string()
-}
-
-fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
-    let output = crate::new_command(cmd)
-        .args(args)
-        .output()
-        .map_err(|e| format!("Failed to execute {}: {}", cmd, e))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn run_powershell(script: &str) -> Result<String, String> {
-    use std::io::Write;
-    use std::process::Stdio;
-    let mut child = crate::new_command("powershell")
-        .args(["-NoProfile", "-Command", "-"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn powershell: {}", e))?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(script.as_bytes())
-            .map_err(|e| format!("Failed to write to powershell stdin: {}", e))?;
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to read powershell output: {}", e))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-    }
 }
 
 pub async fn get_network_status() -> Result<NetworkStatus, String> {
@@ -519,80 +489,83 @@ pub async fn scan_wifi() -> Result<Vec<WifiNetwork>, String> {
 
 #[cfg(target_os = "windows")]
 fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
-    let out = run_cmd("netsh", &["wlan", "show", "networks", "mode=Bssid"])?;
-    let mut networks = Vec::new();
-    let mut current_ssid = String::new();
-    let mut current_signal = 0u32;
-    let mut current_auth = String::new();
-    let mut collecting = false;
-
-    for line in out.lines() {
-        let trimmed = line.trim();
-        if let Some(ssid) = trimmed.strip_prefix("SSID ") {
-            if let Some(idx) = ssid.find(':') {
-                let name = ssid[idx + 1..].trim().to_string();
-                if !name.is_empty() {
-                    if collecting && !current_ssid.is_empty() {
-                        networks.push(WifiNetwork {
-                            ssid: current_ssid.clone(),
-                            signal_strength: current_signal,
-                            security_type: current_auth.clone(),
-                            connected: false,
-                        });
-                    }
-                    current_ssid = name;
-                    current_signal = 0;
-                    current_auth = String::new();
-                    collecting = true;
-                }
-            }
-        } else if collecting {
-            if let Some(auth) = trimmed.strip_prefix("Authentication") {
-                if let Some(idx) = auth.find(':') {
-                    current_auth = auth[idx + 1..].trim().to_string();
-                }
-            } else if let Some(sig) = trimmed.strip_prefix("Signal") {
-                if let Some(idx) = sig.find(':') {
-                    let s = sig[idx + 1..].trim().trim_end_matches('%');
-                    current_signal = s.parse::<u32>().unwrap_or(0);
-                }
-            }
+    use windows_sys::Win32::NetworkManagement::WiFi::*;
+    unsafe {
+        let mut handle: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut negotiated: u32 = 0;
+        let ret = WlanOpenHandle(2, std::ptr::null(), &mut negotiated, &mut handle);
+        if ret != 0 {
+            return Err("WlanOpenHandle failed".to_string());
         }
-    }
 
-    if collecting && !current_ssid.is_empty() {
-        networks.push(WifiNetwork {
-            ssid: current_ssid.clone(),
-            signal_strength: current_signal,
-            security_type: current_auth,
-            connected: false,
-        });
-    }
-
-    // Check which one we're connected to
-    let conn_out = run_cmd("netsh", &["wlan", "show", "interfaces"]).unwrap_or_default();
-    let connected_ssid = conn_out.lines().find_map(|l| {
-        let t = l.trim();
-        if let Some(s) = t.strip_prefix("SSID") {
-            if let Some(idx) = s.find(':') {
-                let name = s[idx + 1..].trim().to_string();
-                if !name.is_empty() && name != "BSSID" {
-                    return Some(name);
-                }
-            }
+        let mut iface_list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+        if WlanEnumInterfaces(handle, std::ptr::null(), &mut iface_list) != 0
+            || iface_list.is_null()
+        {
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err("No WLAN interfaces found".to_string());
         }
-        None
-    });
 
-    for net in &mut networks {
-        if let Some(ref connected) = connected_ssid {
-            if net.ssid == *connected {
-                net.connected = true;
-            }
+        let iface = &*iface_list;
+        if iface.dwNumberOfItems == 0 {
+            WlanFreeMemory(iface_list as *mut _);
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err("No WLAN interfaces".to_string());
         }
-    }
+        let guid = iface.InterfaceInfo[0].InterfaceGuid;
 
-    Ok(networks)
+        WlanScan(
+            handle,
+            &guid,
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        let mut avail_list: *mut WLAN_AVAILABLE_NETWORK_LIST = std::ptr::null_mut();
+        let ret = WlanGetAvailableNetworkList(handle, &guid, 0, std::ptr::null(), &mut avail_list);
+        WlanFreeMemory(iface_list as *mut _);
+
+        if ret != 0 || avail_list.is_null() {
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err("Failed to get available networks".to_string());
+        }
+
+        let list = &*avail_list;
+        let mut networks = Vec::with_capacity(list.dwNumberOfItems as usize);
+        for i in 0..list.dwNumberOfItems as usize {
+            let net = &list.Network[i];
+            let ssid_len = net.dot11Ssid.uSSIDLength.min(32) as usize;
+            if ssid_len == 0 {
+                continue;
+            }
+            let ssid = String::from_utf8_lossy(&net.dot11Ssid.ucSSID[..ssid_len]).to_string();
+            if ssid.is_empty() {
+                continue;
+            }
+
+            let auth_str = match net.dot11DefaultAuthAlgorithm {
+                DOT11_AUTH_ALGO_80211_SHARED_KEY => "WPA",
+                DOT11_AUTH_ALGO_WPA => "WPA",
+                DOT11_AUTH_ALGO_WPA_PSK => "WPA-PSK",
+                DOT11_AUTH_ALGO_RSNA => "WPA2",
+                DOT11_AUTH_ALGO_RSNA_PSK => "WPA2-PSK",
+                _ => "Open",
+            };
+
+            networks.push(WifiNetwork {
+                ssid,
+                signal_strength: net.wlanSignalQuality,
+                security_type: auth_str.to_string(),
+                connected: (net.dwFlags & 1) != 0,
+            });
+        }
+
+        WlanFreeMemory(avail_list as *mut _);
+        WlanCloseHandle(handle, std::ptr::null());
+        Ok(networks)
+    }
 }
 
 pub async fn connect_wifi(
@@ -621,12 +594,7 @@ fn connect_wifi_windows(
     password: Option<&str>,
     security_type: &str,
 ) -> Result<(), String> {
-    let temp_dir = std::env::temp_dir();
-    let profile_path = temp_dir.join(format!(
-        "sysdeck_wifi_{}.xml",
-        ssid.replace(|c: char| !c.is_alphanumeric(), "_")
-    ));
-
+    use windows_sys::Win32::NetworkManagement::WiFi::*;
     let (auth_elem, use_key) = match security_type {
         "WPA3" | "WPA3-Personal" | "WPA3SAE" => ("WPA3SAE", true),
         "WPA2" | "WPA2-Personal" | "WPA2PSK" | "WPA2-PSK" => ("WPA2PSK", true),
@@ -689,39 +657,66 @@ fn connect_wifi_windows(
         )
     };
 
-    std::fs::write(&profile_path, &xml)
-        .map_err(|e| format!("Failed to write WLAN profile: {}", e))?;
+    unsafe {
+        let mut handle: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut negotiated: u32 = 0;
+        if WlanOpenHandle(2, std::ptr::null(), &mut negotiated, &mut handle) != 0 {
+            return Err("WlanOpenHandle failed".to_string());
+        }
 
-    let result = run_cmd(
-        "netsh",
-        &[
-            "wlan",
-            "add",
-            "profile",
-            "filename",
-            &profile_path.to_string_lossy(),
-        ],
-    );
-    if let Err(ref e) = result {
-        let _ = std::fs::remove_file(&profile_path);
-        return Err(format!("Failed to add WLAN profile: {}", e));
+        let mut iface_list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+        if WlanEnumInterfaces(handle, std::ptr::null(), &mut iface_list) != 0
+            || iface_list.is_null()
+        {
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err("No WLAN interfaces".to_string());
+        }
+        let guid = (*iface_list).InterfaceInfo[0].InterfaceGuid;
+        WlanFreeMemory(iface_list as *mut _);
+
+        // Add profile via WlanSetProfile (no file write or netsh needed)
+        let xml_wide: Vec<u16> = xml.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut reason: u32 = 0;
+        let ret = WlanSetProfile(
+            handle,
+            &guid,
+            0,
+            xml_wide.as_ptr(),
+            std::ptr::null(),
+            1,
+            std::ptr::null(),
+            &mut reason,
+        );
+        if ret != 0 {
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err(format!("WlanSetProfile failed: error {}", ret));
+        }
+
+        // Connect using profile name
+        let profile_wide: Vec<u16> = ssid.encode_utf16().chain(std::iter::once(0)).collect();
+        let params = WLAN_CONNECTION_PARAMETERS {
+            wlanConnectionMode: 1, // wlan_connection_mode_profile
+            strProfile: profile_wide.as_ptr() as *mut u16,
+            pDot11Ssid: std::ptr::null_mut(),
+            pDesiredBssidList: std::ptr::null_mut(),
+            dot11BssType: 0, // dot11_BSS_type_any
+            dwFlags: 0,
+        };
+        let ret = WlanConnect(handle, &guid, &params, std::ptr::null());
+        WlanCloseHandle(handle, std::ptr::null());
+        if ret != 0 {
+            Err(format!("WlanConnect failed: error {}", ret))
+        } else {
+            Ok(())
+        }
     }
-
-    let connect = run_cmd("netsh", &["wlan", "connect", "name", ssid]);
-    let _ = std::fs::remove_file(&profile_path);
-
-    connect
-        .map(|_| ())
-        .map_err(|e| format!("Failed to connect: {}", e))
 }
 
 pub async fn disconnect_wifi() -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            run_cmd("netsh", &["wlan", "disconnect"])
-                .map(|_| ())
-                .map_err(|e| format!("Failed to disconnect: {}", e))
+            disconnect_wifi_windows()
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -732,46 +727,61 @@ pub async fn disconnect_wifi() -> Result<(), String> {
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
+#[cfg(target_os = "windows")]
+fn disconnect_wifi_windows() -> Result<(), String> {
+    use windows_sys::Win32::NetworkManagement::WiFi::*;
+    unsafe {
+        let mut handle: *mut core::ffi::c_void = std::ptr::null_mut();
+        let mut negotiated: u32 = 0;
+        if WlanOpenHandle(2, std::ptr::null(), &mut negotiated, &mut handle) != 0 {
+            return Err("WlanOpenHandle failed".to_string());
+        }
+        let mut iface_list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+        if WlanEnumInterfaces(handle, std::ptr::null(), &mut iface_list) != 0
+            || iface_list.is_null()
+        {
+            WlanCloseHandle(handle, std::ptr::null());
+            return Err("No WLAN interfaces".to_string());
+        }
+        let guid = (*iface_list).InterfaceInfo[0].InterfaceGuid;
+        WlanFreeMemory(iface_list as *mut _);
+        let ret = WlanDisconnect(handle, &guid, std::ptr::null());
+        WlanCloseHandle(handle, std::ptr::null());
+        if ret != 0 {
+            Err(format!("WlanDisconnect failed: {}", ret))
+        } else {
+            Ok(())
+        }
+    }
+}
+
 pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
         {
-            let state_str = if enabled { "Enable" } else { "Disable" };
-            // Try PowerShell first (works on more adapter types like VPN), fallback to netsh
-            let script = format!(
-                "{}-NetAdapter -Name '{}' -Confirm:$false",
-                state_str,
-                name.replace('\'', "''")
+            let ns_state = if enabled { "enable" } else { "disable" };
+            let out = run_cmd(
+                "netsh",
+                &[
+                    "interface",
+                    "set",
+                    "interface",
+                    "name=",
+                    &name,
+                    "admin=",
+                    ns_state,
+                ],
             );
-            let ps_result = run_powershell(&script);
-            match ps_result {
+            match out {
                 Ok(_) => Ok(()),
-                Err(ps_err) => {
-                    let ns_state = if enabled { "enable" } else { "disable" };
-                    let out = run_cmd(
-                        "netsh",
-                        &[
-                            "interface",
-                            "set",
-                            "interface",
-                            "name",
-                            &name,
-                            &format!("admin={}", ns_state),
-                        ],
-                    );
-                    match out {
-                        Ok(_) => Ok(()),
-                        Err(ns_err) => {
-                            let combined = format!("PowerShell: {}, netsh: {}", ps_err, ns_err);
-                            if combined.contains("denied") || combined.contains("Access") {
-                                Err(
-                                    "Administrator privileges required to toggle network adapters"
-                                        .to_string(),
-                                )
-                            } else {
-                                Err(combined)
-                            }
-                        }
+                Err(e) => {
+                    if e.contains("denied") || e.contains("Access") {
+                        Err(
+                            "Administrator privileges required to toggle network adapters"
+                                .to_string(),
+                        )
+                    } else {
+                        Err(e)
                     }
                 }
             }
@@ -789,17 +799,11 @@ pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
 pub async fn flush_dns() -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let out = run_cmd("ipconfig", &["/flushdns"]);
-            match out {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    if e.contains("denied") || e.contains("Access denied") || e.contains("admin") {
-                        Err("Administrator privileges required to flush DNS".to_string())
-                    } else {
-                        Err(e)
-                    }
-                }
+        unsafe {
+            if DnsFlushResolverCache() != 0 {
+                Ok(())
+            } else {
+                Err("Failed to flush DNS cache".to_string())
             }
         }
         #[cfg(target_os = "macos")]

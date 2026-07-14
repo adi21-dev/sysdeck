@@ -23,6 +23,9 @@ pub struct DisplayStatus {
 #[derive(Serialize, Debug)]
 pub struct ToggleStatus {
     pub dark_mode: bool,
+    pub wifi: bool,
+    pub dnd: bool,
+    pub bluetooth: bool,
 }
 
 #[derive(Deserialize)]
@@ -81,7 +84,7 @@ pub struct ScheduledPowerRequest {
 // --- Common command executor ---
 
 #[allow(dead_code)]
-fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
+pub(crate) fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
     let output = crate::new_command(cmd)
         .args(args)
         .output()
@@ -95,7 +98,7 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Result<String, String> {
 }
 
 #[cfg(target_os = "windows")]
-fn run_powershell(script: &str) -> Result<String, String> {
+pub(crate) fn run_powershell(script: &str) -> Result<String, String> {
     use std::io::Write;
     use std::process::Stdio;
 
@@ -665,26 +668,37 @@ pub async fn set_audio_device(_device: String) -> Result<(), String> {
 pub async fn trigger_media_key(action: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let key = match action.as_str() {
-                "play_pause" => "179",
-                "next" => "176",
-                "prev" => "177",
-                "volume_up" => "175",
-                "volume_down" => "174",
-                "mute" => "173",
+        unsafe {
+            use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+            let vk = match action.as_str() {
+                "play_pause" => 0xB3,
+                "next" => 0xB0,
+                "prev" => 0xB1,
+                "volume_up" => 0xAF,
+                "volume_down" => 0xAE,
+                "mute" => 0xAD,
                 _ => return Err(format!("Unknown media action: {}", action)),
             };
-            let script = format!(
-                "(New-Object -ComObject Wscript.Shell).SendKeys([char]{})",
-                key
-            );
-            run_powershell(&script)?;
+            let mut input = INPUT {
+                r#type: INPUT_KEYBOARD,
+                Anonymous: INPUT_0 {
+                    ki: KEYBDINPUT {
+                        wVk: vk,
+                        wScan: 0,
+                        dwFlags: 0,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                },
+            };
+            let sz = std::mem::size_of::<INPUT>() as i32;
+            SendInput(1, &input, sz);
+            input.Anonymous.ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(1, &input, sz);
             Ok(())
         }
         #[cfg(target_os = "macos")]
         {
-            // AppleScript system events
             let cmd = match action.as_str() {
                 "play_pause" => "tell application \"Music\" to playpause",
                 "next" => "tell application \"Music\" to play next track",
@@ -728,16 +742,15 @@ pub async fn get_display_status() -> Result<DisplayStatus, String> {
         }
         #[cfg(target_os = "linux")]
         {
-            // Try /sys/class/backlight
-            if let Ok(curr) = run_cmd("cat", &["/sys/class/backlight/intel_backlight/brightness"]) {
-                let max = run_cmd("cat", &["/sys/class/backlight/intel_backlight/max_brightness"]).unwrap_or_else(|_| "100".to_string());
-                let c = curr.parse::<f32>().unwrap_or(50.0);
-                let m = max.parse::<f32>().unwrap_or(100.0);
-                let brightness = ((c / m) * 100.0) as u32;
-                Ok(DisplayStatus { brightness, night_light: false })
-            } else {
-                Ok(DisplayStatus { brightness: 50, night_light: false })
-            }
+            let brightness = std::fs::read_to_string("/sys/class/backlight/intel_backlight/brightness").ok()
+                .and_then(|c| c.trim().parse::<f32>().ok())
+                .and_then(|c| {
+                    let max = std::fs::read_to_string("/sys/class/backlight/intel_backlight/max_brightness").ok()
+                        .and_then(|m| m.trim().parse::<f32>().ok())?;
+                    Some(((c / max) * 100.0) as u32)
+                })
+                .unwrap_or(50);
+            Ok(DisplayStatus { brightness, night_light: false })
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
         Ok(DisplayStatus { brightness: 50, night_light: false })
@@ -772,41 +785,111 @@ pub async fn set_display_brightness(brightness: u32) -> Result<(), String> {
 pub async fn get_toggle_status() -> Result<ToggleStatus, String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            // Dark Mode check
-            let dark_out = run_powershell("(Get-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize -ErrorAction SilentlyContinue).AppsUseLightTheme")
-                .unwrap_or_else(|_| "1".to_string());
-            let dark_mode = dark_out.trim() == "0";
-            Ok(ToggleStatus { dark_mode })
+        unsafe {
+            use windows_sys::Win32::System::Registry::*;
+            use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+
+            let dark_mode = (|| {
+                let subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0";
+                let value_name = "AppsUseLightTheme\0";
+                let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+                let value_w: Vec<u16> = value_name.encode_utf16().collect();
+                let mut hkey: HKEY = std::ptr::null_mut();
+                if RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_READ, &mut hkey) != ERROR_SUCCESS { return false; }
+                let mut value: u32 = 1;
+                let mut size: u32 = 4;
+                let mut typ: u32 = 0;
+                let ret = RegGetValueW(hkey, std::ptr::null(), value_w.as_ptr(), 0x10, &mut typ, &mut value as *mut _ as *mut _, &mut size);
+                RegCloseKey(hkey);
+                ret == ERROR_SUCCESS && value == 0
+            })();
+
+            let wifi = (|| {
+                use windows_sys::Win32::NetworkManagement::WiFi::*;
+                let mut handle: *mut core::ffi::c_void = std::ptr::null_mut();
+                let mut negotiated = 0u32;
+                if WlanOpenHandle(2, std::ptr::null(), &mut negotiated, &mut handle) != 0 { return false; }
+                let mut iface_list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+                if WlanEnumInterfaces(handle, std::ptr::null(), &mut iface_list) != 0 || iface_list.is_null() {
+                    WlanCloseHandle(handle, std::ptr::null());
+                    return false;
+                }
+                let state = (*iface_list).InterfaceInfo[0].isState;
+                WlanFreeMemory(iface_list as *mut _);
+                WlanCloseHandle(handle, std::ptr::null());
+                state == 1
+            })();
+
+            let dnd = (|| {
+                let subkey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\0";
+                let value_name = "NOC_GLOBAL_SETTING_TOASTS_ENABLED\0";
+                let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+                let value_w: Vec<u16> = value_name.encode_utf16().collect();
+                let mut hkey: HKEY = std::ptr::null_mut();
+                if RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_READ, &mut hkey) != ERROR_SUCCESS { return false; }
+                let mut value: u32 = 1;
+                let mut size: u32 = 4;
+                let mut typ: u32 = 0;
+                let ret = RegGetValueW(hkey, std::ptr::null(), value_w.as_ptr(), 0x10, &mut typ, &mut value as *mut _ as *mut _, &mut size);
+                RegCloseKey(hkey);
+                ret == ERROR_SUCCESS && value == 0
+            })();
+
+            Ok(ToggleStatus { dark_mode, wifi, dnd, bluetooth: false })
         }
         #[cfg(target_os = "macos")]
         {
             let dark_out = run_cmd("osascript", &["-e", "tell application \"System Events\" to tell appearance preferences to get dark mode"])
                 .unwrap_or_else(|_| "false".to_string());
             let dark_mode = dark_out.trim().eq_ignore_ascii_case("true");
-            Ok(ToggleStatus { dark_mode })
+            // ponytail: wifi state via networksetup, dnd via defaults
+            let wifi = run_cmd("networksetup", &["-getairportpower", "en0"])
+                .map(|o| o.contains("On"))
+                .unwrap_or(false);
+            let dnd = run_cmd("defaults", &["-currentHost", "read", "com.apple.notificationcenterui", "doNotDisturb"])
+                .map(|o| o.trim() == "1")
+                .unwrap_or(false);
+            Ok(ToggleStatus { dark_mode, wifi, dnd, bluetooth: false })
         }
         #[cfg(target_os = "linux")]
         {
             let theme_out = run_cmd("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]).unwrap_or_default();
             let dark_mode = theme_out.contains("prefer-dark");
-            Ok(ToggleStatus { dark_mode })
+            // ponytail: wifi via nmcli, dnd via gnome
+            let wifi = run_cmd("nmcli", &["-t", "-f", "WIFI", "general"])
+                .map(|o| o.trim() == "enabled")
+                .unwrap_or(false);
+            let dnd = run_cmd("gsettings", &["get", "org.gnome.desktop.notifications", "show-banners"])
+                .map(|o| o.trim() == "false")
+                .unwrap_or(false);
+            Ok(ToggleStatus { dark_mode, wifi, dnd, bluetooth: false })
         }
         #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Ok(ToggleStatus { dark_mode: false })
+        Ok(ToggleStatus { dark_mode: false, wifi: false, dnd: false, bluetooth: false })
     }).await.map_err(|e| format!("Task join error: {}", e))?
 }
 
 pub async fn set_toggle_dark_mode(enabled: bool) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let val = if enabled { "0" } else { "1" };
-            let script = format!(
-                "Set-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize -Name AppsUseLightTheme -Value {}; Set-ItemProperty -Path HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize -Name SystemUsesLightTheme -Value {}",
-                val, val
-            );
-            run_powershell(&script)?;
+        unsafe {
+            use windows_sys::Win32::System::Registry::*;
+            use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+            let val: u32 = if enabled { 0 } else { 1 };
+            let subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0";
+            let apps_name = "AppsUseLightTheme\0";
+            let sys_name = "SystemUsesLightTheme\0";
+            let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+            let apps_w: Vec<u16> = apps_name.encode_utf16().collect();
+            let sys_w: Vec<u16> = sys_name.encode_utf16().collect();
+
+            let mut hkey: HKEY = std::ptr::null_mut();
+            let ret = RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_SET_VALUE, &mut hkey);
+            if ret != ERROR_SUCCESS { return Err("Failed to open theme registry key".to_string()); }
+
+            RegSetValueExW(hkey, apps_w.as_ptr(), 0, 4, &val as *const u32 as *const u8, 4);
+            RegSetValueExW(hkey, sys_w.as_ptr(), 0, 4, &val as *const u32 as *const u8, 4);
+            RegCloseKey(hkey);
             Ok(())
         }
         #[cfg(target_os = "macos")]
@@ -829,71 +912,101 @@ pub async fn set_toggle_dark_mode(enabled: bool) -> Result<(), String> {
 
 pub async fn get_control_center_status() -> Result<ControlCenterStatus, String> {
     let toggle_status = get_toggle_status().await?;
-
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            let wifi_out = run_powershell("(Get-NetAdapter -Name '*Wi-Fi*').Status")
-                .unwrap_or_default();
-            let wifi_on = Some(wifi_out.trim().eq_ignore_ascii_case("Up"));
-
-            let dnd_out = run_powershell(
-                "(Get-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings' -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -ErrorAction SilentlyContinue).NOC_GLOBAL_SETTING_TOASTS_ENABLED"
-            ).unwrap_or_default();
-            let dnd_on = match dnd_out.trim() {
-                "0" => Some(true),
-                "1" => Some(false),
-                _ => None,
-            };
-
-            Ok(ControlCenterStatus {
-                dark_mode: toggle_status.dark_mode,
-                wifi_on,
-                dnd_on,
-            })
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Ok(ControlCenterStatus {
-                dark_mode: toggle_status.dark_mode,
-                wifi_on: None,
-                dnd_on: None,
-            })
-        }
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    Ok(ControlCenterStatus {
+        dark_mode: toggle_status.dark_mode,
+        wifi_on: Some(toggle_status.wifi),
+        dnd_on: Some(toggle_status.dnd),
+    })
 }
 
 pub async fn set_control_center_toggle(toggle: String, enabled: bool) -> Result<(), String> {
     match toggle.as_str() {
         "dark_mode" => set_toggle_dark_mode(enabled).await,
-        "wifi" => {
-            tokio::task::spawn_blocking(move || {
-                #[cfg(target_os = "windows")]
-                {
-                    let action = if enabled { "Enable" } else { "Disable" };
-                    let action = action.to_string();
-                    let script = format!("{} -NetAdapter -Name '*Wi-Fi*' -Confirm:$false", action);
-                    run_powershell(&script).map(|_| ())
+        "wifi" => tokio::task::spawn_blocking(move || {
+            #[cfg(target_os = "windows")]
+            {
+                use windows_sys::Win32::NetworkManagement::WiFi::*;
+                unsafe {
+                    let mut handle: *mut core::ffi::c_void = std::ptr::null_mut();
+                    let mut negotiated = 0u32;
+                    if WlanOpenHandle(2, std::ptr::null(), &mut negotiated, &mut handle) != 0 {
+                        return Err("WlanOpenHandle failed".to_string());
+                    }
+                    let mut iface_list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+                    if WlanEnumInterfaces(handle, std::ptr::null(), &mut iface_list) != 0
+                        || iface_list.is_null()
+                    {
+                        WlanCloseHandle(handle, std::ptr::null());
+                        return Err("No WLAN interfaces".to_string());
+                    }
+                    let guid = (*iface_list).InterfaceInfo[0].InterfaceGuid;
+                    WlanFreeMemory(iface_list as *mut _);
+
+                    if enabled {
+                        WlanCloseHandle(handle, std::ptr::null());
+                        Ok(())
+                    } else {
+                        let ret = WlanDisconnect(handle, &guid, std::ptr::null());
+                        WlanCloseHandle(handle, std::ptr::null());
+                        if ret != 0 {
+                            Err(format!("WlanDisconnect failed: {}", ret))
+                        } else {
+                            Ok(())
+                        }
+                    }
                 }
-                #[cfg(not(target_os = "windows"))]
-                {
-                    let _ = enabled;
-                    Err("Wi-Fi toggle not supported on this OS".to_string())
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let _ = enabled;
+                Err("Wi-Fi toggle not supported on this OS".to_string())
+            }
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?,
+        "dnd" => tokio::task::spawn_blocking(move || {
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+                use windows_sys::Win32::System::Registry::*;
+                let val: u32 = if enabled { 0 } else { 1 };
+                let subkey =
+                    "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings\0";
+                let value_name = "NOC_GLOBAL_SETTING_TOASTS_ENABLED\0";
+                let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+                let value_w: Vec<u16> = value_name.encode_utf16().collect();
+
+                let mut hkey: HKEY = std::ptr::null_mut();
+                let ret = RegOpenKeyExW(
+                    HKEY_CURRENT_USER,
+                    subkey_w.as_ptr(),
+                    0,
+                    KEY_SET_VALUE,
+                    &mut hkey,
+                );
+                if ret != ERROR_SUCCESS {
+                    return Err("Failed to open DND registry key".to_string());
                 }
-            }).await.map_err(|e| format!("Task join error: {}", e))?
-        }
-        "dnd" => {
-            tokio::task::spawn_blocking(move || {
-                #[cfg(target_os = "windows")]
-                {
-                    let val = if enabled { 0 } else { 1 };
-                    let script = format!("Set-ItemProperty -Path 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings' -Name 'NOC_GLOBAL_SETTING_TOASTS_ENABLED' -Value {}", val);
-                    run_powershell(&script).map(|_| ())
+                let ret = RegSetValueExW(
+                    hkey,
+                    value_w.as_ptr(),
+                    0,
+                    4,
+                    &val as *const u32 as *const u8,
+                    4,
+                );
+                RegCloseKey(hkey);
+                if ret == ERROR_SUCCESS {
+                    Ok(())
+                } else {
+                    Err("Failed to set DND registry value".to_string())
                 }
-                #[cfg(not(target_os = "windows"))]
-                Err("DND toggle not supported on this OS".to_string())
-            }).await.map_err(|e| format!("Task join error: {}", e))?
-        }
+            }
+            #[cfg(not(target_os = "windows"))]
+            Err("DND toggle not supported on this OS".to_string())
+        })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?,
         _ => Err(format!("Unknown toggle: {}", toggle)),
     }
 }
@@ -908,10 +1021,9 @@ pub async fn set_display_monitor(action: &str) -> Result<(), String> {
 pub async fn set_monitor_off() -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         #[cfg(target_os = "windows")]
-        {
-            let script = r#"Add-Type -Name Monitor -Namespace Win32 -MemberDefinition '[DllImport("user32.dll")] public static extern int SendMessage(int hWnd, int Msg, int wParam, int lParam);'
-[Win32.Monitor]::SendMessage(0xFFFF, 0x0112, 0xF170, 2)"#;
-            run_powershell(script)?;
+        unsafe {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageW, HWND_BROADCAST};
+            SendMessageW(HWND_BROADCAST, 0x0112, 0xF170, 2);
             Ok(())
         }
         #[cfg(target_os = "linux")]
@@ -921,7 +1033,9 @@ pub async fn set_monitor_off() -> Result<(), String> {
         }
         #[cfg(not(any(target_os = "windows", target_os = "linux")))]
         Err("Monitor off not supported on this OS".to_string())
-    }).await.map_err(|e| format!("Task join error: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
 }
 
 // --- Axum API Route Handlers ---
@@ -959,6 +1073,14 @@ pub async fn audio_mute_handler(
     let tx = state.hardware_tx.clone();
     let muted = req.muted;
     tokio::spawn(async move {
+        // Detect current state first, skip if already there
+        if let Ok(status) = get_audio_status().await {
+            if status.muted == muted {
+                let msg = serde_json::json!({"event": "hardware", "data": {"type": "mute", "muted": muted}});
+                let _ = tx.send(msg.to_string());
+                return;
+            }
+        }
         let _ = set_audio_mute(muted).await;
         let msg =
             serde_json::json!({"event": "hardware", "data": {"type": "mute", "muted": muted}});
@@ -1047,32 +1169,63 @@ pub async fn toggle_wifi_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-    let tx = state.hardware_tx.clone();
-    tokio::spawn(async move {
-        let _ = set_control_center_toggle("wifi".into(), enabled).await;
-        let _ = tx.send(serde_json::json!({"event": "hardware", "data": {"type": "wifi", "enabled": enabled}}).to_string());
-    });
-    Json(json!({ "success": true })).into_response()
+    let enabled = req
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    // Detect current state first, skip if already there
+    if let Ok(status) = get_toggle_status().await {
+        if status.wifi == enabled {
+            let _ = state.hardware_tx.send(serde_json::json!({"event": "hardware", "data": {"type": "wifi", "enabled": enabled}}).to_string());
+            return Json(json!({ "success": true })).into_response();
+        }
+    }
+    match set_control_center_toggle("wifi".into(), enabled).await {
+        Ok(()) => {
+            let _ = state.hardware_tx.send(serde_json::json!({"event": "hardware", "data": {"type": "wifi", "enabled": enabled}}).to_string());
+            Json(json!({ "success": true })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn toggle_dnd_handler(
     State(state): State<crate::AppState>,
     Json(req): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let enabled = req.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-    let tx = state.hardware_tx.clone();
-    tokio::spawn(async move {
-        let _ = set_control_center_toggle("dnd".into(), enabled).await;
-        let _ = tx.send(serde_json::json!({"event": "hardware", "data": {"type": "dnd", "enabled": enabled}}).to_string());
-    });
-    Json(json!({ "success": true })).into_response()
+    let enabled = req
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    // Detect current state first, skip if already there
+    if let Ok(status) = get_toggle_status().await {
+        if status.dnd == enabled {
+            let _ = state.hardware_tx.send(serde_json::json!({"event": "hardware", "data": {"type": "dnd", "enabled": enabled}}).to_string());
+            return Json(json!({ "success": true })).into_response();
+        }
+    }
+    match set_control_center_toggle("dnd".into(), enabled).await {
+        Ok(()) => {
+            let _ = state.hardware_tx.send(serde_json::json!({"event": "hardware", "data": {"type": "dnd", "enabled": enabled}}).to_string());
+            Json(json!({ "success": true })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
+    }
 }
 
-pub async fn night_light_handler(
-    Json(req): Json<serde_json::Value>,
-) -> impl IntoResponse {
-    let _night_light = req.get("night_light").and_then(|v| v.as_bool()).unwrap_or(false);
+pub async fn night_light_handler(Json(req): Json<serde_json::Value>) -> impl IntoResponse {
+    let _night_light = req
+        .get("night_light")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     Json(json!({ "success": true })).into_response()
 }
 
@@ -1101,16 +1254,18 @@ pub async fn control_center_toggle_handler(
         )
             .into_response();
     }
-    let tx = state.hardware_tx.clone();
-    let toggle = req.toggle;
-    let enabled = req.enabled;
-    tokio::spawn(async move {
-        let _ = set_control_center_toggle(toggle.clone(), enabled).await;
-        let msg =
-            serde_json::json!({"event": "hardware", "data": {"type": toggle, "enabled": enabled}});
-        let _ = tx.send(msg.to_string());
-    });
-    Json(json!({ "success": true })).into_response()
+    match set_control_center_toggle(req.toggle.clone(), req.enabled).await {
+        Ok(()) => {
+            let msg = serde_json::json!({"event": "hardware", "data": {"type": req.toggle, "enabled": req.enabled}});
+            let _ = state.hardware_tx.send(msg.to_string());
+            Json(json!({ "success": true })).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "success": false, "message": e })),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn display_monitor_handler(
@@ -1178,25 +1333,8 @@ pub async fn schedule_power_handler(
                     force,
                     action_str
                 );
-                // Override execution logic if force is requested
-                #[cfg(target_os = "windows")]
-                if force {
-                    let flag = match action {
-                        crate::power::PowerAction::Shutdown => "/s",
-                        crate::power::PowerAction::Restart => "/r",
-                        _ => "/s",
-                    };
-                    let _ = crate::new_command("shutdown")
-                        .args([flag, "/f", "/t", "1"])
-                        .spawn();
-                } else {
-                    commands.execute_power_action(action);
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                {
-                    commands.execute_power_action(action);
-                }
+                // ponytail: both force/non-force use EWX_FORCE — grace period impractical at OS level
+                commands.execute_power_action(action);
             }
         }
 

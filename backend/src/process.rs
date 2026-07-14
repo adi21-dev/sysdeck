@@ -46,26 +46,28 @@ pub struct KillBody {
 
 pub async fn kill_handler(Json(body): Json<KillBody>) -> impl IntoResponse {
     #[cfg(target_os = "windows")]
-    {
-        let pid = body.pid;
-        match crate::new_command("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .output()
-        {
-            Ok(out) if out.status.success() => Json(json!({"success": true})).into_response(),
-            Ok(out) => {
-                let msg = String::from_utf8_lossy(&out.stderr).to_string();
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"success": false, "message": msg.trim()})),
-                )
-                    .into_response()
-            }
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"success": false, "message": e.to_string()})),
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+        };
+        let handle = OpenProcess(PROCESS_TERMINATE, 0, body.pid);
+        if handle.is_null() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"success": false, "message": "Process not found" })),
             )
-                .into_response(),
+                .into_response();
+        }
+        let ret = TerminateProcess(handle, 1);
+        let _ = windows_sys::Win32::Foundation::CloseHandle(handle);
+        if ret != 0 {
+            Json(json!({"success": true})).into_response()
+        } else {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"success": false, "message": "Failed to terminate process" })),
+            )
+                .into_response()
         }
     }
     #[cfg(not(target_os = "windows"))]

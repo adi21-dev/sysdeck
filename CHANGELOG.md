@@ -18,10 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dashboard Chart Performance**: Set `isAnimationActive={false}` on all recharts Area elements to prevent frame drops on mobile.
 - **Page Visibility**: WebSocket reconnects on tab visibility change (via `visibilitychange` listener) to resume real-time updates after phone sleep.
 - **Toggle Name Validation**: Added synchronous toggle name validation (`dark_mode`/`wifi`/`dnd`) to `control_center_toggle_handler` before spawning async task.
+- **Windows FFI Migration**: Replaced all remaining shell command spawns (`reg`, `shutdown`, `rundll32`, `taskkill`, `netsh`, `powershell`) with direct Win32 FFI calls:
+  - Power actions → `ExitWindowsEx`, `SetSuspendState`, `LockWorkStation`, `WTSDisconnectSession`
+  - Process kill → `OpenProcess` + `TerminateProcess`
+  - Startup registry → `RegOpenKeyExW`/`RegSetValueExW`/`RegDeleteValueW`
+  - DNS flush → `DnsFlushResolverCache`
+  - WiFi scan → `WlanOpenHandle`/`WlanScan`/`WlanGetAvailableNetworkList`
+- **Code Consolidation**: Unified `run_cmd` helper into `hardware.rs` (removed duplicate from `network.rs`). Simplified `get_control_center_status()` to delegate to `get_toggle_status()`.
+- **Toggle State Detection**: `get_toggle_status()` now detects actual wifi and DND state on all platforms (Windows: WLAN API + Registry, macOS: `networksetup` + `defaults`, Linux: `nmcli` + `gsettings`). Set handlers (`audio_mute`, `toggle_wifi`, `toggle_dnd`) check current state before applying changes — skip redundant operations.
 
 ### Fixed
 - **Cookie SameSite for Tunnel Access**: Changed `refresh_token` cookie from `SameSite=Strict` to `SameSite=Lax` in login, refresh, and logout handlers. Prevents silent 401 → redirect loop when accessing via Cloudflare tunnel.
 - **Controls Page Broken Toggles**: WiFi and DND toggles on the Controls page were calling nonexistent `/api/toggles/wifi` and `/api/toggles/dnd` endpoints, returning SPA HTML instead of JSON. Changed to use `toggleControlCenter` which POSTs to the existing `/api/control-center/toggle` route. Added backend routes for those old endpoints as fallback. Removed Bluetooth toggle (no backend support). Added `/api/display/night-light` handler (previously 404).
+- **Toggle Store Desync**: `toggleControlCenter` now syncs both `controlCenter` and `toggles` Zustand stores on success, rolls both back on failure.
+- **Impractical Quick Toggles**: Removed Dark Mode toggle from Controls page (not a useful quick action). Removed Night Light toggle (no functional backend implementation).
 
 ## [2.0.0] - 2026-07-13
 

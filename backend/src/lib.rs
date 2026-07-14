@@ -247,17 +247,33 @@ pub async fn find_available_port() -> (u16, tokio::net::TcpListener) {
 
 fn is_startup_enabled() -> bool {
     #[cfg(target_os = "windows")]
-    {
-        new_command("reg")
-            .args([
-                "query",
-                "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                "/v",
-                "SysDeck Agent",
-            ])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+    unsafe {
+        use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+        use windows_sys::Win32::System::Registry::*;
+        let subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0";
+        let name = "SysDeck Agent\0";
+        let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+        let name_w: Vec<u16> = name.encode_utf16().collect();
+        let mut hkey: HKEY = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_READ, &mut hkey)
+            != ERROR_SUCCESS
+        {
+            return false;
+        }
+        let mut value: u16 = 0;
+        let mut size: u32 = 2;
+        let mut typ: u32 = 0;
+        let ret = RegGetValueW(
+            hkey,
+            std::ptr::null(),
+            name_w.as_ptr(),
+            0x01,
+            &mut typ,
+            &mut value as *mut _ as *mut _,
+            &mut size,
+        );
+        RegCloseKey(hkey);
+        ret == ERROR_SUCCESS || ret == 234 // ERROR_MORE_DATA
     }
     #[cfg(not(target_os = "windows"))]
     false
@@ -265,35 +281,43 @@ fn is_startup_enabled() -> bool {
 
 fn set_startup(enabled: bool) {
     #[cfg(target_os = "windows")]
-    {
-        let exe = std::env::current_exe()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-        if enabled {
-            let _ = new_command("reg")
-                .args([
-                    "add",
-                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                    "/v",
-                    "SysDeck Agent",
-                    "/t",
-                    "REG_SZ",
-                    "/d",
-                    &exe,
-                    "/f",
-                ])
-                .output();
-        } else {
-            let _ = new_command("reg")
-                .args([
-                    "delete",
-                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-                    "/v",
-                    "SysDeck Agent",
-                    "/f",
-                ])
-                .output();
+    unsafe {
+        use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+        use windows_sys::Win32::System::Registry::*;
+        let subkey = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0";
+        let name = "SysDeck Agent\0";
+        let subkey_w: Vec<u16> = subkey.encode_utf16().collect();
+        let name_w: Vec<u16> = name.encode_utf16().collect();
+
+        let mut hkey: HKEY = std::ptr::null_mut();
+        let ret = RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            subkey_w.as_ptr(),
+            0,
+            KEY_SET_VALUE,
+            &mut hkey,
+        );
+        if ret != ERROR_SUCCESS {
+            return;
         }
+
+        if enabled {
+            let exe = std::env::current_exe()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let exe_w: Vec<u16> = exe.encode_utf16().chain(std::iter::once(0)).collect();
+            RegSetValueExW(
+                hkey,
+                name_w.as_ptr(),
+                0,
+                1,
+                exe_w.as_ptr() as *const u8,
+                (exe_w.len() * 2) as u32,
+            );
+        } else {
+            RegDeleteValueW(hkey, name_w.as_ptr());
+        }
+        RegCloseKey(hkey);
     }
     #[cfg(not(target_os = "windows"))]
     let _ = enabled;

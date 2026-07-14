@@ -29,38 +29,37 @@ pub struct RealOs;
 impl SystemCommands for RealOs {
     fn execute_power_action(&self, action: PowerAction) {
         #[cfg(target_os = "windows")]
-        match action {
-            PowerAction::Shutdown => {
-                let _ = crate::new_command("shutdown")
-                    .args(["/s", "/t", "1"])
-                    .spawn();
-            }
-            PowerAction::Restart => {
-                let _ = crate::new_command("shutdown")
-                    .args(["/r", "/t", "1"])
-                    .spawn();
-            }
-            PowerAction::Sleep => {
-                let _ = crate::new_command("rundll32.exe")
-                    .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
-                    .spawn();
-            }
-            PowerAction::Hibernate => {
-                let _ = crate::new_command("rundll32.exe")
-                    .args(["powrprof.dll,SetSuspendState", "1", "1", "0"])
-                    .spawn();
-            }
-            PowerAction::SignOut => {
-                let _ = crate::new_command("shutdown").args(["/l"]).spawn();
-            }
-            PowerAction::Lock => {
-                let _ = crate::new_command("rundll32.exe")
-                    .args(["user32.dll,LockWorkStation"])
-                    .spawn();
-            }
-            PowerAction::SwitchUser => {
-                // Switch to the login screen to allow another user to log in
-                let _ = crate::new_command("tsdiscon.exe").spawn();
+        unsafe {
+            use windows_sys::Win32::System::Power::SetSuspendState;
+            use windows_sys::Win32::System::RemoteDesktop::{
+                WTSDisconnectSession, WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION,
+            };
+            use windows_sys::Win32::System::Shutdown::ExitWindowsEx;
+            match action {
+                PowerAction::Shutdown => {
+                    ExitWindowsEx(0x00000001 | 0x00000004, 0);
+                }
+                PowerAction::Restart => {
+                    ExitWindowsEx(0x00000002 | 0x00000004, 0);
+                }
+                PowerAction::Sleep => {
+                    SetSuspendState(0, 0, 0);
+                }
+                PowerAction::Hibernate => {
+                    SetSuspendState(1, 0, 0);
+                }
+                PowerAction::SignOut => {
+                    ExitWindowsEx(0x00000004, 0);
+                }
+                PowerAction::Lock => {
+                    extern "system" {
+                        fn LockWorkStation() -> i32;
+                    }
+                    LockWorkStation();
+                }
+                PowerAction::SwitchUser => {
+                    WTSDisconnectSession(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, 0);
+                }
             }
         }
         #[cfg(target_os = "linux")]
