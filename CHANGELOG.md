@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **README Phone Mockups**: SVG phone mockups showing Ambient Mode (OLED clock + vitals) and App Deck (toggles + running apps) at the top of the README.
+- **SmartScreen Warning**: Bold callout in README warning about Windows SmartScreen false positive with "More Info → Run Anyway" bypass instructions.
+- **PWA Install Onboarding**: Setup wizard now has a 5th step ("Install App") after relay configuration, guiding users through "Add to Home Screen" on mobile browsers.
 - **Forgot Password Flow**: Login page now shows a "Forgot password?" link that opens an instruction modal with the exact data directory path (fetched from new `GET /api/system/data-dir`), a "Copy Path" button, and step-by-step manual reset instructions.
 - **Single-Click Uninstall**: Settings page "Danger Zone" card with `POST /api/system/uninstall` endpoint. Two-phase cleanup: Rust deletes data dir, registry auto-start key, OS keychain JWT secret, and tunnel binary; then a detached batch script with retry loop deletes the locked `.exe` and itself.
 - **Uninstall Overlay**: Full-screen "Uninstalling SysDeck..." overlay masks the WebSocket disconnect when the backend process exits.
