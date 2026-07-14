@@ -63,10 +63,7 @@ pub async fn change_password_handler(
         Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response(),
     };
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
 
     let db_lock = state.db.lock().await;
     if let Err(e) = db_lock.execute(
@@ -134,10 +131,7 @@ pub async fn verify_totp_handler(
         return err_json(StatusCode::BAD_REQUEST, "Invalid TOTP code").into_response();
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
 
     let db_lock = state.db.lock().await;
     if let Err(e) = db_lock.execute(
@@ -186,10 +180,7 @@ pub async fn regenerate_recovery_codes_handler(State(state): State<AppState>) ->
         Err(e) => return err_json(StatusCode::INTERNAL_SERVER_ERROR, &e).into_response(),
     };
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
 
     let db_lock = state.db.lock().await;
     let _ = db_lock.execute("DELETE FROM recovery_codes", []);

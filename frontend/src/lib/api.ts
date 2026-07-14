@@ -4,8 +4,6 @@ const EXCLUDED_PATHS = ["/login", "/api/auth/refresh", "/api/auth/check", "/api/
 let refreshPromise: Promise<boolean> | null = null
 let globalNavigate: ((path: string) => void) | null = null
 
-const inflightRequests = new Map<string, Promise<Response>>()
-
 export function setGlobalNavigate(fn: (path: string) => void) {
   globalNavigate = fn
 }
@@ -59,24 +57,9 @@ window.fetch = async function interceptedFetch(
     return originalFetch(input, init)
   }
 
-  // Deduplicate in-flight GET requests
-  const method = (init?.method || "GET").toUpperCase()
-  const dedupKey = `${method}:${url}`
-  if (method === "GET" && inflightRequests.has(dedupKey)) {
-    return inflightRequests.get(dedupKey)!
-  }
-
   let res: Response
   const doFetch = () => originalFetch(input, init)
-
-  if (method === "GET") {
-    const promise = doFetch()
-    inflightRequests.set(dedupKey, promise)
-    res = await promise
-    inflightRequests.delete(dedupKey)
-  } else {
-    res = await doFetch()
-  }
+  res = await doFetch()
 
   if (res.status === 401) {
     const refreshed = await refreshTokens()

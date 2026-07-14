@@ -19,8 +19,7 @@ use sysdeck_agent::{
     TunnelState,
 };
 
-#[cfg(target_os = "windows")]
-fn spawn_windows_shutdown_listener() {
+fn spawn_shutdown_listener() {
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, RegisterClassW,
@@ -97,8 +96,7 @@ async fn main() {
         )
         .init();
 
-    #[cfg(target_os = "windows")]
-    spawn_windows_shutdown_listener();
+    spawn_shutdown_listener();
 
     // ── Init step 1: directories ──
     {
@@ -131,6 +129,7 @@ async fn main() {
 
     // Create broadcast channels
     let (telemetry_tx, _) = broadcast::channel::<Arc<TelemetrySnapshot>>(256);
+    let (windows_tx, _) = broadcast::channel::<String>(16);
     let (system_tx, _) = broadcast::channel::<String>(16);
     let (clipboard_tx, _) = broadcast::channel::<String>(16);
     let (hardware_tx, _) = broadcast::channel::<String>(16);
@@ -248,6 +247,22 @@ async fn main() {
         }
     });
 
+    // Window list polling — broadcasts every 3s over WebSocket
+    let windows_tx_clone = windows_tx.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let windows = tokio::task::spawn_blocking(sysdeck_agent::windows::list_windows)
+                .await
+                .unwrap_or_default();
+            let msg = serde_json::json!({
+                "event": "windows",
+                "data": windows,
+            });
+            let _ = windows_tx_clone.send(msg.to_string());
+        }
+    });
+
     let system_tx_clone = system_tx.clone();
 
     // ── Mark init complete ──
@@ -258,6 +273,7 @@ async fn main() {
 
     let app_state = AppState {
         telemetry_tx,
+        windows_tx,
         system_tx,
         clipboard_tx,
         hardware_tx,
@@ -282,7 +298,6 @@ async fn main() {
     let shutdown_tunnel = tunnel_state.clone();
     let system_tx_clone2 = system_tx_clone.clone();
 
-    #[cfg(target_os = "windows")]
     async fn wait_for_shutdown_signal() {
         use tokio::signal::windows;
         let mut ctrl_c = windows::ctrl_c().expect("Failed to bind Ctrl+C");
@@ -290,17 +305,6 @@ async fn main() {
         tokio::select! {
             _ = ctrl_c.recv() => tracing::info!("Received Ctrl+C"),
             _ = ctrl_shutdown.recv() => tracing::info!("Received Windows Shutdown signal"),
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    async fn wait_for_shutdown_signal() {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate()).expect("Failed to bind SIGTERM");
-        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to bind SIGINT");
-        tokio::select! {
-            _ = sigterm.recv() => tracing::info!("Received SIGTERM"),
-            _ = sigint.recv() => tracing::info!("Received SIGINT (Ctrl+C)"),
         }
     }
 

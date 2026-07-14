@@ -1,4 +1,3 @@
-#[cfg(target_os = "windows")]
 use std::ffi::c_void;
 
 use axum::extract::State;
@@ -13,29 +12,51 @@ use crate::AppState;
 pub struct WindowInfo {
     pub hwnd: isize,
     pub title: String,
+    pub exe_path: String,
 }
 
-// --- Windows implementation ---
+unsafe fn get_window_exe_path(hwnd: *mut c_void) -> String {
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == 0 {
+        return String::new();
+    }
+    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if handle.is_null() {
+        return String::new();
+    }
+    let mut buf = [0u16; 1024];
+    let mut size = 1024u32;
+    let ret = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+    let _ = windows_sys::Win32::Foundation::CloseHandle(handle);
+    if ret == 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..size as usize])
+}
 
-#[cfg(target_os = "windows")]
 unsafe extern "system" fn enum_window_callback(hwnd: *mut c_void, lparam: isize) -> i32 {
     use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindowTextW, IsWindowVisible};
     let mut buf = [0u16; 512];
     let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 512);
     if len > 0 && IsWindowVisible(hwnd) != 0 {
         let title = String::from_utf16_lossy(&buf[..len as usize]);
-        // lparam is a raw pointer to a Vec<WindowInfo> on the caller's stack
+        let exe_path = get_window_exe_path(hwnd);
         let list = &mut *(lparam as *mut Vec<WindowInfo>);
         list.push(WindowInfo {
             hwnd: hwnd as isize,
             title,
+            exe_path,
         });
     }
     1
 }
 
-#[cfg(target_os = "windows")]
-fn list_windows() -> Vec<WindowInfo> {
+pub fn list_windows() -> Vec<WindowInfo> {
     use windows_sys::Win32::UI::WindowsAndMessaging::EnumWindows;
     let mut result: Vec<WindowInfo> = Vec::new();
     unsafe {
@@ -48,7 +69,6 @@ fn list_windows() -> Vec<WindowInfo> {
     result
 }
 
-#[cfg(target_os = "windows")]
 fn focus_window(hwnd: isize) -> Result<(), String> {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         keybd_event, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
@@ -65,7 +85,6 @@ fn focus_window(hwnd: isize) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
 fn close_window(hwnd: isize) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_CLOSE};
     unsafe {
@@ -74,7 +93,6 @@ fn close_window(hwnd: isize) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
 fn minimize_window(hwnd: isize) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_MINIMIZE};
     unsafe {
@@ -83,40 +101,12 @@ fn minimize_window(hwnd: isize) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
 fn restore_window(hwnd: isize) -> Result<(), String> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_RESTORE};
     unsafe {
         ShowWindow(hwnd as *mut c_void, SW_RESTORE);
     }
     Ok(())
-}
-
-// --- Non-Windows stubs ---
-
-#[cfg(not(target_os = "windows"))]
-fn list_windows() -> Vec<WindowInfo> {
-    vec![]
-}
-
-#[cfg(not(target_os = "windows"))]
-fn focus_window(_hwnd: isize) -> Result<(), String> {
-    Err("Not supported".to_string())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn close_window(_hwnd: isize) -> Result<(), String> {
-    Err("Not supported".to_string())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn minimize_window(_hwnd: isize) -> Result<(), String> {
-    Err("Not supported".to_string())
-}
-
-#[cfg(not(target_os = "windows"))]
-fn restore_window(_hwnd: isize) -> Result<(), String> {
-    Err("Not supported".to_string())
 }
 
 // --- Handlers ---

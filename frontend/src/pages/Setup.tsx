@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { TotpInput } from "@/components/ui/totp-input"
-import { useAuthStore, useToastStore } from "@/lib/store"
+import { useAuthStore } from "@/lib/store"
 
-const BASE_STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay"] as const
+const BASE_STEPS = ["Password", "Two-Factor Auth", "Recovery Codes", "Relay", "Install App"] as const
 
 function StepIndicator({ current, steps }: { current: number; steps: readonly string[] }) {
   return (
@@ -362,6 +362,55 @@ function StepRelay({ onComplete }: { onComplete: (enabled: boolean) => void }) {
   )
 }
 
+function StepPwa({ onComplete }: { onComplete: () => void }) {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+            <svg className="h-8 w-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold">Add to Home Screen</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            For the best experience, install SysDeck as an app on your phone.
+          </p>
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">1</div>
+            <div>
+              <p className="font-medium text-sm">Open in Safari / Chrome</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Navigate to the IP or Cloudflare URL shown in the terminal.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">2</div>
+            <div>
+              <p className="font-medium text-sm">Tap Share</p>
+              <p className="text-xs text-muted-foreground mt-0.5">On iPhone: Share button at the bottom of the browser.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">On Android: Menu → Add to Home Screen.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-medium mt-0.5">3</div>
+            <div>
+              <p className="font-medium text-sm">Add to Home Screen</p>
+              <p className="text-xs text-muted-foreground mt-0.5">You'll get a standalone window, no URL bar, and wake lock support.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Button onClick={onComplete} className="w-full">
+        Done, Take Me to Login →
+      </Button>
+    </div>
+  )
+}
+
 function StepWelcome({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="space-y-6">
@@ -461,37 +510,29 @@ export function SetupPage() {
     setStep(4)
   }, [])
 
-  const handleRelayComplete = useCallback(async (enabled: boolean) => {
+  const handlePwaComplete = useCallback(() => {
+    sessionStorage.removeItem("setup_token")
+    sessionStorage.removeItem("recovery_codes")
+    useAuthStore.getState().setSetupComplete(true)
+    navigate("/login", { replace: true })
+  }, [navigate])
+
+  const handleRelayComplete = useCallback((enabled: boolean) => {
     const token = sessionStorage.getItem("setup_token")
     if (!token) return
-    let success = false
-    try {
-      const res = await fetch(`/api/setup/relay?token=${token}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled }),
-      })
+    fetch(`/api/setup/relay?token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }).then(async (res) => {
       const data = await res.json()
       if (data.success && data.token) {
-        const finishRes = await fetch(`/api/setup/finish?token=${data.token}`, { method: "POST" })
-        success = finishRes.ok
+        await fetch(`/api/setup/finish?token=${data.token}`, { method: "POST" })
       }
-    } catch {
-      // network error, proceed to login anyway
-    }
-    if (success) {
-      sessionStorage.removeItem("setup_token")
-      sessionStorage.removeItem("recovery_codes")
-      useAuthStore.getState().setSetupComplete(true)
-      navigate("/login", { replace: true })
-    } else {
-      useToastStore.getState().addToast("Setup completed but finish confirmation failed — try logging in", "info")
-      sessionStorage.removeItem("setup_token")
-      sessionStorage.removeItem("recovery_codes")
-      useAuthStore.getState().setSetupComplete(true)
-      navigate("/login", { replace: true })
-    }
-  }, [navigate])
+    }).catch(() => {}).finally(() => {
+      setStep(5)
+    })
+  }, [])
 
   if (checking) {
     return (
@@ -526,7 +567,8 @@ export function SetupPage() {
                step === 1 ? "Create a strong password to secure your agent" :
                step === 2 ? "Set up two-factor authentication" :
                step === 3 ? "Store your recovery codes safely" :
-               "Configure remote access"}
+               step === 4 ? "Configure remote access" :
+               "Install SysDeck as an app on your phone"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -540,6 +582,8 @@ export function SetupPage() {
               <StepRecoveryCodes onComplete={handleRecoveryComplete} />
             ) : step === 4 ? (
               <StepRelay onComplete={handleRelayComplete} />
+            ) : step === 5 ? (
+              <StepPwa onComplete={handlePwaComplete} />
             ) : null}
           </CardContent>
         </Card>

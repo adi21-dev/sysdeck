@@ -45,7 +45,6 @@ pub struct KillBody {
 }
 
 pub async fn kill_handler(Json(body): Json<KillBody>) -> impl IntoResponse {
-    #[cfg(target_os = "windows")]
     unsafe {
         use windows_sys::Win32::System::Threading::{
             OpenProcess, TerminateProcess, PROCESS_TERMINATE,
@@ -69,14 +68,5 @@ pub async fn kill_handler(Json(body): Json<KillBody>) -> impl IntoResponse {
             )
                 .into_response()
         }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = body;
-        (
-            StatusCode::NOT_IMPLEMENTED,
-            Json(json!({"success": false, "message": "Not supported"})),
-        )
-            .into_response()
     }
 }

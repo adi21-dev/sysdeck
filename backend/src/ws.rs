@@ -15,6 +15,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
         handle_socket(
             socket,
             state.telemetry_tx,
+            state.windows_tx,
             state.system_tx,
             state.tunnel_state.tx.clone(),
             state.clipboard_tx,
@@ -24,9 +25,11 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> 
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_socket(
     mut socket: WebSocket,
     telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
+    windows_tx: broadcast::Sender<String>,
     system_tx: broadcast::Sender<String>,
     tunnel_tx: broadcast::Sender<Arc<TunnelEvent>>,
     clipboard_tx: broadcast::Sender<String>,
@@ -52,6 +55,7 @@ async fn handle_socket(
     }
 
     let mut telemetry_rx = telemetry_tx.subscribe();
+    let mut windows_rx = windows_tx.subscribe();
     let mut system_rx = system_tx.subscribe();
     let mut tunnel_rx = tunnel_tx.subscribe();
     let mut clipboard_rx = clipboard_tx.subscribe();
@@ -81,6 +85,17 @@ async fn handle_socket(
                         tracing::warn!("WS client lagged by {} messages", n);
                         continue;
                     }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            windows = windows_rx.recv() => {
+                match windows {
+                    Ok(msg) => {
+                        if socket.send(Message::Text(msg)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }

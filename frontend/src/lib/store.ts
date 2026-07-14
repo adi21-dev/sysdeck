@@ -157,7 +157,6 @@ export interface TogglesData {
 
 export interface NetworkData {
   ipv4: string
-  ipv6: string | null
   interfaces: InterfaceInfo[]
   default_gateway: string
   dns_servers: string[]
@@ -185,9 +184,6 @@ export interface ControlCenterToggle {
   wifi_on: boolean | null
   bluetooth_on: boolean | null
   dnd_on: boolean | null
-  battery_saver_on: boolean | null
-  airplane_mode_on: boolean | null
-  auto_brightness: boolean | null
 }
 
 interface HardwareState {
@@ -220,11 +216,25 @@ interface HardwareState {
   triggerMedia: (action: string) => Promise<void>
   setBrightness: (brightness: number) => Promise<void>
   setNightLight: (enabled: boolean) => Promise<void>
-  setWifi: (enabled: boolean) => Promise<void>
-  setBluetooth: (enabled: boolean) => Promise<void>
   setDarkMode: (enabled: boolean) => Promise<void>
-  setDnd: (enabled: boolean) => Promise<void>
+  lockWorkstation: () => Promise<void>
 }
+
+interface AppDeckState {
+  windows: WindowInfo[]
+  setWindows: (w: WindowInfo[]) => void
+}
+
+interface WindowInfo {
+  hwnd: number
+  title: string
+  exe_path: string
+}
+
+export const useAppDeckStore = create<AppDeckState>((set) => ({
+  windows: [],
+  setWindows: (windows) => set({ windows }),
+}))
 
 export function applyHardwareUpdate(update: { type: string; [key: string]: any }) {
   const state = useHardwareStore.getState()
@@ -428,25 +438,14 @@ export const useHardwareStore = create<HardwareState>((set, get) => {
       set({ display: get().display ? { ...get().display!, night_light } : null })
     },
 
-    setWifi: async (enabled) => {
-      await handleApiCall("/api/toggles/wifi", "POST", { enabled })
-      set({ toggles: get().toggles ? { ...get().toggles!, wifi: enabled } : null })
-    },
-
-    setBluetooth: async (enabled) => {
-      await handleApiCall("/api/toggles/bluetooth", "POST", { enabled })
-      set({ toggles: get().toggles ? { ...get().toggles!, bluetooth: enabled } : null })
-    },
-
     setDarkMode: async (enabled) => {
       await handleApiCall("/api/toggles/dark-mode", "POST", { enabled })
       set({ toggles: get().toggles ? { ...get().toggles!, dark_mode: enabled } : null })
       useThemeStore.getState().setDark(enabled)
     },
 
-    setDnd: async (enabled) => {
-      await handleApiCall("/api/toggles/dnd", "POST", { enabled })
-      set({ toggles: get().toggles ? { ...get().toggles!, dnd: enabled } : null })
+    lockWorkstation: async () => {
+      await handleApiCall("/api/power/lock", "POST")
     },
   }
 })

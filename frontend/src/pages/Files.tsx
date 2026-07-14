@@ -53,12 +53,6 @@ function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString()
 }
 
-function fileType(name: string): string {
-  const dot = name.lastIndexOf(".")
-  if (dot === -1) return "File"
-  return name.slice(dot + 1).toUpperCase()
-}
-
 function Breadcrumb({ path, onNavigate }: { path: string; onNavigate: (p: string) => void }) {
   if (!path) {
     return <span className="text-sm font-medium">Home</span>
@@ -104,8 +98,8 @@ function RootSelector({ paths, onNavigate }: { paths: string[]; onNavigate: (p: 
         const parts = full.split("/").filter(Boolean)
         const short = parts[parts.length - 1] || full
         return (
-          // ponytail: role=button + onKeyDown for a11y on clickable card
-          <div key={p} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") onNavigate(full) }} className="glass-card p-4 cursor-pointer hover:bg-accent/50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden group" onClick={() => onNavigate(full)}>
+          // ponytail: button w/ onKeyDown for a11y on clickable card
+          <button key={p} type="button" aria-label={`Open ${short}`} className="glass-card p-4 cursor-pointer hover:bg-accent/50 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg overflow-hidden group w-full text-left" onClick={() => onNavigate(full)} onKeyDown={(e) => { if (e.key === "Enter") onNavigate(full) }}>
             <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
             <div className="flex items-center gap-3 relative">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
@@ -116,7 +110,7 @@ function RootSelector({ paths, onNavigate }: { paths: string[]; onNavigate: (p: 
                 <p className="text-xs text-muted-foreground truncate">{p}</p>
               </div>
             </div>
-          </div>
+          </button>
         )
       })}
     </div>
@@ -146,8 +140,6 @@ export function FilesPage() {
     setAllowedPaths,
   } = useFilesStore()
 
-  const sortBy = "name"
-  const sortAsc = true
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState("")
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; name: string } | null>(null)
@@ -218,13 +210,8 @@ export function FilesPage() {
 
   const sorted = [...entries].sort((a, b) => {
     const dirs = (b.is_dir ? 1 : 0) - (a.is_dir ? 1 : 0)
-    if (dirs !== 0) return dirs * (sortAsc ? -1 : 1)
-    let cmp = 0
-    if (sortBy === "name") cmp = a.name.localeCompare(b.name)
-    else if (sortBy === "size") cmp = a.size - b.size
-    else if (sortBy === "type") cmp = fileType(a.name).localeCompare(fileType(b.name))
-    else if (sortBy === "modified") cmp = a.modified - b.modified
-    return sortAsc ? cmp : -cmp
+    if (dirs !== 0) return -dirs
+    return a.name.localeCompare(b.name)
   })
 
 
@@ -458,10 +445,10 @@ export function FilesPage() {
       ) : (
         <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {sorted.map((entry) => (
-              <div
+              <button
                   key={entry.path}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
+                  aria-label={`Open ${entry.name}`}
                   onKeyDown={(e) => { if (e.key === "Enter") handleDoubleClick(entry) }}
                   className={cn(
                     "glass-card flex flex-col items-center justify-center p-4 cursor-pointer hover:bg-accent/50 transition-all duration-200 gap-2 overflow-hidden group",
@@ -491,7 +478,7 @@ export function FilesPage() {
                   )}
                   <span className="text-xs text-center truncate max-w-full relative">{entry.name}</span>
                   {!entry.is_dir && <span className="text-[10px] text-muted-foreground relative">{formatSize(entry.size)}</span>}
-                </div>
+                </button>
           ))}
           {entries.length === 0 && (
             <div className="col-span-full flex flex-col items-center justify-center py-16 text-center animate-fade-in">

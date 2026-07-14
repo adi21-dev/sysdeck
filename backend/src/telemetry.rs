@@ -197,10 +197,7 @@ pub fn start_engine(
                 last_battery
             };
 
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as i64;
+            let timestamp = crate::now_millis();
 
             let temperature_cpu = temperature_cpu.map(|t| (t * 10.0).round() / 10.0);
             let temperature_gpu = temperature_gpu.map(|t| (t * 10.0).round() / 10.0);
@@ -269,97 +266,24 @@ extern "system" {
 }
 
 fn get_battery_status() -> (Option<f32>, Option<bool>) {
-    #[cfg(windows)]
-    {
-        let mut status = SYSTEM_POWER_STATUS {
-            ac_line_status: 0,
-            battery_flag: 0,
-            battery_life_percent: 0,
-            system_status_flag: 0,
-            battery_life_time: 0,
-            battery_full_life_time: 0,
-        };
-        unsafe {
-            if GetSystemPowerStatus(&mut status) != 0 {
-                let percent = if status.battery_life_percent <= 100 {
-                    Some(status.battery_life_percent as f32)
-                } else {
-                    None
-                };
-                let charging = Some(status.ac_line_status == 1);
-                return (percent, charging);
-            }
+    let mut status = SYSTEM_POWER_STATUS {
+        ac_line_status: 0,
+        battery_flag: 0,
+        battery_life_percent: 0,
+        system_status_flag: 0,
+        battery_life_time: 0,
+        battery_full_life_time: 0,
+    };
+    unsafe {
+        if GetSystemPowerStatus(&mut status) != 0 {
+            let percent = if status.battery_life_percent <= 100 {
+                Some(status.battery_life_percent as f32)
+            } else {
+                None
+            };
+            let charging = Some(status.ac_line_status == 1);
+            return (percent, charging);
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        get_battery_status_linux()
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        #[cfg(target_os = "macos")]
-        {
-            if let Some((p, c)) = get_battery_status_macos() {
-                return (p, c);
-            }
-        }
-
-        (None, None)
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn get_battery_status_linux() -> (Option<f32>, Option<bool>) {
-    for i in 0..4 {
-        let dir = format!("/sys/class/power_supply/BAT{i}");
-        if !std::path::Path::new(&dir).exists() {
-            continue;
-        }
-
-        let capacity = std::fs::read_to_string(format!("{dir}/capacity"))
-            .ok()
-            .and_then(|s| s.trim().parse::<f32>().ok());
-
-        let charging = std::fs::read_to_string(format!("{dir}/status"))
-            .ok()
-            .map(|s| matches!(s.trim(), "Charging" | "Full"));
-
-        return (capacity, charging);
     }
     (None, None)
-}
-
-#[cfg(target_os = "macos")]
-fn get_battery_status_macos() -> Option<(Option<f32>, Option<bool>)> {
-    let out = std::process::Command::new("pmset")
-        .args(["-g", "batt"])
-        .output()
-        .ok()?;
-    let text = std::str::from_utf8(&out.stdout).ok()?;
-
-    // pmset -g batt output lines:
-    //   -InternalBattery-0 (id=...)  72%; discharging; 3:42 remaining  present: true
-    //   -InternalBattery-0 (id=...)  100%; charged; 0:00  present: true
-
-    let line = text.lines().find(|l| l.contains("InternalBattery"))?;
-
-    let percent = line
-        .split(';')
-        .next()?
-        .trim()
-        .trim_end_matches('%')
-        .parse::<f32>()
-        .ok();
-
-    let charging = if line.contains("charged") || line.contains("charg") {
-        Some(true)
-    } else if line.contains("discharg") {
-        Some(false)
-    } else {
-        None
-    };
-
-    Some((percent, charging))
 }

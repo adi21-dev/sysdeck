@@ -274,10 +274,7 @@ pub async fn api_finish_handler(
                 .into_response();
         }
     };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
     let totp_b32 = auth::totp_secret_to_b32(&flow.totp_secret);
     let conn = state.db.lock().await;
     let _ = conn.execute("DELETE FROM sessions", []);

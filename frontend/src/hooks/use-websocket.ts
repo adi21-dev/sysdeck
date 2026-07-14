@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from "react"
-import { useTelemetryStore, useConnectionStore, useTunnelStore, applyHardwareUpdate } from "@/lib/store"
+import { useTelemetryStore, useConnectionStore, useTunnelStore, applyHardwareUpdate, useAppDeckStore } from "@/lib/store"
 
 const MAX_RECONNECT_DELAY = 30000
 
@@ -16,6 +16,7 @@ export function useWebSocket() {
   const setRetryConnection = useConnectionStore((s) => s.setRetryConnection)
   const setShuttingDown = useConnectionStore((s) => s.setShuttingDown)
   const setTunnel = useTunnelStore((s) => s.setTunnel)
+  const setWindows = useAppDeckStore((s) => s.setWindows)
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
@@ -57,6 +58,10 @@ export function useWebSocket() {
           setTunnel({ status: data.status, url: data.url ?? null })
           return
         }
+        if (data.event === "windows") {
+          setWindows(data.data ?? [])
+          return
+        }
         if (data.event === "hardware") {
           applyHardwareUpdate(data.data)
           return
@@ -89,7 +94,7 @@ export function useWebSocket() {
       setStatus("offline")
       setTimeout(connect, 100)
     })
-  }, [setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown])
+  }, [setCurrent, addToHistory, setStatus, setRetryConnection, setTunnel, setShuttingDown, setWindows])
 
   useEffect(() => {
     connect()
@@ -99,6 +104,7 @@ export function useWebSocket() {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
           if (connectRef.current && (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN)) {
+            reconnectAttempts.current = 0
             connectRef.current()
           }
         }

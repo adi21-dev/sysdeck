@@ -119,10 +119,7 @@ pub fn insert_audit_log(
     details: Option<&str>,
     ip_address: Option<&str>,
 ) -> Result<()> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
     conn.execute(
         "INSERT INTO audit_logs (event, details, ip_address, created_at) VALUES (?1, ?2, ?3, ?4)",
         params![event, details, ip_address, now],

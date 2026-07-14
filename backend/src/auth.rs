@@ -46,20 +46,11 @@ const KEYRING_USER: &str = "jwt-signing-key";
 const SECRETS_FILE: &str = ".secrets";
 const FALLBACK_DIR_ENV: &str = "SYSDECK_DATA_DIR";
 
-/// Determine where to store secrets for the fallback file.
 fn fallback_secrets_dir() -> PathBuf {
     if let Ok(dir) = std::env::var(FALLBACK_DIR_ENV) {
         return PathBuf::from(dir);
     }
-    #[cfg(target_os = "linux")]
-    {
-        let base = dirs::data_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        base.join("SysDeck")
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        crate::get_data_dir()
-    }
+    crate::get_data_dir()
 }
 
 fn secrets_file_path() -> PathBuf {
@@ -272,10 +263,7 @@ pub struct JwtClaims {
 }
 
 pub fn create_jwt(jti: &str, key: &[u8], token_version: i64) -> Result<String, String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as usize;
+    let now = crate::now_secs() as usize;
     let exp = now + JWT_EXPIRY_SECS as usize;
 
     let claims = JwtClaims {
@@ -318,10 +306,7 @@ pub fn create_session(
     refresh_token_hash: &str,
 ) -> Result<String, String> {
     let jti = Uuid::new_v4().to_string();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
     let expires = now + REFRESH_TOKEN_EXPIRY_SECS;
 
     conn.execute(
@@ -334,10 +319,7 @@ pub fn create_session(
 }
 
 pub fn verify_session(conn: &rusqlite::Connection, jti: &str) -> Result<bool, String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
 
     let count: i64 = conn
         .query_row(
@@ -354,10 +336,7 @@ pub fn verify_refresh_token(
     conn: &rusqlite::Connection,
     hash: &str,
 ) -> Result<Option<String>, String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
 
     let result = conn.query_row(
         "SELECT token_jti FROM sessions WHERE refresh_token_hash = ?1 AND expires_at > ?2 LIMIT 1",
@@ -376,10 +355,7 @@ pub fn rotate_refresh_token(
     jti: &str,
     new_hash: &str,
 ) -> Result<(), String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = crate::now_secs();
     let expires = now + REFRESH_TOKEN_EXPIRY_SECS;
 
     conn.execute(
@@ -1082,13 +1058,14 @@ pub async fn admin_check_handler(headers: axum::http::HeaderMap) -> Json<AdminCh
 
 // --- CSP Middleware ---
 
+pub const CSP: &str =
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'";
+
 pub async fn csp_middleware(req: Request, next: middleware::Next) -> Response {
     let mut response = next.run(req).await;
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'",
-        ),
+        HeaderValue::from_static(CSP),
     );
     response
 }

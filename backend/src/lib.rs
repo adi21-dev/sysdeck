@@ -5,6 +5,7 @@ pub mod disks;
 pub mod embed;
 pub mod file_manager;
 pub mod hardware;
+pub mod icons;
 pub mod input;
 pub mod network;
 pub mod power;
@@ -53,6 +54,20 @@ pub enum TrayAction {
     ToggleTunnel,
 }
 
+pub fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+pub fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64
+}
+
 pub use auth::{admin_check_handler, admin_middleware, IpRateLimiter, LockoutState};
 pub use db::TelemetrySnapshot;
 pub use power::{MockOs, PowerAction, PowerState, RealOs, SystemCommands};
@@ -72,6 +87,7 @@ pub struct InitHistory {
 #[derive(Clone)]
 pub struct AppState {
     pub telemetry_tx: broadcast::Sender<Arc<TelemetrySnapshot>>,
+    pub windows_tx: broadcast::Sender<String>,
     pub system_tx: broadcast::Sender<String>,
     pub clipboard_tx: broadcast::Sender<String>,
     pub hardware_tx: broadcast::Sender<String>,
@@ -89,51 +105,22 @@ pub struct AppState {
 }
 
 pub fn new_command<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        let mut cmd = std::process::Command::new(program);
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        cmd
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::process::Command::new(program)
-    }
+    use std::os::windows::process::CommandExt;
+    let mut cmd = std::process::Command::new(program);
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd
 }
 
 pub fn new_tokio_command<S: AsRef<std::ffi::OsStr>>(program: S) -> tokio::process::Command {
-    #[cfg(target_os = "windows")]
-    {
-        let mut cmd = tokio::process::Command::new(program);
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        cmd
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        tokio::process::Command::new(program)
-    }
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    cmd
 }
 
 pub fn get_data_dir() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let local_app_data =
-            std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
-        PathBuf::from(local_app_data).join("SysDeck")
-    }
-    #[cfg(target_os = "macos")]
-    {
-        dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("SysDeck")
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    {
-        dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("sysdeck")
-    }
+    let local_app_data =
+        std::env::var("LOCALAPPDATA").expect("LOCALAPPDATA environment variable not set");
+    PathBuf::from(local_app_data).join("SysDeck")
 }
 
 pub fn get_logs_dir() -> PathBuf {
@@ -526,11 +513,7 @@ pub async fn history_handler(
         }
     };
 
-    let since_ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
-        - (seconds * 1000);
+    let since_ts = crate::now_millis() - (seconds * 1000);
 
     let db = state.db.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -575,9 +558,7 @@ pub async fn data_dir_handler() -> impl IntoResponse {
     Json(serde_json::json!({"path": get_data_dir().to_string_lossy().to_string()}))
 }
 
-pub async fn uninstall_handler(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn uninstall_handler(State(state): State<AppState>) -> impl IntoResponse {
     let _ = state.tunnel_state.stop().await;
 
     let data_dir = get_data_dir();
@@ -732,6 +713,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/power/execute", post(power::execute_handler))
         .route("/api/power/cancel", post(power::cancel_power_handler))
         .route("/api/power/status", get(power::power_status_handler))
+        .route("/api/power/lock", post(power::lock_handler))
         .route(
             "/api/power/schedule",
             post(hardware::schedule_power_handler),
@@ -746,10 +728,6 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/api/display/brightness",
             post(hardware::display_brightness_handler),
-        )
-        .route(
-            "/api/display/night-light",
-            post(hardware::night_light_handler),
         )
         .route("/api/toggles/status", get(hardware::toggles_status_handler))
         .route(
@@ -813,6 +791,10 @@ pub fn build_router(state: AppState) -> Router {
         // Terminal
         .route("/api/terminal/create", post(terminal::create_handler))
         .route("/ws/terminal/:id", get(terminal::ws_terminal_handler))
+        // Icons, Apps & Launch
+        .route("/api/icon", get(icons::icon_handler))
+        .route("/api/apps", get(icons::apps_handler))
+        .route("/api/launch", post(icons::launch_handler))
         // Window Management
         .route("/api/windows", get(windows::list_handler))
         .route("/api/windows/focus", post(windows::focus_handler))

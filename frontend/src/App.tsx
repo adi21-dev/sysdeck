@@ -2,6 +2,7 @@ import { lazy, useEffect } from "react"
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute"
+import { useWakeLock } from "@/hooks/use-wake-lock"
 import { WebSocketProvider } from "@/components/layout/WebSocketProvider"
 import { ToastContainer } from "@/components/ui/toast"
 import { LoginPage } from "@/pages/Login"
@@ -9,6 +10,7 @@ import { SetupPage } from "@/pages/Setup"
 import { InitProgress } from "@/components/InitProgress"
 import { setGlobalNavigate } from "@/lib/api"
 
+const OverviewPage = lazy(() => import("@/pages/Overview").then(m => ({ default: m.OverviewPage })))
 const DashboardPage = lazy(() => import("@/pages/Dashboard").then(m => ({ default: m.DashboardPage })))
 const FilesPage = lazy(() => import("@/pages/Files").then(m => ({ default: m.FilesPage })))
 const ScriptsPage = lazy(() => import("@/pages/Scripts").then(m => ({ default: m.ScriptsPage })))
@@ -28,6 +30,7 @@ function NavigateProvider() {
 }
 
 function App() {
+  useWakeLock()
   return (
     <BrowserRouter>
       <NavigateProvider />
@@ -44,6 +47,7 @@ function App() {
           }
         >
           <Route element={<AppLayout />}>
+            <Route path="/overview" element={<OverviewPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/files" element={<FilesPage />} />
             <Route path="/scripts" element={<ScriptsPage />} />

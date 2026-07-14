@@ -28,7 +28,6 @@ pub struct RealOs;
 
 impl SystemCommands for RealOs {
     fn execute_power_action(&self, action: PowerAction) {
-        #[cfg(target_os = "windows")]
         unsafe {
             use windows_sys::Win32::System::Power::SetSuspendState;
             use windows_sys::Win32::System::RemoteDesktop::{
@@ -61,84 +60,6 @@ impl SystemCommands for RealOs {
                     WTSDisconnectSession(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, 0);
                 }
             }
-        }
-        #[cfg(target_os = "linux")]
-        match action {
-            PowerAction::Shutdown => {
-                let _ = crate::new_command("systemctl").arg("poweroff").spawn();
-            }
-            PowerAction::Restart => {
-                let _ = crate::new_command("systemctl").arg("reboot").spawn();
-            }
-            PowerAction::Sleep => {
-                let _ = crate::new_command("systemctl").arg("suspend").spawn();
-            }
-            PowerAction::Hibernate => {
-                let _ = crate::new_command("systemctl").arg("hibernate").spawn();
-            }
-            PowerAction::SignOut => {
-                let _ = crate::new_command("loginctl")
-                    .args(["terminate-session", "self"])
-                    .spawn();
-            }
-            PowerAction::Lock => {
-                let _ = crate::new_command("loginctl").arg("lock-session").spawn();
-            }
-            PowerAction::SwitchUser => {
-                // Switch user via display manager
-                let _ = crate::new_command("dm-tool")
-                    .arg("switch-to-greeter")
-                    .spawn();
-            }
-        }
-        #[cfg(target_os = "macos")]
-        match action {
-            PowerAction::Shutdown => {
-                let _ = crate::new_command("osascript")
-                    .args(["-e", "tell application \"System Events\" to shut down"])
-                    .spawn();
-            }
-            PowerAction::Restart => {
-                let _ = crate::new_command("osascript")
-                    .args(["-e", "tell application \"System Events\" to restart"])
-                    .spawn();
-            }
-            PowerAction::Sleep => {
-                let _ = crate::new_command("osascript")
-                    .args(["-e", "tell application \"System Events\" to sleep"])
-                    .spawn();
-            }
-            PowerAction::Hibernate => {
-                // macOS: enable hibernate mode then sleep
-                let _ = crate::new_command("pmset")
-                    .args(["-a", "hibernatemode", "25"])
-                    .spawn();
-                let _ = crate::new_command("osascript")
-                    .args(["-e", "tell application \"System Events\" to sleep"])
-                    .spawn();
-            }
-            PowerAction::SignOut => {
-                let _ = crate::new_command("osascript")
-                    .args(["-e", "tell application \"System Events\" to log out"])
-                    .spawn();
-            }
-            PowerAction::Lock => {
-                let _ = crate::new_command("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
-                    .arg("-suspend")
-                    .spawn();
-            }
-            PowerAction::SwitchUser => {
-                let _ = crate::new_command("/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession")
-                    .arg("-suspend")
-                    .spawn();
-            }
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-        {
-            tracing::warn!(
-                "Power action {:?} is not supported on this platform",
-                action
-            );
         }
     }
 }
@@ -297,6 +218,18 @@ pub(crate) async fn execute_handler(
         active_transfers: None,
     })
     .into_response()
+}
+
+pub async fn lock_handler() -> impl IntoResponse {
+    tokio::task::spawn_blocking(move || unsafe {
+        extern "system" {
+            fn LockWorkStation() -> i32;
+        }
+        LockWorkStation();
+    })
+    .await
+    .ok();
+    Json(serde_json::json!({ "success": true }))
 }
 
 pub async fn cancel_power_handler(State(state): State<crate::AppState>) -> impl IntoResponse {

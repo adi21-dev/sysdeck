@@ -15,7 +15,6 @@ interface ScriptsState {
   output: ScriptOutput[]
   status: "idle" | "running" | "completed" | "failed" | "timed_out"
   consoleOpen: boolean
-  errorCount: number
   setMode: (m: "live" | "wait") => void
   setScriptType: (t: "powershell" | "cmd") => void
   setContent: (c: string) => void
@@ -38,7 +37,6 @@ export const useScriptsStore = create<ScriptsState>((set, get) => ({
   output: [],
   status: "idle",
   consoleOpen: false,
-  errorCount: 0,
   setMode: (m) => set({ mode: m }),
   setScriptType: (t) => set({ scriptType: t }),
   setContent: (c) => set({ content: c }),
@@ -46,11 +44,8 @@ export const useScriptsStore = create<ScriptsState>((set, get) => ({
   setRunning: (r) => set({ running: r }),
   setRunId: (id) => set({ runId: id }),
   addOutput: (o) =>
-    set({
-      output: [...get().output, o],
-      errorCount: o.stream === "stderr" ? get().errorCount + 1 : get().errorCount,
-    }),
-  clearOutput: () => set({ output: [], errorCount: 0 }),
+    set({ output: [...get().output, o] }),
+  clearOutput: () => set({ output: [] }),
   setStatus: (s) => set({ status: s }),
   setConsoleOpen: (o) => set({ consoleOpen: o }),
 }))

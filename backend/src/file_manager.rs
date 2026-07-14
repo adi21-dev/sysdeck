@@ -15,37 +15,12 @@ use tokio::io::AsyncWriteExt;
 use crate::db;
 
 const MAX_UPLOAD_SIZE: u64 = 500 * 1024 * 1024;
-#[cfg(target_os = "windows")]
 const BLOCKED_PREFIXES: &[&str] = &[
     r"c:\windows\system32",
     r"c:\windows",
     r"c:\program files",
     r"c:\program files (x86)",
 ];
-#[cfg(target_os = "linux")]
-const BLOCKED_PREFIXES: &[&str] = &[
-    "/bin",
-    "/sbin",
-    "/usr/bin",
-    "/usr/sbin",
-    "/etc",
-    "/boot",
-    "/proc",
-    "/sys",
-    "/dev",
-];
-#[cfg(target_os = "macos")]
-const BLOCKED_PREFIXES: &[&str] = &[
-    "/System",
-    "/Library",
-    "/usr/bin",
-    "/usr/sbin",
-    "/private/etc",
-    "/bin",
-    "/sbin",
-];
-#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-const BLOCKED_PREFIXES: &[&str] = &[];
 
 fn strip_wp(s: &str) -> &str {
     s.strip_prefix(r"\\?\").unwrap_or(s)

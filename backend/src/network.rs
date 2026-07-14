@@ -5,7 +5,6 @@ use tracing;
 
 use crate::hardware::run_cmd;
 
-#[cfg(target_os = "windows")]
 #[link(name = "dnsapi")]
 extern "system" {
     fn DnsFlushResolverCache() -> i32;
@@ -58,42 +57,11 @@ fn default_wifi_security() -> String {
 }
 
 pub async fn get_network_status() -> Result<NetworkStatus, String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        unsafe {
-            get_windows_network_status()
-        }
-        #[cfg(target_os = "macos")]
-        {
-            get_macos_network_status()
-        }
-        #[cfg(target_os = "linux")]
-        {
-            get_linux_network_status()
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        {
-            Ok(default_network_status())
-        }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    tokio::task::spawn_blocking(move || unsafe { get_windows_network_status() })
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
-#[allow(dead_code)]
-fn default_network_status() -> NetworkStatus {
-    NetworkStatus {
-        ipv4: String::new(),
-        ipv6: None,
-        interfaces: vec![],
-        default_gateway: String::new(),
-        dns_servers: vec![],
-        connection_type: "unknown".to_string(),
-        internet_connection: None,
-    }
-}
-
-#[cfg(target_os = "windows")]
 unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
     use windows_sys::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, ERROR_SUCCESS};
     use windows_sys::Win32::NetworkManagement::IpHelper::{
@@ -113,7 +81,7 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
     );
 
     if ret != ERROR_BUFFER_OVERFLOW && ret != ERROR_SUCCESS {
-        return Ok(default_network_status());
+        return Err("GetAdaptersAddresses (size check) failed".to_string());
     }
 
     let mut buf: Vec<u8> = vec![0u8; buf_len as usize];
@@ -128,7 +96,7 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
     );
 
     if ret != ERROR_SUCCESS {
-        return Ok(default_network_status());
+        return Err(format!("GetAdaptersAddresses failed: {}", ret));
     }
 
     let mut interfaces = Vec::new();
@@ -275,219 +243,12 @@ unsafe fn get_windows_network_status() -> Result<NetworkStatus, String> {
     })
 }
 
-#[cfg(target_os = "macos")]
-fn get_macos_network_status() -> Result<NetworkStatus, String> {
-    let ifconfig_out = run_cmd("ifconfig", &[]).unwrap_or_default();
-    let mut interfaces = Vec::new();
-    let mut ipv4 = String::new();
-    let mut ipv6: Option<String> = None;
-
-    for block in ifconfig_out.split("\n\n") {
-        let lines: Vec<&str> = block.lines().collect();
-        if lines.is_empty() {
-            continue;
-        }
-        let name = lines[0].split(':').next().unwrap_or("").to_string();
-        if name.is_empty() || name.starts_with(" ") {
-            continue;
-        }
-        let joined = block;
-        let status = if joined.contains("UP") { "up" } else { "down" };
-        let type_str = if name.starts_with("en") {
-            "ethernet"
-        } else if name.starts_with("awdl") || name.starts_with("llw") {
-            "wifi"
-        } else if name == "lo0" {
-            "loopback"
-        } else {
-            "unknown"
-        };
-        let mut addr_v4 = String::new();
-        for line in &lines {
-            if let Some(ip) = line.trim().strip_prefix("inet ") {
-                let p = ip.split_whitespace().next().unwrap_or("");
-                if addr_v4.is_empty() {
-                    addr_v4 = p.to_string();
-                }
-            }
-            if ipv6.is_none() {
-                if let Some(ip) = line.trim().strip_prefix("inet6 ") {
-                    let p = ip.split_whitespace().next().unwrap_or("");
-                    if !p.starts_with("fe80") {
-                        ipv6 = Some(p.to_string());
-                    }
-                }
-            }
-        }
-        let mac = lines
-            .iter()
-            .find_map(|l| {
-                l.trim()
-                    .strip_prefix("ether ")
-                    .map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
-            })
-            .unwrap_or_default();
-
-        if !addr_v4.is_empty() && ipv4.is_empty() {
-            ipv4 = addr_v4.clone();
-        }
-
-        interfaces.push(InterfaceInfo {
-            name,
-            status: status.to_string(),
-            interface_type: type_str.to_string(),
-            mac,
-            ipv4: addr_v4,
-        });
-    }
-
-    let gw = run_cmd("netstat", &["-rn", "-f", "inet"]).unwrap_or_default();
-    let default_gateway = gw
-        .lines()
-        .find_map(|l| {
-            if l.starts_with("default") {
-                l.split_whitespace().nth(1).map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
-
-    Ok(NetworkStatus {
-        ipv4,
-        ipv6,
-        interfaces,
-        default_gateway,
-        dns_servers: vec![],
-        connection_type: "unknown".to_string(),
-        internet_connection: None,
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn get_linux_network_status() -> Result<NetworkStatus, String> {
-    let ip_out = run_cmd("ip", &["addr"]).unwrap_or_default();
-    let mut interfaces = Vec::new();
-    let mut ipv4 = String::new();
-    let mut ipv6: Option<String> = None;
-    let mut has_wifi = false;
-    let mut has_ethernet = false;
-
-    for block in ip_out.split("\n\n") {
-        let block = block.trim();
-        if block.is_empty() {
-            continue;
-        }
-        let lines: Vec<&str> = block.lines().collect();
-        let first = lines.first().unwrap_or(&"");
-        let parts: Vec<&str> = first.splitn(2, ": ").collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let rest = parts[1];
-        let name = rest.split(':').next().unwrap_or("").trim().to_string();
-        let joined = block;
-        let status = if joined.contains("state UP") {
-            "up"
-        } else {
-            "down"
-        };
-        let type_str = if joined.contains("wlan") || joined.contains("wlp") {
-            has_wifi = true;
-            "wifi"
-        } else if joined.contains("eth") || joined.contains("enp") || joined.contains("ens") {
-            has_ethernet = true;
-            "ethernet"
-        } else if name == "lo" {
-            "loopback"
-        } else {
-            "unknown"
-        };
-        let mut addr_v4 = String::new();
-        for line in &lines {
-            let trimmed = line.trim();
-            if let Some(ip) = trimmed.strip_prefix("inet ") {
-                let p = ip.split('/').next().unwrap_or("");
-                if addr_v4.is_empty() {
-                    addr_v4 = p.to_string();
-                }
-            }
-            if ipv6.is_none() {
-                if let Some(ip) = trimmed.strip_prefix("inet6 ") {
-                    let p = ip.split('/').next().unwrap_or("");
-                    if !p.starts_with("fe80") {
-                        ipv6 = Some(p.to_string());
-                    }
-                }
-            }
-        }
-        let mac = lines
-            .iter()
-            .find_map(|l| {
-                l.trim()
-                    .strip_prefix("link/ether ")
-                    .map(|s| s.split_whitespace().next().unwrap_or("").to_uppercase())
-            })
-            .unwrap_or_default();
-
-        if !addr_v4.is_empty() && ipv4.is_empty() {
-            ipv4 = addr_v4.clone();
-        }
-
-        interfaces.push(InterfaceInfo {
-            name,
-            status: status.to_string(),
-            interface_type: type_str.to_string(),
-            mac,
-            ipv4: addr_v4,
-        });
-    }
-
-    let gw_out = run_cmd("ip", &["route"]).unwrap_or_default();
-    let default_gateway = gw_out
-        .lines()
-        .find_map(|l| {
-            if l.starts_with("default via ") {
-                l.split_whitespace().nth(2).map(|s| s.to_string())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default();
-
-    Ok(NetworkStatus {
-        ipv4,
-        ipv6,
-        interfaces,
-        default_gateway,
-        dns_servers: vec![],
-        connection_type: if has_wifi {
-            "wifi".to_string()
-        } else if has_ethernet {
-            "ethernet".to_string()
-        } else {
-            "unknown".to_string()
-        },
-        internet_connection: None,
-    })
-}
-
 pub async fn scan_wifi() -> Result<Vec<WifiNetwork>, String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            scan_wifi_windows()
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Err("Wi-Fi scanning is only supported on Windows".to_string())
-        }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    tokio::task::spawn_blocking(scan_wifi_windows)
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
-#[cfg(target_os = "windows")]
 fn scan_wifi_windows() -> Result<Vec<WifiNetwork>, String> {
     use windows_sys::Win32::NetworkManagement::WiFi::*;
     unsafe {
@@ -574,21 +335,12 @@ pub async fn connect_wifi(
     security_type: String,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            connect_wifi_windows(&ssid, password.as_deref(), &security_type)
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = (ssid, password, security_type);
-            Err("Wi-Fi connect is only supported on Windows".to_string())
-        }
+        connect_wifi_windows(&ssid, password.as_deref(), &security_type)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
 }
 
-#[cfg(target_os = "windows")]
 fn connect_wifi_windows(
     ssid: &str,
     password: Option<&str>,
@@ -713,21 +465,11 @@ fn connect_wifi_windows(
 }
 
 pub async fn disconnect_wifi() -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            disconnect_wifi_windows()
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Err("Wi-Fi disconnect is only supported on Windows".to_string())
-        }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    tokio::task::spawn_blocking(disconnect_wifi_windows)
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
-#[cfg(target_os = "windows")]
 fn disconnect_wifi_windows() -> Result<(), String> {
     use windows_sys::Win32::NetworkManagement::WiFi::*;
     unsafe {
@@ -757,39 +499,28 @@ fn disconnect_wifi_windows() -> Result<(), String> {
 
 pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        {
-            let ns_state = if enabled { "enable" } else { "disable" };
-            let out = run_cmd(
-                "netsh",
-                &[
-                    "interface",
-                    "set",
-                    "interface",
-                    "name=",
-                    &name,
-                    "admin=",
-                    ns_state,
-                ],
-            );
-            match out {
-                Ok(_) => Ok(()),
-                Err(e) => {
-                    if e.contains("denied") || e.contains("Access") {
-                        Err(
-                            "Administrator privileges required to toggle network adapters"
-                                .to_string(),
-                        )
-                    } else {
-                        Err(e)
-                    }
+        let ns_state = if enabled { "enable" } else { "disable" };
+        let out = run_cmd(
+            "netsh",
+            &[
+                "interface",
+                "set",
+                "interface",
+                "name=",
+                &name,
+                "admin=",
+                ns_state,
+            ],
+        );
+        match out {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                if e.contains("denied") || e.contains("Access") {
+                    Err("Administrator privileges required to toggle network adapters".to_string())
+                } else {
+                    Err(e)
                 }
             }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = (name, enabled);
-            Err("Adapter toggle is only supported on Windows".to_string())
         }
     })
     .await
@@ -797,45 +528,12 @@ pub async fn toggle_adapter(name: String, enabled: bool) -> Result<(), String> {
 }
 
 pub async fn flush_dns() -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        #[cfg(target_os = "windows")]
-        unsafe {
-            if DnsFlushResolverCache() != 0 {
-                Ok(())
-            } else {
-                Err("Failed to flush DNS cache".to_string())
-            }
+    tokio::task::spawn_blocking(move || unsafe {
+        if DnsFlushResolverCache() != 0 {
+            Ok(())
+        } else {
+            Err("Failed to flush DNS cache".to_string())
         }
-        #[cfg(target_os = "macos")]
-        {
-            run_cmd("dscacheutil", &["-flushcache"])
-                .map(|_| ())
-                .map_err(|e| {
-                    if e.contains("denied") || e.contains("Permission denied") {
-                        "Administrator privileges required to flush DNS".to_string()
-                    } else {
-                        e
-                    }
-                })
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let result = run_cmd("resolvectl", &["flush-caches"]);
-            match result {
-                Ok(_) => Ok(()),
-                Err(_) => run_cmd("systemd-resolve", &["--flush-caches"])
-                    .map(|_| ())
-                    .map_err(|e| {
-                        if e.contains("denied") || e.contains("Permission denied") {
-                            "Administrator privileges required to flush DNS".to_string()
-                        } else {
-                            e
-                        }
-                    }),
-            }
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-        Err("DNS flush not supported on this OS".to_string())
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?

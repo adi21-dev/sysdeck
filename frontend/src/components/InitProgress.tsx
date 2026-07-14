@@ -132,7 +132,7 @@ export function InitProgress() {
           )}
           {phase === "done" && (
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/overview")}
               className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:brightness-110 transition-all"
             >
               Continue to Dashboard

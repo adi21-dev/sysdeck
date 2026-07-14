@@ -7,6 +7,7 @@ import { Copy, Check, Loader2 } from "lucide-react"
 import { useState } from "react"
 
 const PAGE_TITLES: Record<string, string> = {
+  "/overview": "Overview",
   "/dashboard": "Dashboard",
   "/files": "Files",
   "/scripts": "Scripts",
@@ -49,7 +50,7 @@ export function AppLayout() {
         Skip to content
       </a>
       <Sidebar />
-      <main id="main-content" className="flex-1 ml-0 md:ml-60 overflow-auto pb-16 md:pb-0">
+      <main id="main-content" className={`flex-1 ml-0 md:ml-60 overflow-auto ${location.pathname === "/overview" ? "pb-0" : "pb-16"} md:pb-0`}>
         <header className="sticky top-0 z-30 border-b bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-4">

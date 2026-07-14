@@ -25,7 +25,7 @@ const RANGES = [
 const StatCard = memo(function StatCard({ icon: Icon, label, children, className }: { icon: any; label: string; children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("glass-card p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg h-full flex flex-col", className)}>
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800/20 to-transparent pointer-events-none" />
       <div className="flex items-center justify-between mb-4 relative flex-1">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -51,7 +51,7 @@ function GradientArea({ id, color }: { id: string; color: string }) {
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="glass-card p-5 hover:border-border/80 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg h-full">
-      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800/20 to-transparent pointer-events-none" />
       <h3 className="text-sm font-semibold mb-4 text-muted-foreground relative">{title}</h3>
       <div className="h-64 relative">
         {children}
@@ -226,7 +226,7 @@ export function DashboardPage() {
 
       {ramPct != null && (
         <div className="glass-card p-5 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+          <div className="absolute inset-0 bg-gradient-to-br from-zinc-800/20 to-transparent pointer-events-none" />
           <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Memory Usage</span>
             <span className="text-sm font-medium tabular-nums">{ramPct}%</span>
@@ -239,7 +239,7 @@ export function DashboardPage() {
 
       {diskPct != null && (
         <div className="glass-card p-5 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none dark:from-white/5" />
+          <div className="absolute inset-0 bg-gradient-to-br from-zinc-800/20 to-transparent pointer-events-none" />
           <div className="flex items-center justify-between mb-3 relative">
             <span className="text-sm font-medium text-muted-foreground">Disk Usage</span>
             <span className="text-sm font-medium tabular-nums">{diskPct}%</span>

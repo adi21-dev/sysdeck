@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom"
+import { NavLink, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { navItems, adminNavItems } from "@/lib/navigation"
 import { useAuthStore } from "@/lib/store"
@@ -7,9 +7,12 @@ import { useState, useEffect } from "react"
 export function BottomNav() {
   const isLocal = useAuthStore((s) => s.isLocal)
   const items = isLocal ? [...navItems, ...adminNavItems] : navItems
+  const location = useLocation()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   if (!mounted) return null
+
+  if (location.pathname === "/overview") return null
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>

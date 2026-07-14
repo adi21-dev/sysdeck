@@ -16,24 +16,12 @@ use uuid::Uuid;
 
 fn kill_process_tree(pid: Option<u32>) {
     let Some(pid) = pid else { return };
-    #[cfg(target_os = "windows")]
-    {
-        let _ = crate::new_command("taskkill")
-            .args(["/T", "/F", "/PID", &pid.to_string()])
-            .spawn()
-            .map(|mut c| {
-                let _ = c.wait();
-            });
-    }
-    #[cfg(unix)]
-    {
-        let _ = crate::new_command("pkill")
-            .args(["-P", &pid.to_string()])
-            .spawn();
-        let _ = crate::new_command("kill")
-            .args(["-9", &pid.to_string()])
-            .spawn();
-    }
+    let _ = crate::new_command("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .spawn()
+        .map(|mut c| {
+            let _ = c.wait();
+        });
 }
 
 use crate::auth;
@@ -236,42 +224,13 @@ async fn run_script(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-    } else if script_type.eq_ignore_ascii_case("batch") || script_type.eq_ignore_ascii_case("cmd") {
-        #[cfg(target_os = "windows")]
-        {
-            let content = content.replace("\r\n", " & ").replace('\n', " & ");
-            crate::new_tokio_command("cmd")
-                .args(["/C", &content])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Batch/cmd scripts are only supported on Windows",
-            ))
-        }
     } else {
-        // shell: bash on Linux/macOS, cmd on Windows
-        #[cfg(target_os = "windows")]
-        {
-            let content = content.replace("\r\n", " & ").replace('\n', " & ");
-            crate::new_tokio_command("cmd")
-                .args(["/C", &content])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            crate::new_tokio_command("bash")
-                .args(["-c", content])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-        }
+        let content = content.replace("\r\n", " & ").replace('\n', " & ");
+        crate::new_tokio_command("cmd")
+            .args(["/C", &content])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
     };
 
     let mut child = match child {

@@ -53,10 +53,7 @@ fn save_all(conn: &rusqlite::Connection, scripts: &[SavedScript]) {
 }
 
 fn now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64
+    crate::now_secs()
 }
 
 pub async fn list_handler(State(state): State<AppState>) -> Json<serde_json::Value> {

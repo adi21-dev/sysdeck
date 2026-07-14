@@ -9,8 +9,7 @@ use rust_embed::RustEmbed;
 #[folder = "../frontend/dist/"]
 struct Asset;
 
-const CSP: &str =
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'";
+use crate::auth::CSP;
 
 pub async fn serve_embedded_assets(uri: Uri) -> Response {
     let mut path = uri.path().trim_start_matches('/').to_owned();
